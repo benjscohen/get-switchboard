@@ -1,0 +1,126 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+interface ApiKeyEntry {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+export function ApiKeyManager() {
+  const [keys, setKeys] = useState<ApiKeyEntry[]>([]);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [newRawKey, setNewRawKey] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchKeys = useCallback(async () => {
+    const res = await fetch("/api/keys");
+    if (res.ok) setKeys(await res.json());
+  }, []);
+
+  useEffect(() => {
+    fetchKeys();
+  }, [fetchKeys]);
+
+  async function generate() {
+    setLoading(true);
+    const res = await fetch("/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newKeyName || "Default" }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setNewRawKey(data.key);
+      setNewKeyName("");
+      fetchKeys();
+    }
+    setLoading(false);
+  }
+
+  async function revoke(id: string) {
+    await fetch(`/api/keys?id=${id}`, { method: "DELETE" });
+    fetchKeys();
+  }
+
+  return (
+    <Card hover={false}>
+      <h2 className="mb-4 text-sm font-medium text-text-secondary">
+        API Keys
+      </h2>
+
+      {newRawKey && (
+        <div className="mb-4 rounded-lg border border-accent/30 bg-accent/5 p-3">
+          <p className="mb-1 text-xs font-medium text-accent">
+            Copy your key now — it won&apos;t be shown again
+          </p>
+          <code className="block break-all font-mono text-xs text-text-primary">
+            {newRawKey}
+          </code>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="mt-2"
+            onClick={() => {
+              navigator.clipboard.writeText(newRawKey);
+            }}
+          >
+            Copy
+          </Button>
+        </div>
+      )}
+
+      <div className="mb-4 flex gap-2">
+        <Input
+          placeholder="Key name (optional)"
+          value={newKeyName}
+          onChange={(e) => setNewKeyName(e.target.value)}
+          className="max-w-xs"
+        />
+        <Button size="sm" onClick={generate} disabled={loading}>
+          {loading ? "Generating..." : "Generate Key"}
+        </Button>
+      </div>
+
+      {keys.length === 0 ? (
+        <p className="text-sm text-text-tertiary">
+          No API keys yet. Generate one to connect your MCP client.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {keys.map((k) => (
+            <div
+              key={k.id}
+              className="flex items-center justify-between rounded-lg bg-bg px-3 py-2"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">{k.name}</p>
+                <p className="font-mono text-xs text-text-tertiary">
+                  {k.keyPrefix}...
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-text-tertiary">
+                  {new Date(k.createdAt).toLocaleDateString()}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => revoke(k.id)}
+                >
+                  Revoke
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
