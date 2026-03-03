@@ -67,24 +67,6 @@ const comparisons = [
   },
 ];
 
-const capabilities = [
-  {
-    title: "Full API, not a subset",
-    description:
-      "We don't skip endpoints. Every integration covers the complete API surface — reads, writes, batch ops, admin controls, and more.",
-  },
-  {
-    title: "Real automation, not demos",
-    description:
-      "Sharing a calendar, formatting a spreadsheet, batch-updating 50 events — real workflows require deep tools.",
-  },
-  {
-    title: "Better tools, smarter AI",
-    description:
-      'More specific tools means the AI picks the right one. A "quick add" tool is faster and more reliable than building an event object from scratch.',
-  },
-];
-
 function Bar({
   count,
   max,
@@ -194,25 +176,6 @@ export function Depth() {
           ))}
         </div>
 
-        {/* Capability highlights */}
-        <div className="mt-12 grid gap-6 md:grid-cols-3">
-          {capabilities.map((cap, i) => (
-            <motion.div
-              key={cap.title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 0.4, delay: i * 0.1 }}
-            >
-              <Card className="h-full">
-                <h3 className="font-semibold">{cap.title}</h3>
-                <p className="mt-2 text-sm text-text-secondary">
-                  {cap.description}
-                </p>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
       </Container>
     </Section>
   );

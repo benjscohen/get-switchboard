@@ -81,13 +81,13 @@ export function Hero() {
               <div className="mx-auto h-4 w-px bg-current" />
 
               {/* Horizontal bar + vertical branches + app boxes */}
-              <div className="relative grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="relative grid grid-cols-4 gap-2 sm:gap-3">
                 {/* Horizontal bar connecting column centers */}
                 <div
-                  className="pointer-events-none absolute top-0 hidden h-px bg-current sm:block"
+                  className="pointer-events-none absolute top-0 h-px bg-current"
                   style={{
-                    left: 'calc((100% - 2.25rem) / 8)',
-                    right: 'calc((100% - 2.25rem) / 8)',
+                    left: 'calc((100% - 1.5rem) / 8)',
+                    right: 'calc((100% - 1.5rem) / 8)',
                   }}
                 />
 
@@ -108,7 +108,7 @@ export function Hero() {
                       />
                     </div>
                     {/* App box */}
-                    <div className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-bg px-3 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:border-border-hover">
+                    <div className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-bg px-2 py-2 text-xs font-medium text-text-secondary transition-colors hover:border-border-hover sm:gap-2 sm:px-3 sm:py-2.5 sm:text-sm">
                       <span
                         className="h-2 w-2 rounded-full"
                         style={{ backgroundColor: color }}
