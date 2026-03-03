@@ -15,7 +15,7 @@ export const heroContent = {
   badge: "Now in Early Access",
   headline: "One URL. Every tool.",
   subheadline:
-    "Switchboard is the corporate app store for AI tools. Give every employee a single MCP endpoint that connects their AI assistant to every tool they need — managed, secured, and observable.",
+    "Give every employee a single MCP endpoint with the deepest integrations available. Not 5 basic operations — full API coverage across every tool your team uses. Managed, secured, and observable.",
   primaryCta: { label: "Join the Waitlist", href: "#waitlist" },
   secondaryCta: { label: "See How It Works", href: "#how-it-works" },
 };
