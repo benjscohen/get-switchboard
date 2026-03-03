@@ -1,25 +1,11 @@
 import NextAuth from "next-auth";
-import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
+import { authConfig } from "@/lib/auth.config";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  ...authConfig,
   adapter: PrismaAdapter(prisma),
-  providers: [
-    Google({
-      authorization: {
-        params: {
-          scope:
-            "openid email profile https://www.googleapis.com/auth/calendar",
-          access_type: "offline",
-          prompt: "consent",
-        },
-      },
-    }),
-  ],
-  pages: {
-    signIn: "/login",
-  },
   callbacks: {
     session({ session, user }) {
       session.user.id = user.id;
