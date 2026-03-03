@@ -1,11 +1,8 @@
-import { z } from "zod";
 import type { calendar_v3 } from "googleapis";
+import type { IntegrationToolDef } from "../types";
 import * as s from "./schemas";
 
-export type ToolDef = {
-  name: string;
-  description: string;
-  schema: z.ZodObject<z.ZodRawShape>;
+type CalendarToolDef = Omit<IntegrationToolDef, "execute"> & {
   execute: (
     args: Record<string, unknown>,
     cal: calendar_v3.Calendar
@@ -17,7 +14,7 @@ function cid(args: Record<string, unknown>): string {
   return (args.calendarId as string) ?? "primary";
 }
 
-export const CALENDAR_TOOLS: ToolDef[] = [
+export const CALENDAR_TOOLS: CalendarToolDef[] = [
   // ── Events (14) ──
   {
     name: "google_calendar_list_events",

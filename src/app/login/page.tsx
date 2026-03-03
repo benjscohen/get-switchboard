@@ -55,7 +55,7 @@ export default async function LoginPage() {
           </svg>
           <h1 className="text-xl font-bold">Sign in to Switchboard</h1>
           <p className="mt-2 text-sm text-text-secondary">
-            Connect your Google Calendar to get started
+            Sign in to get started
           </p>
         </div>
         <form

@@ -6,10 +6,7 @@ export const authConfig = {
     Google({
       authorization: {
         params: {
-          scope:
-            "openid email profile https://www.googleapis.com/auth/calendar",
-          access_type: "offline",
-          prompt: "consent",
+          scope: "openid email profile",
         },
       },
     }),

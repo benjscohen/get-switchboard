@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { SessionProvider } from "next-auth/react";
 import { inter, jetbrainsMono } from "@/lib/fonts";
 import { siteConfig } from "@/lib/constants";
 import "./globals.css";
@@ -37,7 +36,7 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        <SessionProvider>{children}</SessionProvider>
+        {children}
       </body>
     </html>
   );

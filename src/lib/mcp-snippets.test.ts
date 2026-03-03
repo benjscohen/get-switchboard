@@ -1,0 +1,67 @@
+import { MCP_CLIENTS, generateSnippet } from "@/lib/mcp-snippets";
+
+describe("MCP_CLIENTS", () => {
+  it("has 3 entries", () => {
+    expect(MCP_CLIENTS).toHaveLength(3);
+  });
+
+  it("each entry has label, id, and hint properties", () => {
+    for (const client of MCP_CLIENTS) {
+      expect(client).toHaveProperty("label");
+      expect(client).toHaveProperty("id");
+      expect(client).toHaveProperty("hint");
+    }
+  });
+});
+
+describe("generateSnippet", () => {
+  const origin = "https://example.com";
+  const apiKey = "sk_live_test123";
+
+  it("claude-desktop returns valid JSON with mcpServers.switchboard.url and headers", () => {
+    const snippet = generateSnippet(origin, apiKey, "claude-desktop");
+    const parsed = JSON.parse(snippet);
+    expect(parsed.mcpServers.switchboard.url).toBe(`${origin}/api/mcp/sse`);
+    expect(parsed.mcpServers.switchboard.headers.Authorization).toBe(
+      `Bearer ${apiKey}`
+    );
+  });
+
+  it("claude-code returns a CLI command string containing 'claude mcp add'", () => {
+    const snippet = generateSnippet(origin, apiKey, "claude-code");
+    expect(snippet).toContain("claude mcp add");
+    expect(snippet).not.toMatch(/^\{/); // not JSON
+  });
+
+  it("cursor returns valid JSON with the same shape as claude-desktop", () => {
+    const snippet = generateSnippet(origin, apiKey, "cursor");
+    const parsed = JSON.parse(snippet);
+    expect(parsed.mcpServers.switchboard.url).toBe(`${origin}/api/mcp/sse`);
+    expect(parsed.mcpServers.switchboard.headers.Authorization).toBe(
+      `Bearer ${apiKey}`
+    );
+  });
+
+  it("returns empty string for unknown clientId", () => {
+    expect(generateSnippet(origin, apiKey, "unknown")).toBe("");
+  });
+
+  it("URL contains origin + /api/mcp/sse", () => {
+    const snippet = generateSnippet(origin, apiKey, "claude-desktop");
+    const parsed = JSON.parse(snippet);
+    expect(parsed.mcpServers.switchboard.url).toBe(
+      "https://example.com/api/mcp/sse"
+    );
+  });
+
+  it("Authorization header contains Bearer + apiKey", () => {
+    const snippet = generateSnippet(origin, apiKey, "cursor");
+    const parsed = JSON.parse(snippet);
+    expect(parsed.mcpServers.switchboard.headers.Authorization).toContain(
+      "Bearer"
+    );
+    expect(parsed.mcpServers.switchboard.headers.Authorization).toContain(
+      apiKey
+    );
+  });
+});

@@ -1,14 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { navItems, siteConfig } from "@/lib/constants";
 import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
 
 export function Navbar() {
-  const { data: session } = useSession();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -55,15 +53,9 @@ export function Navbar() {
               {item.label}
             </a>
           ))}
-          {session ? (
-            <Button href="/dashboard" size="sm">
-              Dashboard
-            </Button>
-          ) : (
-            <Button href="/login" size="sm">
-              Sign In
-            </Button>
-          )}
+          <Button href="/login" size="sm">
+            Sign In
+          </Button>
         </div>
 
         {/* Mobile menu button */}
@@ -110,15 +102,9 @@ export function Navbar() {
                 {item.label}
               </a>
             ))}
-            {session ? (
-              <Button href="/dashboard" size="sm" className="w-fit">
-                Dashboard
-              </Button>
-            ) : (
-              <Button href="/login" size="sm" className="w-fit">
-                Sign In
-              </Button>
-            )}
+            <Button href="/login" size="sm" className="w-fit">
+              Sign In
+            </Button>
           </Container>
         </div>
       )}

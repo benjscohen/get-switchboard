@@ -1,20 +1,7 @@
 import { NextResponse } from "next/server";
-import { put, head, getDownloadUrl } from "@vercel/blob";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
-
-const BLOB_PATH = "waitlist.json";
-
-async function getWaitlist(): Promise<string[]> {
-  try {
-    const blob = await head(BLOB_PATH);
-    const downloadUrl = getDownloadUrl(blob.url);
-    const res = await fetch(downloadUrl);
-    return res.json();
-  } catch {
-    return [];
-  }
-}
 
 export async function POST(request: Request) {
   try {
@@ -27,24 +14,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const waitlist = await getWaitlist();
+    const normalized = email.toLowerCase().trim();
 
-    if (waitlist.includes(email.toLowerCase())) {
+    const existing = await prisma.waitlistEntry.findUnique({
+      where: { email: normalized },
+    });
+
+    if (existing) {
       return NextResponse.json({ message: "Already on waitlist" });
     }
 
-    waitlist.push(email.toLowerCase());
-
-    await put(BLOB_PATH, JSON.stringify(waitlist, null, 2), {
-      access: "private",
-      addRandomSuffix: false,
+    await prisma.waitlistEntry.create({
+      data: { email: normalized },
     });
 
     return NextResponse.json({ message: "Added to waitlist" });
   } catch (error) {
     console.error("Waitlist error:", error);
     return NextResponse.json(
-      { error: "Internal server error", details: String(error) },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
