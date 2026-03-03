@@ -8,6 +8,9 @@ export const metadata: Metadata = {
   title: `${siteConfig.name} — One URL. Every Tool.`,
   description: siteConfig.description,
   metadataBase: new URL(siteConfig.url),
+  icons: {
+    icon: { url: "/icon.svg", type: "image/svg+xml" },
+  },
   openGraph: {
     title: `${siteConfig.name} — One URL. Every Tool.`,
     description: siteConfig.description,
