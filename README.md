@@ -471,6 +471,20 @@ curl -X POST http://localhost:4000/your-org-slug/mcp \
 - Plan enforcement
 - Usage metering
 
+### Phase 8 — Secure Environment Variable Vault
+- Allow users to securely store environment variables (API keys, secrets, config) in Switchboard
+- Sync env vars across devices — developers pull their `.env` from Switchboard instead of passing secrets through Slack/email
+- Scoped access: org-wide variables (shared DB credentials, service URLs) vs. user-specific variables (personal API tokens)
+- CLI tool or MCP integration to inject stored variables into local dev environments (`switchboard env pull`)
+- Encryption at rest (AES-256-GCM, same pattern as OAuth tokens) with audit logging for access
+
+### Phase 9 — User-Contributed Integrations
+- Allow users to add custom integrations beyond the built-in set (Google Calendar, etc.)
+- Two scopes: **company-wide** (admin publishes an integration available to all org members) and **user-specific** (individual users add personal integrations only they can access)
+- Integration authoring UI: define tool names, schemas, OAuth config, and handler endpoints
+- Support for bring-your-own MCP server (proxy through Switchboard for unified auth and rate limiting)
+- Community integration marketplace — orgs can share and discover integrations built by other teams
+
 ---
 
 ## Deployment
