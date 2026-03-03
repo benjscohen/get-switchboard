@@ -177,46 +177,13 @@ Critical for MCP servers — LLMs aggressively retry tool calls. Per-token rate 
 
 ---
 
-## Progressive Disclosure: Scaling to Hundreds of Tools
+## Note: Progressive Disclosure of Tools
 
-### The Problem
+As the tool count grows (100+ across integrations), token cost and tool-selection accuracy become concerns — each tool definition is ~400-500 tokens, and LLMs lose accuracy past ~30 tools in a flat list.
 
-Every MCP tool definition costs ~400-500 tokens. At 33 tools (Google Calendar alone), that's ~15K tokens consumed before the agent does anything. Add Gmail, Drive, Slack, and Notion and you're at 100+ tools — over 50K tokens of static tool definitions eating into context on every single request. Worse, LLM tool-selection accuracy degrades past ~30 tools in a flat list.
+**Today, this is largely a solved problem on the client side.** Claude Code already implements `ToolSearch` with deferred loading. The Claude API supports `defer_loading: true` per tool. As the MCP ecosystem matures, more clients will follow — the spec is actively standardizing `tools/discover` and `tools/load` ([Discussion #532](https://github.com/orgs/modelcontextprotocol/discussions/532), [SEP #1888](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1888)).
 
-This is the core scaling challenge for any MCP server that aims to be a universal gateway.
-
-### Our Approach: Two-Phase Discovery
-
-Switchboard will implement a meta-tool pattern inspired by how Anthropic solves this in Claude Code (their `ToolSearch` mechanism) and validated by production deployments at Cloudflare and others:
-
-**Phase 1 — Always-loaded core tools (3-5 tools).** The highest-frequency tools are always present in `tools/list`: `list_events`, `create_event`, `search_events`, and a `find_tools` discovery tool. These cover ~80% of requests with minimal token overhead.
-
-**Phase 2 — On-demand discovery via `find_tools`.** Everything else is behind a single meta-tool:
-
-```
-find_tools(query: "share a calendar with someone")
-→ Returns: google_calendar_share_calendar, google_calendar_list_sharing_rules
-→ Agent now has full schemas for just those 2 tools
-```
-
-The agent describes what it needs in natural language. Switchboard returns matching tools with full schemas, loaded into context only when needed. This is semantic search over tool descriptions using embeddings — not keyword matching.
-
-### Token Budget: Static vs. Progressive
-
-| Toolset Size | Static Loading | With Progressive Disclosure |
-|---|---|---|
-| 33 tools (Calendar only) | ~15K tokens | ~2K tokens |
-| 100 tools (Calendar + Gmail + Drive) | ~50K tokens | ~2K tokens |
-| 400 tools (full integration suite) | ~200K tokens | ~2K tokens |
-
-The cost stays flat regardless of how many integrations are enabled. The agent pays only for what it uses.
-
-### Implementation Details
-
-- **`notifications/tools/list_changed`**: When an admin enables/disables integrations, Switchboard emits this MCP notification so connected agents update their tool list without reconnecting.
-- **Domain grouping**: Tools are organized into bounded context packs (Calendar, Gmail, Drive, etc.) for hierarchical browsing as a fallback to semantic search.
-- **Schema-on-demand**: `find_tools` returns tool names and one-line descriptions. Full input schemas are loaded only when the agent calls `describe_tool(name)` or invokes the tool directly.
-- **Upgrade path**: The MCP spec is actively developing formal progressive disclosure standards ([Discussion #532](https://github.com/orgs/modelcontextprotocol/discussions/532), [SEP #1888](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1888)). Switchboard's meta-tool approach is forward-compatible — when the spec standardizes `tools/discover` and `tools/load`, we adopt it with no breaking changes.
+**Our stance:** Don't over-engineer server-side progressive disclosure while clients are solving this. If we hit a point where dumb clients (no built-in tool search) are a significant user segment, we'll add a `find_tools` meta-tool with semantic search and schema-on-demand. Until then, we focus on making each tool definition as clean and well-documented as possible so client-side discovery works well.
 
 ---
 
@@ -532,22 +499,14 @@ curl -X POST http://localhost:4000/your-org-slug/mcp \
 - Plan enforcement
 - Usage metering
 
-### Phase 8 — Progressive Disclosure Engine
-- `find_tools` meta-tool with semantic search over all registered tool descriptions
-- `describe_tool` for on-demand schema loading
-- Bounded context packs: group tools by integration domain
-- Core tool pinning: always-loaded high-frequency tools configurable per org
-- `notifications/tools/list_changed` emission on integration enable/disable
-- Forward-compatibility layer for MCP spec `tools/discover` and `tools/load` when standardized
-
-### Phase 9 — Secure Environment Variable Vault
+### Phase 8 — Secure Environment Variable Vault
 - Allow users to securely store environment variables (API keys, secrets, config) in Switchboard
 - Sync env vars across devices — developers pull their `.env` from Switchboard instead of passing secrets through Slack/email
 - Scoped access: org-wide variables (shared DB credentials, service URLs) vs. user-specific variables (personal API tokens)
 - CLI tool or MCP integration to inject stored variables into local dev environments (`switchboard env pull`)
 - Encryption at rest (AES-256-GCM, same pattern as OAuth tokens) with audit logging for access
 
-### Phase 10 — User-Contributed Integrations
+### Phase 9 — User-Contributed Integrations
 - Allow users to add custom integrations beyond the built-in set (Google Calendar, etc.)
 - Two scopes: **company-wide** (admin publishes an integration available to all org members) and **user-specific** (individual users add personal integrations only they can access)
 - Integration authoring UI: define tool names, schemas, OAuth config, and handler endpoints
