@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { put, head } from "@vercel/blob";
+import { put, head, getDownloadUrl } from "@vercel/blob";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +8,8 @@ const BLOB_PATH = "waitlist.json";
 async function getWaitlist(): Promise<string[]> {
   try {
     const blob = await head(BLOB_PATH);
-    const res = await fetch(blob.url);
+    const downloadUrl = getDownloadUrl(blob.url);
+    const res = await fetch(downloadUrl);
     return res.json();
   } catch {
     return [];
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     waitlist.push(email.toLowerCase());
 
     await put(BLOB_PATH, JSON.stringify(waitlist, null, 2), {
-      access: "public",
+      access: "private",
       addRandomSuffix: false,
     });
 
