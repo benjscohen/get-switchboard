@@ -6,6 +6,24 @@ Switchboard gives teams a single MCP endpoint that connects any AI agent to the 
 
 ---
 
+## Design Philosophy: The Stripe of MCP
+
+Every decision in Switchboard is measured against one question: **would Stripe ship it this way?**
+
+Stripe turned payment infrastructure — one of the most complex, regulated, high-stakes domains in software — into something a solo developer can integrate in an afternoon. That's the bar. Switchboard should do the same for AI tool access.
+
+**What this means in practice:**
+
+- **5-minute time to first tool call.** A developer should go from "I've never heard of Switchboard" to a working MCP endpoint calling Google Calendar in under 5 minutes. Sign up, connect Google, copy the endpoint URL, paste it into Claude/Cursor, done.
+- **Progressive complexity, not progressive confusion.** The simple path is obvious. Advanced features (custom integrations, org-wide policies, env var vaults) are there when you need them, invisible when you don't. No feature should make the default experience worse.
+- **Docs that teach, not just reference.** Every API endpoint, every tool, every config option should have a clear example. If someone has to read the source code to understand how to use it, we failed.
+- **Beautiful defaults.** Sensible rate limits out of the box. Encryption on by default. Secure by default. The "I didn't configure anything" path should be production-ready, not a security hole.
+- **Copy-paste-run.** Code snippets in docs should work when pasted. Endpoint URLs should be clickable. API keys should be one click to generate. Every interaction should respect the developer's time.
+
+We're not building infrastructure that enterprises reluctantly adopt. We're building something developers *want* to use because it's genuinely delightful.
+
+---
+
 ## Repo Structure
 
 The root of this repo is a **Next.js 16 landing page** (already built). The product lives in `app/` as a Turborepo monorepo:
@@ -156,6 +174,49 @@ Critical for MCP servers — LLMs aggressively retry tool calls. Per-token rate 
 ### 5. Protected Resource Metadata (RFC 9728) — v0.2 Upgrade Path
 
 `/.well-known/oauth-protected-resource` endpoint to advertise authorization server locations. The v0.1 API-key approach provides a clean upgrade path to full MCP OAuth 2.1.
+
+---
+
+## Progressive Disclosure: Scaling to Hundreds of Tools
+
+### The Problem
+
+Every MCP tool definition costs ~400-500 tokens. At 33 tools (Google Calendar alone), that's ~15K tokens consumed before the agent does anything. Add Gmail, Drive, Slack, and Notion and you're at 100+ tools — over 50K tokens of static tool definitions eating into context on every single request. Worse, LLM tool-selection accuracy degrades past ~30 tools in a flat list.
+
+This is the core scaling challenge for any MCP server that aims to be a universal gateway.
+
+### Our Approach: Two-Phase Discovery
+
+Switchboard will implement a meta-tool pattern inspired by how Anthropic solves this in Claude Code (their `ToolSearch` mechanism) and validated by production deployments at Cloudflare and others:
+
+**Phase 1 — Always-loaded core tools (3-5 tools).** The highest-frequency tools are always present in `tools/list`: `list_events`, `create_event`, `search_events`, and a `find_tools` discovery tool. These cover ~80% of requests with minimal token overhead.
+
+**Phase 2 — On-demand discovery via `find_tools`.** Everything else is behind a single meta-tool:
+
+```
+find_tools(query: "share a calendar with someone")
+→ Returns: google_calendar_share_calendar, google_calendar_list_sharing_rules
+→ Agent now has full schemas for just those 2 tools
+```
+
+The agent describes what it needs in natural language. Switchboard returns matching tools with full schemas, loaded into context only when needed. This is semantic search over tool descriptions using embeddings — not keyword matching.
+
+### Token Budget: Static vs. Progressive
+
+| Toolset Size | Static Loading | With Progressive Disclosure |
+|---|---|---|
+| 33 tools (Calendar only) | ~15K tokens | ~2K tokens |
+| 100 tools (Calendar + Gmail + Drive) | ~50K tokens | ~2K tokens |
+| 400 tools (full integration suite) | ~200K tokens | ~2K tokens |
+
+The cost stays flat regardless of how many integrations are enabled. The agent pays only for what it uses.
+
+### Implementation Details
+
+- **`notifications/tools/list_changed`**: When an admin enables/disables integrations, Switchboard emits this MCP notification so connected agents update their tool list without reconnecting.
+- **Domain grouping**: Tools are organized into bounded context packs (Calendar, Gmail, Drive, etc.) for hierarchical browsing as a fallback to semantic search.
+- **Schema-on-demand**: `find_tools` returns tool names and one-line descriptions. Full input schemas are loaded only when the agent calls `describe_tool(name)` or invokes the tool directly.
+- **Upgrade path**: The MCP spec is actively developing formal progressive disclosure standards ([Discussion #532](https://github.com/orgs/modelcontextprotocol/discussions/532), [SEP #1888](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1888)). Switchboard's meta-tool approach is forward-compatible — when the spec standardizes `tools/discover` and `tools/load`, we adopt it with no breaking changes.
 
 ---
 
@@ -471,14 +532,22 @@ curl -X POST http://localhost:4000/your-org-slug/mcp \
 - Plan enforcement
 - Usage metering
 
-### Phase 8 — Secure Environment Variable Vault
+### Phase 8 — Progressive Disclosure Engine
+- `find_tools` meta-tool with semantic search over all registered tool descriptions
+- `describe_tool` for on-demand schema loading
+- Bounded context packs: group tools by integration domain
+- Core tool pinning: always-loaded high-frequency tools configurable per org
+- `notifications/tools/list_changed` emission on integration enable/disable
+- Forward-compatibility layer for MCP spec `tools/discover` and `tools/load` when standardized
+
+### Phase 9 — Secure Environment Variable Vault
 - Allow users to securely store environment variables (API keys, secrets, config) in Switchboard
 - Sync env vars across devices — developers pull their `.env` from Switchboard instead of passing secrets through Slack/email
 - Scoped access: org-wide variables (shared DB credentials, service URLs) vs. user-specific variables (personal API tokens)
 - CLI tool or MCP integration to inject stored variables into local dev environments (`switchboard env pull`)
 - Encryption at rest (AES-256-GCM, same pattern as OAuth tokens) with audit logging for access
 
-### Phase 9 — User-Contributed Integrations
+### Phase 10 — User-Contributed Integrations
 - Allow users to add custom integrations beyond the built-in set (Google Calendar, etc.)
 - Two scopes: **company-wide** (admin publishes an integration available to all org members) and **user-specific** (individual users add personal integrations only they can access)
 - Integration authoring UI: define tool names, schemas, OAuth config, and handler endpoints
