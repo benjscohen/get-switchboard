@@ -24,7 +24,6 @@ export const slackIntegration: ProxyIntegrationConfig = {
     tokenUrl: "https://slack.com/api/oauth.v2.user.access",
     clientIdEnvVar: "SLACK_CLIENT_ID",
     clientSecretEnvVar: "SLACK_CLIENT_SECRET",
-    scopeParamName: "user_scope",
     scopeSeparator: ",",
     scopes: [
       "search:read.public",
