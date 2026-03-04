@@ -154,11 +154,35 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   get_skill: "read",
 };
 
+// Pattern-based heuristic for tools not in the static map.
+// Checked in order — first match wins.
+const DESTRUCTIVE_PATTERNS = [
+  /\bdelete\b/, /\btrash\b/, /\bclear\b/, /\bremove\b/, /\bunshare\b/,
+  /\bsend_message\b/, /\breply_to_message\b/, /\bforward_message\b/,
+  /\bbatch_modify\b/, /\bmanage_vacation\b/, /\bmanage_filters\b/,
+  /\bmanage_permissions\b/, /\bpurge\b/, /\bdestroy\b/,
+];
+const READ_PATTERNS = [
+  /\blist\b/, /\bget\b/, /\bsearch\b/, /\bread\b/, /\bfind\b/,
+  /\babout\b/, /\bexport\b/, /\bdownload\b/, /\bprofile\b/,
+  /\bsettings?\b/, /\bcolors?\b/, /\bhistory\b/, /\binfo\b/,
+  /\bthumbnail\b/, /\brevisions?\b/, /\bcount\b/, /\bstatus\b/,
+];
+
+function inferRisk(toolName: string): ToolRiskLevel {
+  const lower = toolName.toLowerCase();
+  if (DESTRUCTIVE_PATTERNS.some((p) => p.test(lower))) return "destructive";
+  if (READ_PATTERNS.some((p) => p.test(lower))) return "read";
+  return "write";
+}
+
 /**
- * Get the risk level of a tool. Unknown/custom tools default to "write".
+ * Get the risk level of a tool.
+ * Uses a static map for known builtin tools, with a pattern-based
+ * heuristic fallback for new or custom tools.
  */
 export function getToolRisk(toolName: string): ToolRiskLevel {
-  return toolRiskMap[toolName] ?? "write";
+  return toolRiskMap[toolName] ?? inferRisk(toolName);
 }
 
 /**
