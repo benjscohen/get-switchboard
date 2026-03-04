@@ -15,35 +15,35 @@ function StepOneGraphic() {
   return (
     <div className="mt-4 rounded-lg bg-bg p-3 font-mono text-xs leading-relaxed">
       <div className="mb-1">
-        <span className="text-blue-400">Engineering</span>
+        <span className="text-blue-600">Engineering</span>
         <span className="text-text-tertiary"> → </span>
-        <span className="text-emerald-400">GitHub</span>
+        <span className="text-emerald-600">GitHub</span>
         <span className="text-text-tertiary">, </span>
-        <span className="text-emerald-400">Slack</span>
+        <span className="text-emerald-600">Slack</span>
         <span className="text-text-tertiary">, </span>
-        <span className="text-emerald-400">Linear</span>
+        <span className="text-emerald-600">Linear</span>
       </div>
       <div className="mb-1">
-        <span className="text-purple-400">Sales</span>
+        <span className="text-purple-600">Sales</span>
         <span className="text-text-tertiary">       → </span>
-        <span className="text-emerald-400">Salesforce</span>
+        <span className="text-emerald-600">Salesforce</span>
         <span className="text-text-tertiary">, </span>
-        <span className="text-emerald-400">Gmail</span>
+        <span className="text-emerald-600">Gmail</span>
         <span className="text-text-tertiary">, </span>
-        <span className="text-emerald-400">Notion</span>
+        <span className="text-emerald-600">Notion</span>
       </div>
       <div className="mb-3">
-        <span className="text-orange-400">Marketing</span>
+        <span className="text-orange-600">Marketing</span>
         <span className="text-text-tertiary"> → </span>
-        <span className="text-emerald-400">Google Ads</span>
+        <span className="text-emerald-600">Google Ads</span>
         <span className="text-text-tertiary">, </span>
-        <span className="text-emerald-400">Slack</span>
+        <span className="text-emerald-600">Slack</span>
         <span className="text-text-tertiary">, </span>
-        <span className="text-emerald-400">HubSpot</span>
+        <span className="text-emerald-600">HubSpot</span>
       </div>
       <div className="border-t border-border pt-2">
         <span className="text-text-tertiary">Permissions: scoped per team </span>
-        <span className="text-emerald-400">✓</span>
+        <span className="text-emerald-600">✓</span>
       </div>
     </div>
   );
@@ -53,15 +53,15 @@ function StepTwoGraphic() {
   return (
     <div className="mt-4 rounded-lg bg-bg p-3 font-mono text-xs leading-relaxed">
       <div className="mb-1 text-text-tertiary">MCP Endpoint:</div>
-      <div className="mb-3 text-blue-400">mcp.get-switchboard.com/u/jane</div>
+      <div className="mb-3 text-blue-600">mcp.get-switchboard.com/u/jane</div>
       <div className="border-t border-border pt-2">
         <div className="mb-1">
           <span className="text-text-tertiary">Status: </span>
-          <span className="text-emerald-400">● Connected</span>
+          <span className="text-emerald-600">● Connected</span>
         </div>
         <div>
           <span className="text-text-tertiary">Tools:  </span>
-          <span className="text-white">12 available</span>
+          <span className="text-text-primary">12 available</span>
         </div>
       </div>
     </div>
@@ -72,22 +72,22 @@ function StepThreeGraphic() {
   return (
     <div className="mt-4 rounded-lg bg-bg p-3 font-mono text-xs leading-relaxed">
       <div className="mb-2">
-        <span className="text-yellow-400">&gt; </span>
-        <span className="text-white">&quot;Schedule a standup and file the bug&quot;</span>
+        <span className="text-yellow-600">&gt; </span>
+        <span className="text-text-primary">&quot;Schedule a standup and file the bug&quot;</span>
       </div>
       <div className="mb-1">
-        <span className="text-emerald-400">  ✓ </span>
-        <span className="text-blue-400">Google Calendar</span>
+        <span className="text-emerald-600">  ✓ </span>
+        <span className="text-blue-600">Google Calendar</span>
         <span className="text-text-tertiary"> — meeting created</span>
       </div>
       <div className="mb-1">
-        <span className="text-emerald-400">  ✓ </span>
-        <span className="text-purple-400">Slack</span>
+        <span className="text-emerald-600">  ✓ </span>
+        <span className="text-purple-600">Slack</span>
         <span className="text-text-tertiary"> — #team notified</span>
       </div>
       <div>
-        <span className="text-emerald-400">  ✓ </span>
-        <span className="text-orange-400">Linear</span>
+        <span className="text-emerald-600">  ✓ </span>
+        <span className="text-orange-600">Linear</span>
         <span className="text-text-tertiary"> — BUG-437 opened</span>
       </div>
     </div>
@@ -98,7 +98,7 @@ const stepGraphics = [StepOneGraphic, StepTwoGraphic, StepThreeGraphic];
 
 export function HowItWorks() {
   return (
-    <Section id="how-it-works" className="bg-bg-card/30">
+    <Section id="how-it-works" className="bg-bg-card/50">
       <Container>
         <SectionHeader>
           <SectionTitle>How It Works</SectionTitle>
@@ -119,7 +119,7 @@ export function HowItWorks() {
                 transition={{ duration: 0.4, delay: i * 0.1 }}
               >
                 <Card className="h-full" hover={false}>
-                  <div className="mb-4 flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-bold text-white">
+                  <div className="mb-4 flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-bold text-text-primary">
                     {step.step}
                   </div>
                   <h3 className="text-lg font-semibold">{step.title}</h3>

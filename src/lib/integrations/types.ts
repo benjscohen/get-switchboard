@@ -1,6 +1,15 @@
 import { z } from "zod";
 import type { ReactNode } from "react";
 
+export type CatalogEntry = {
+  id: string;
+  name: string;
+  description: string;
+  kind: "builtin" | "custom-mcp";
+  toolCount: number;
+  tools: { name: string; description: string }[];
+};
+
 export type IntegrationToolDef = {
   name: string;
   description: string;

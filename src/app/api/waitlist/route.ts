@@ -1,13 +1,24 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  // Rate limit: 3 req/min per IP
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const rl = checkRateLimit(`waitlist:${ip}`, 3, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfter) } }
+    );
+  }
+
   try {
     const { email } = await request.json();
 
-    if (!email || typeof email !== "string" || !email.includes("@")) {
+    if (!email || typeof email !== "string") {
       return NextResponse.json(
         { error: "Valid email required" },
         { status: 400 }
@@ -16,21 +27,30 @@ export async function POST(request: Request) {
 
     const normalized = email.toLowerCase().trim();
 
-    const existing = await prisma.waitlistEntry.findUnique({
-      where: { email: normalized },
-    });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+      return NextResponse.json(
+        { error: "Valid email required" },
+        { status: 400 }
+      );
+    }
+
+    const { data: existing } = await supabaseAdmin
+      .from("waitlist_entries")
+      .select("id")
+      .eq("email", normalized)
+      .single();
 
     if (existing) {
       return NextResponse.json({ message: "Already on waitlist" });
     }
 
-    await prisma.waitlistEntry.create({
-      data: { email: normalized },
-    });
+    await supabaseAdmin
+      .from("waitlist_entries")
+      .insert({ email: normalized });
 
     return NextResponse.json({ message: "Added to waitlist" });
   } catch (error) {
-    console.error("Waitlist error:", error);
+    console.error("Waitlist error:", error instanceof Error ? error.message : "Unknown error");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

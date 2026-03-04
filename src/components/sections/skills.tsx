@@ -12,7 +12,7 @@ import {
 
 export function Skills() {
   return (
-    <Section className="bg-bg-card/30">
+    <Section className="bg-bg-card/50">
       <Container>
         <div className="grid items-center gap-12 md:grid-cols-2">
           <div>

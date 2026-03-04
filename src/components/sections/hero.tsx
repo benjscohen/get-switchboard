@@ -9,8 +9,8 @@ import { Badge } from "@/components/ui/badge";
 const toolColors: Record<string, string> = {
   Google: "#4285F4",
   Slack: "#E01E5A",
-  GitHub: "#FAFAFA",
-  Notion: "#FAFAFA",
+  GitHub: "#24292F",
+  Notion: "#000000",
 };
 
 export function Hero() {
@@ -19,8 +19,8 @@ export function Hero() {
       {/* Gradient background effects */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute top-[-200px] left-1/2 h-[600px] w-[900px] -translate-x-1/2 rounded-full bg-accent/8 blur-[120px]" />
-        <div className="absolute top-[100px] left-1/4 h-[300px] w-[400px] rounded-full bg-blue-600/5 blur-[100px]" />
-        <div className="absolute top-[100px] right-1/4 h-[300px] w-[400px] rounded-full bg-indigo-600/5 blur-[100px]" />
+        <div className="absolute top-[100px] left-1/4 h-[300px] w-[400px] rounded-full bg-accent/5 blur-[100px]" />
+        <div className="absolute top-[100px] right-1/4 h-[300px] w-[400px] rounded-full bg-accent/4 blur-[100px]" />
       </div>
 
       <Container className="relative">
@@ -61,7 +61,7 @@ export function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
         >
-          <div className="mx-auto max-w-2xl rounded-2xl border border-border/60 bg-bg-card/80 p-8 shadow-2xl shadow-black/40 backdrop-blur-sm md:p-10">
+          <div className="mx-auto max-w-2xl rounded-2xl border border-border/60 bg-bg-card/80 p-8 shadow-xl shadow-black/8 backdrop-blur-sm md:p-10">
             {/* Terminal header dots */}
             <div className="mb-6 flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-[#FF5F57]" />
@@ -76,9 +76,9 @@ export function Hero() {
             </div>
 
             {/* Branching connector + tools */}
-            <div className="pt-4 text-border-hover">
+            <div className="text-border-hover">
               {/* Center trunk */}
-              <div className="mx-auto h-4 w-px bg-current" />
+              <div className="mx-auto h-8 w-px bg-current" />
 
               {/* Horizontal bar + vertical branches + app boxes */}
               <div className="relative grid grid-cols-4 gap-2 sm:gap-3">
@@ -97,7 +97,7 @@ export function Hero() {
                     <div className="relative h-8 w-px bg-current overflow-visible">
                       {/* Animated dot */}
                       <motion.div
-                        className="absolute left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-blue-500"
+                        className="absolute left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-accent"
                         animate={{ top: ['-4px', '32px'], opacity: [0, 0.8, 0.8, 0] }}
                         transition={{
                           duration: 1.5,

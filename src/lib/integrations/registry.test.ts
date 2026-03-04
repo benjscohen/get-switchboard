@@ -29,7 +29,19 @@ describe("allIntegrations", () => {
     expect(allIntegrations.some((i) => i.id === "google-calendar")).toBe(true);
   });
 
-  it("has length 1", () => {
-    expect(allIntegrations).toHaveLength(1);
+  it("has length 4", () => {
+    expect(allIntegrations).toHaveLength(4);
+  });
+
+  it("is an array containing google-docs", () => {
+    expect(allIntegrations.some((i) => i.id === "google-docs")).toBe(true);
+  });
+
+  it("is an array containing google-gmail", () => {
+    expect(allIntegrations.some((i) => i.id === "google-gmail")).toBe(true);
+  });
+
+  it("is an array containing google-sheets", () => {
+    expect(allIntegrations.some((i) => i.id === "google-sheets")).toBe(true);
   });
 });

@@ -2,10 +2,13 @@
   "name": "switchboard",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
-    "build:full": "prisma generate && next build",
+    "build:full": "next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
@@ -13,10 +16,9 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^2.11.1",
-    "@modelcontextprotocol/sdk": "^1.25.2",
-    "@prisma/adapter-pg": "^7.4.2",
-    "@prisma/client": "^7.4.2",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@supabase/ssr": "^0.9.0",
+    "@supabase/supabase-js": "^2.98.0",
     "@vercel/blob": "^2.3.0",
     "clsx": "^2.1.1",
     "dotenv": "^17.3.1",
@@ -24,11 +26,13 @@
     "mcp-handler": "^1.0.7",
     "motion": "^12.34.4",
     "next": "^16.1.6",
-    "next-auth": "^5.0.0-beta.30",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "tailwind-merge": "^3.5.0",
     "zod": "^4.3.6"
+  },
+  "overrides": {
+    "@modelcontextprotocol/sdk": "^1.27.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",
@@ -43,7 +47,6 @@
     "eslint-config-next": "^16.1.6",
     "jsdom": "^28.1.0",
     "postcss": "^8.5.8",
-    "prisma": "^7.4.2",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"

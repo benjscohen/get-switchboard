@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { integrationRegistry } from "@/lib/integrations/registry";
 import { cookies } from "next/headers";
+import { requireAuth } from "@/lib/api-auth";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { OAUTH_STATE_COOKIE, OAUTH_COOKIE_OPTIONS } from "@/lib/oauth-state";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) return authResult.response;
+
+  // Rate limit: 5 req/min per userId
+  const rl = checkRateLimit(`connect:${authResult.userId}`, 5, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfter) } }
+    );
   }
 
   const integrationId = req.nextUrl.searchParams.get("integration");
@@ -39,17 +48,11 @@ export async function GET(req: NextRequest) {
 
   // Store state + metadata in a cookie
   const cookieStore = await cookies();
-  cookieStore.set("oauth_state", JSON.stringify({
+  cookieStore.set(OAUTH_STATE_COOKIE, JSON.stringify({
     state,
     integrationId,
-    userId: session.user.id,
-  }), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 600, // 10 minutes
-    path: "/",
-  });
+    userId: authResult.userId,
+  }), OAUTH_COOKIE_OPTIONS);
 
   // Build authorization URL
   const params = new URLSearchParams({

@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { encrypt } from "@/lib/encryption";
 import { integrationRegistry } from "./registry";
 
 type Connection = {
@@ -57,7 +58,8 @@ export async function getValidTokens(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Token refresh failed: ${text}`);
+    console.error(`Token refresh failed for ${connection.integrationId}:`, text);
+    throw new Error("Token refresh failed. Please reconnect the integration.");
   }
 
   const data = await res.json();
@@ -67,16 +69,16 @@ export async function getValidTokens(
     refreshToken: (data.refresh_token as string) ?? connection.refreshToken,
   };
 
-  await prisma.connection.update({
-    where: { id: connection.id },
-    data: {
-      accessToken: updatedTokens.accessToken,
-      refreshToken: updatedTokens.refreshToken,
-      expiresAt: data.expires_in
-        ? new Date(now + data.expires_in * 1000)
+  await supabaseAdmin
+    .from("connections")
+    .update({
+      access_token: encrypt(updatedTokens.accessToken),
+      refresh_token: encrypt(updatedTokens.refreshToken),
+      expires_at: data.expires_in
+        ? new Date(now + data.expires_in * 1000).toISOString()
         : null,
-    },
-  });
+    })
+    .eq("id", connection.id);
 
   return updatedTokens;
 }

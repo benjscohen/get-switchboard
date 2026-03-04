@@ -4,8 +4,18 @@ const { cookieSetMock } = vi.hoisted(() => ({
   cookieSetMock: vi.fn(),
 }));
 
-vi.mock("@/lib/auth", () => ({
-  auth: vi.fn(),
+const mockGetUser = vi.fn();
+const mockFrom = vi.fn();
+
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: vi.fn().mockResolvedValue({
+    auth: { getUser: () => mockGetUser() },
+    from: (...args: unknown[]) => mockFrom(...args),
+  }),
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: vi.fn(() => ({ allowed: true })),
 }));
 
 vi.mock("@/lib/integrations/registry", () => ({
@@ -20,11 +30,8 @@ vi.mock("next/headers", () => ({
   }),
 }));
 
-import { auth } from "@/lib/auth";
 import { integrationRegistry } from "@/lib/integrations/registry";
 import { GET } from "./route";
-
-const mockSession = { user: { id: "user-1" } };
 
 const mockIntegration = {
   id: "google-calendar",
@@ -38,6 +45,32 @@ const mockIntegration = {
   },
 };
 
+// Helper to build a chainable mock
+function chainMock(resolvedValue: unknown = { data: null, error: null }) {
+  const chain = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    single: vi.fn(() => Promise.resolve(resolvedValue)),
+    then: (resolve: (v: unknown) => void) =>
+      Promise.resolve(resolvedValue).then(resolve),
+  };
+  return chain;
+}
+
+function setAuth(user: { id: string } | null) {
+  mockGetUser.mockReturnValue(
+    Promise.resolve({
+      data: { user },
+      error: user ? null : { message: "not authenticated" },
+    })
+  );
+  if (user) {
+    mockFrom.mockImplementation(() =>
+      chainMock({ data: { role: "user", organization_id: "org-1", org_role: "member" }, error: null })
+    );
+  }
+}
+
 function makeRequest(params?: string) {
   const url = params
     ? `http://localhost/api/integrations/connect?${params}`
@@ -47,9 +80,9 @@ function makeRequest(params?: string) {
 
 describe("GET /api/integrations/connect", () => {
   beforeEach(() => {
-    vi.mocked(auth).mockResolvedValue(mockSession as any);
-    (integrationRegistry as Map<string, any>).clear();
-    (integrationRegistry as Map<string, any>).set(
+    setAuth({ id: "user-1" });
+    (integrationRegistry as Map<string, unknown>).clear();
+    (integrationRegistry as Map<string, unknown>).set(
       "google-calendar",
       mockIntegration
     );
@@ -58,7 +91,8 @@ describe("GET /api/integrations/connect", () => {
   });
 
   it("returns 401 when unauthenticated", async () => {
-    vi.mocked(auth).mockResolvedValue(null as any);
+    setAuth(null);
+    mockFrom.mockReturnValue(chainMock());
 
     const res = await GET(makeRequest("integration=google-calendar"));
     const json = await res.json();

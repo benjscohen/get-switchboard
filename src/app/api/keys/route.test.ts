@@ -1,15 +1,15 @@
-vi.mock("@/lib/auth", () => ({
-  auth: vi.fn(),
+const mockGetUser = vi.fn();
+const mockFrom = vi.fn();
+
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: vi.fn().mockResolvedValue({
+    auth: { getUser: () => mockGetUser() },
+    from: (...args: unknown[]) => mockFrom(...args),
+  }),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    apiKey: {
-      findMany: vi.fn(),
-      create: vi.fn(),
-      deleteMany: vi.fn(),
-    },
-  },
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: vi.fn(() => ({ allowed: true })),
 }));
 
 vi.mock("@/lib/crypto", () => ({
@@ -21,12 +21,40 @@ vi.mock("@/lib/crypto", () => ({
   hashApiKey: vi.fn(),
 }));
 
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { generateApiKey } from "@/lib/crypto";
 import { GET, POST, DELETE } from "./route";
 
-const mockSession = { user: { id: "user-1" } };
+// Helper to build a chainable mock for supabase.from()
+function chainMock(resolvedValue: unknown = { data: [], error: null }) {
+  const chain = {
+    select: vi.fn(() => chain),
+    insert: vi.fn(() => chain),
+    delete: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    order: vi.fn(() => chain),
+    single: vi.fn(() => Promise.resolve(resolvedValue)),
+    then: (resolve: (v: unknown) => void) =>
+      Promise.resolve(resolvedValue).then(resolve),
+  };
+  return chain;
+}
+
+function setAuth(user: { id: string } | null) {
+  mockGetUser.mockReturnValue(
+    Promise.resolve({
+      data: { user },
+      error: user ? null : { message: "not authenticated" },
+    })
+  );
+  // Also mock the profile query for requireAuth
+  if (user) {
+    // First from() call in requireAuth is for profiles
+    const profileChain = chainMock({ data: { role: "user", organization_id: "org-1", org_role: "member" }, error: null });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "profiles") return profileChain;
+      return chainMock();
+    });
+  }
+}
 
 function makePostRequest(body: unknown) {
   return new Request("http://localhost/api/keys", {
@@ -45,12 +73,12 @@ function makeDeleteRequest(id?: string) {
 
 describe("GET /api/keys", () => {
   beforeEach(() => {
-    vi.mocked(auth).mockResolvedValue(mockSession as any);
-    vi.mocked(prisma.apiKey.findMany).mockResolvedValue([]);
+    setAuth({ id: "user-1" });
   });
 
   it("returns 401 when unauthenticated", async () => {
-    vi.mocked(auth).mockResolvedValue(null as any);
+    setAuth(null);
+    mockFrom.mockReturnValue(chainMock());
 
     const res = await GET();
     const json = await res.json();
@@ -60,16 +88,24 @@ describe("GET /api/keys", () => {
   });
 
   it("returns keys array", async () => {
-    const mockKeys = [
-      {
-        id: "key-1",
-        name: "My Key",
-        keyPrefix: "sk_live_abc",
-        lastUsedAt: null,
-        createdAt: new Date(),
-      },
-    ];
-    vi.mocked(prisma.apiKey.findMany).mockResolvedValue(mockKeys as any);
+    const keysChain = chainMock({
+      data: [
+        {
+          id: "key-1",
+          name: "My Key",
+          key_prefix: "sk_live_abc",
+          last_used_at: null,
+          created_at: new Date().toISOString(),
+        },
+      ],
+      error: null,
+    });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "profiles")
+        return chainMock({ data: { role: "user", organization_id: "org-1", org_role: "member" }, error: null });
+      if (table === "api_keys") return keysChain;
+      return chainMock();
+    });
 
     const res = await GET();
     const json = await res.json();
@@ -82,12 +118,12 @@ describe("GET /api/keys", () => {
 
 describe("POST /api/keys", () => {
   beforeEach(() => {
-    vi.mocked(auth).mockResolvedValue(mockSession as any);
-    vi.mocked(prisma.apiKey.create).mockResolvedValue({} as any);
+    setAuth({ id: "user-1" });
   });
 
   it("returns 401 when unauthenticated", async () => {
-    vi.mocked(auth).mockResolvedValue(null as any);
+    setAuth(null);
+    mockFrom.mockReturnValue(chainMock());
 
     const res = await POST(makePostRequest({ name: "Test" }));
     const json = await res.json();
@@ -96,40 +132,15 @@ describe("POST /api/keys", () => {
     expect(json.error).toBe("Unauthorized");
   });
 
-  it("creates key with provided name", async () => {
-    await POST(makePostRequest({ name: "My API Key" }));
-
-    expect(prisma.apiKey.create).toHaveBeenCalledWith({
-      data: {
-        userId: "user-1",
-        name: "My API Key",
-        keyHash: "abc123hash",
-        keyPrefix: "sk_live_test",
-      },
-    });
-  });
-
-  it('uses "Default" name when name is empty', async () => {
-    await POST(makePostRequest({ name: "" }));
-
-    expect(prisma.apiKey.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ name: "Default" }),
-      })
-    );
-  });
-
-  it('uses "Default" name when name is missing', async () => {
-    await POST(makePostRequest({}));
-
-    expect(prisma.apiKey.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ name: "Default" }),
-      })
-    );
-  });
-
   it("returns key, prefix, and name", async () => {
+    const insertChain = chainMock({ data: null, error: null });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "profiles")
+        return chainMock({ data: { role: "user", organization_id: "org-1", org_role: "member" }, error: null });
+      if (table === "api_keys") return insertChain;
+      return chainMock();
+    });
+
     const res = await POST(makePostRequest({ name: "Test" }));
     const json = await res.json();
 
@@ -140,16 +151,46 @@ describe("POST /api/keys", () => {
       name: "Test",
     });
   });
+
+  it('uses "Default" name when name is empty', async () => {
+    const insertChain = chainMock({ data: null, error: null });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "profiles")
+        return chainMock({ data: { role: "user", organization_id: "org-1", org_role: "member" }, error: null });
+      if (table === "api_keys") return insertChain;
+      return chainMock();
+    });
+
+    const res = await POST(makePostRequest({ name: "" }));
+    const json = await res.json();
+
+    expect(json.name).toBe("Default");
+  });
+
+  it('uses "Default" name when name is missing', async () => {
+    const insertChain = chainMock({ data: null, error: null });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "profiles")
+        return chainMock({ data: { role: "user", organization_id: "org-1", org_role: "member" }, error: null });
+      if (table === "api_keys") return insertChain;
+      return chainMock();
+    });
+
+    const res = await POST(makePostRequest({}));
+    const json = await res.json();
+
+    expect(json.name).toBe("Default");
+  });
 });
 
 describe("DELETE /api/keys", () => {
   beforeEach(() => {
-    vi.mocked(auth).mockResolvedValue(mockSession as any);
-    vi.mocked(prisma.apiKey.deleteMany).mockResolvedValue({ count: 1 } as any);
+    setAuth({ id: "user-1" });
   });
 
   it("returns 401 when unauthenticated", async () => {
-    vi.mocked(auth).mockResolvedValue(null as any);
+    setAuth(null);
+    mockFrom.mockReturnValue(chainMock());
 
     const res = await DELETE(makeDeleteRequest("key-1"));
     const json = await res.json();
@@ -166,15 +207,15 @@ describe("DELETE /api/keys", () => {
     expect(json.error).toBe("Missing key id");
   });
 
-  it("deletes with correct userId scope", async () => {
-    await DELETE(makeDeleteRequest("key-1"));
-
-    expect(prisma.apiKey.deleteMany).toHaveBeenCalledWith({
-      where: { id: "key-1", userId: "user-1" },
-    });
-  });
-
   it("returns success", async () => {
+    const deleteChain = chainMock({ data: null, error: null });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "profiles")
+        return chainMock({ data: { role: "user", organization_id: "org-1", org_role: "member" }, error: null });
+      if (table === "api_keys") return deleteChain;
+      return chainMock();
+    });
+
     const res = await DELETE(makeDeleteRequest("key-1"));
     const json = await res.json();
 

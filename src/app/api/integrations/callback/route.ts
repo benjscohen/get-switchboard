@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { prisma } from "@/lib/prisma";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { integrationRegistry } from "@/lib/integrations/registry";
+import { OAUTH_STATE_COOKIE } from "@/lib/oauth-state";
+import { encrypt } from "@/lib/encryption";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -15,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   // Validate CSRF state
   const cookieStore = await cookies();
-  const raw = cookieStore.get("oauth_state")?.value;
+  const raw = cookieStore.get(OAUTH_STATE_COOKIE)?.value;
   if (!raw) {
     return NextResponse.redirect(
       `${req.nextUrl.origin}/dashboard?error=missing_state`
@@ -32,7 +34,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Clean up state cookie
-  cookieStore.delete("oauth_state");
+  cookieStore.delete(OAUTH_STATE_COOKIE);
 
   if (stored.state !== state) {
     return NextResponse.redirect(
@@ -78,35 +80,29 @@ export async function GET(req: NextRequest) {
 
   const tokens = await tokenRes.json();
 
+  // Encrypt tokens before storing
+  const encryptedAccessToken = encrypt(tokens.access_token);
+  const encryptedRefreshToken = tokens.refresh_token
+    ? encrypt(tokens.refresh_token)
+    : null;
+
   // Upsert connection
-  await prisma.connection.upsert({
-    where: {
-      userId_integrationId: {
-        userId: stored.userId,
-        integrationId: stored.integrationId,
+  await supabaseAdmin
+    .from("connections")
+    .upsert(
+      {
+        user_id: stored.userId,
+        integration_id: stored.integrationId,
+        access_token: encryptedAccessToken,
+        refresh_token: encryptedRefreshToken,
+        expires_at: tokens.expires_in
+          ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+          : null,
+        token_type: tokens.token_type ?? "Bearer",
+        scope: tokens.scope ?? null,
       },
-    },
-    create: {
-      userId: stored.userId,
-      integrationId: stored.integrationId,
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token ?? null,
-      expiresAt: tokens.expires_in
-        ? new Date(Date.now() + tokens.expires_in * 1000)
-        : null,
-      tokenType: tokens.token_type ?? "Bearer",
-      scope: tokens.scope ?? null,
-    },
-    update: {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token ?? undefined,
-      expiresAt: tokens.expires_in
-        ? new Date(Date.now() + tokens.expires_in * 1000)
-        : null,
-      tokenType: tokens.token_type ?? "Bearer",
-      scope: tokens.scope ?? undefined,
-    },
-  });
+      { onConflict: "user_id,integration_id" }
+    );
 
   return NextResponse.redirect(
     `${req.nextUrl.origin}/dashboard?connected=${stored.integrationId}`

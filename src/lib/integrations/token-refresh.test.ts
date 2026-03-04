@@ -1,9 +1,16 @@
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    connection: {
-      update: vi.fn(),
-    },
+const mockUpdate = vi.fn();
+
+vi.mock("@/lib/supabase/admin", () => ({
+  supabaseAdmin: {
+    from: vi.fn(() => ({
+      update: (...args: unknown[]) => mockUpdate(...args),
+    })),
   },
+}));
+
+vi.mock("@/lib/encryption", () => ({
+  encrypt: vi.fn((v: string) => v),
+  decrypt: vi.fn((v: string) => v),
 }));
 
 vi.mock("./registry", () => ({
@@ -24,10 +31,16 @@ vi.mock("./registry", () => ({
   ]),
 }));
 
-import { prisma } from "@/lib/prisma";
 import { getValidTokens } from "./token-refresh";
 
-const mockPrismaUpdate = prisma.connection.update as ReturnType<typeof vi.fn>;
+// mockUpdate returns a chainable object with .eq()
+function setupMockUpdate() {
+  const chain = {
+    eq: vi.fn(() => Promise.resolve({ data: null, error: null })),
+  };
+  mockUpdate.mockReturnValue(chain);
+  return chain;
+}
 
 function makeConnection(overrides: Record<string, unknown> = {}) {
   return {
@@ -59,7 +72,7 @@ function mockFetchFail(status: number, body: string) {
 beforeEach(() => {
   vi.stubEnv("AUTH_GOOGLE_ID", "test-client-id");
   vi.stubEnv("AUTH_GOOGLE_SECRET", "test-secret");
-  mockPrismaUpdate.mockReset();
+  mockUpdate.mockReset();
 });
 
 describe("getValidTokens", () => {
@@ -111,7 +124,7 @@ describe("getValidTokens", () => {
       refresh_token: "new-refresh-token",
       expires_in: 3600,
     });
-    mockPrismaUpdate.mockResolvedValue({});
+    setupMockUpdate();
 
     const result = await getValidTokens(connection);
 
@@ -161,7 +174,7 @@ describe("getValidTokens", () => {
       access_token: "new-access-token",
       expires_in: 3600,
     });
-    mockPrismaUpdate.mockResolvedValue({});
+    setupMockUpdate();
 
     await getValidTokens(connection);
 
@@ -180,7 +193,7 @@ describe("getValidTokens", () => {
     );
   });
 
-  it("throws on non-ok fetch response", async () => {
+  it("throws generic error on non-ok fetch response", async () => {
     const connection = makeConnection({
       expiresAt: new Date(Date.now() - 1000),
     });
@@ -188,7 +201,7 @@ describe("getValidTokens", () => {
     mockFetchFail(401, "invalid_grant");
 
     await expect(getValidTokens(connection)).rejects.toThrow(
-      "Token refresh failed: invalid_grant"
+      "Token refresh failed. Please reconnect the integration."
     );
   });
 
@@ -202,18 +215,16 @@ describe("getValidTokens", () => {
       refresh_token: "new-refresh-token",
       expires_in: 3600,
     });
-    mockPrismaUpdate.mockResolvedValue({});
+    const chain = setupMockUpdate();
 
     await getValidTokens(connection);
 
-    expect(mockPrismaUpdate).toHaveBeenCalledWith({
-      where: { id: "conn-1" },
-      data: {
-        accessToken: "new-access-token",
-        refreshToken: "new-refresh-token",
-        expiresAt: expect.any(Date),
-      },
+    expect(mockUpdate).toHaveBeenCalledWith({
+      access_token: "new-access-token",
+      refresh_token: "new-refresh-token",
+      expires_at: expect.any(String),
     });
+    expect(chain.eq).toHaveBeenCalledWith("id", "conn-1");
   });
 
   it("preserves original refresh token if response omits refresh_token", async () => {
@@ -226,16 +237,14 @@ describe("getValidTokens", () => {
       expires_in: 3600,
       // no refresh_token in response
     });
-    mockPrismaUpdate.mockResolvedValue({});
+    setupMockUpdate();
 
     const result = await getValidTokens(connection);
 
     expect(result.refreshToken).toBe("old-refresh-token");
-    expect(mockPrismaUpdate).toHaveBeenCalledWith(
+    expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          refreshToken: "old-refresh-token",
-        }),
+        refresh_token: "old-refresh-token",
       })
     );
   });
@@ -250,16 +259,14 @@ describe("getValidTokens", () => {
       refresh_token: "rotated-refresh-token",
       expires_in: 3600,
     });
-    mockPrismaUpdate.mockResolvedValue({});
+    setupMockUpdate();
 
     const result = await getValidTokens(connection);
 
     expect(result.refreshToken).toBe("rotated-refresh-token");
-    expect(mockPrismaUpdate).toHaveBeenCalledWith(
+    expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          refreshToken: "rotated-refresh-token",
-        }),
+        refresh_token: "rotated-refresh-token",
       })
     );
   });
@@ -273,15 +280,13 @@ describe("getValidTokens", () => {
       access_token: "new-access-token",
       // no expires_in
     });
-    mockPrismaUpdate.mockResolvedValue({});
+    setupMockUpdate();
 
     await getValidTokens(connection);
 
-    expect(mockPrismaUpdate).toHaveBeenCalledWith(
+    expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          expiresAt: null,
-        }),
+        expires_at: null,
       })
     );
   });

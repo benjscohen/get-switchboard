@@ -82,7 +82,7 @@ export function CTA() {
             )}
 
             {status === "error" && (
-              <p className="mt-3 text-sm text-red-400">
+              <p className="mt-3 text-sm text-red-600">
                 Something went wrong. Please try again.
               </p>
             )}

@@ -1,33 +1,49 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { generateApiKey, hashApiKey } from "@/lib/crypto";
+import { createClient } from "@/lib/supabase/server";
+import { generateApiKey } from "@/lib/crypto";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { requireAuth } from "@/lib/api-auth";
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) return authResult.response;
 
-  const keys = await prisma.apiKey.findMany({
-    where: { userId: session.user.id },
-    select: {
-      id: true,
-      name: true,
-      keyPrefix: true,
-      lastUsedAt: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: "desc" },
+  const supabase = await createClient();
+  const { data: keys } = await supabase
+    .from("api_keys")
+    .select("id, name, key_prefix, last_used_at, created_at, user_id, profiles(name, email)")
+    .eq("organization_id", authResult.organizationId)
+    .order("created_at", { ascending: false });
+
+  const mapped = (keys ?? []).map((k) => {
+    const profileData = k.profiles as unknown;
+    const creator = (Array.isArray(profileData) ? profileData[0] : profileData) as
+      | { name: string | null; email: string | null }
+      | null;
+    return {
+      id: k.id,
+      name: k.name,
+      keyPrefix: k.key_prefix,
+      lastUsedAt: k.last_used_at,
+      createdAt: k.created_at,
+      createdBy: creator?.name ?? creator?.email ?? null,
+      isOwn: k.user_id === authResult.userId,
+    };
   });
 
-  return NextResponse.json(keys);
+  return NextResponse.json(mapped);
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) return authResult.response;
+
+  const rl = checkRateLimit(`keys:${authResult.userId}`, 5, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfter) } }
+    );
   }
 
   const body = await request.json();
@@ -35,23 +51,21 @@ export async function POST(request: Request) {
 
   const { raw, hash, prefix } = generateApiKey();
 
-  await prisma.apiKey.create({
-    data: {
-      userId: session.user.id,
-      name,
-      keyHash: hash,
-      keyPrefix: prefix,
-    },
+  const supabase = await createClient();
+  await supabase.from("api_keys").insert({
+    user_id: authResult.userId,
+    organization_id: authResult.organizationId,
+    name,
+    key_hash: hash,
+    key_prefix: prefix,
   });
 
   return NextResponse.json({ key: raw, prefix, name });
 }
 
 export async function DELETE(request: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) return authResult.response;
 
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
@@ -60,9 +74,22 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Missing key id" }, { status: 400 });
   }
 
-  await prisma.apiKey.deleteMany({
-    where: { id, userId: session.user.id },
-  });
+  const supabase = await createClient();
+
+  // Org admins/owners can delete any org key; members can only delete their own
+  if (authResult.orgRole === "owner" || authResult.orgRole === "admin") {
+    await supabase
+      .from("api_keys")
+      .delete()
+      .eq("id", id)
+      .eq("organization_id", authResult.organizationId);
+  } else {
+    await supabase
+      .from("api_keys")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", authResult.userId);
+  }
 
   return NextResponse.json({ success: true });
 }

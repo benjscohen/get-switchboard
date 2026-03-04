@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/api-auth";
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) return authResult.response;
 
   const body = await req.json();
   const { integrationId } = body as { integrationId?: string };
@@ -18,12 +16,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  await prisma.connection.deleteMany({
-    where: {
-      userId: session.user.id,
-      integrationId,
-    },
-  });
+  const supabase = await createClient();
+  await supabase
+    .from("connections")
+    .delete()
+    .eq("user_id", authResult.userId)
+    .eq("integration_id", integrationId);
 
   return NextResponse.json({ success: true });
 }

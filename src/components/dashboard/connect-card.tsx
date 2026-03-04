@@ -14,6 +14,8 @@ interface ApiKeyEntry {
   keyPrefix: string;
   lastUsedAt: string | null;
   createdAt: string;
+  createdBy: string | null;
+  isOwn: boolean;
 }
 
 export function ConnectCard({ origin }: { origin: string }) {
@@ -98,7 +100,7 @@ export function ConnectCard({ origin }: { origin: string }) {
   return (
     <Card hover={false}>
       <h2 className="mb-4 text-sm font-medium text-text-secondary">
-        Connect your MCP client
+        Organization API Keys
       </h2>
 
       <div className="mb-4 flex gap-2">
@@ -126,9 +128,16 @@ export function ConnectCard({ origin }: { origin: string }) {
               >
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{k.name}</p>
-                  <p className="font-mono text-xs text-text-tertiary">
-                    {k.keyPrefix}...
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-mono text-xs text-text-tertiary">
+                      {k.keyPrefix}...
+                    </p>
+                    {k.createdBy && !k.isOwn && (
+                      <span className="text-xs text-text-tertiary">
+                        by {k.createdBy}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-text-tertiary">

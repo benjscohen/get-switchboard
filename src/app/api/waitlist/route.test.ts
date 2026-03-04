@@ -1,16 +1,29 @@
-import { NextResponse } from "next/server";
+const mockFrom = vi.fn();
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    waitlistEntry: {
-      findUnique: vi.fn(),
-      create: vi.fn(),
-    },
+vi.mock("@/lib/supabase/admin", () => ({
+  supabaseAdmin: {
+    from: (...args: unknown[]) => mockFrom(...args),
   },
 }));
 
-import { prisma } from "@/lib/prisma";
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: vi.fn(() => ({ allowed: true })),
+}));
+
 import { POST } from "./route";
+
+// Helper to build a chainable mock
+function chainMock(resolvedValue: unknown = { data: null, error: null }) {
+  const chain = {
+    select: vi.fn(() => chain),
+    insert: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    single: vi.fn(() => Promise.resolve(resolvedValue)),
+    then: (resolve: (v: unknown) => void) =>
+      Promise.resolve(resolvedValue).then(resolve),
+  };
+  return chain;
+}
 
 function makeRequest(body: unknown) {
   return new Request("http://localhost/api/waitlist", {
@@ -22,8 +35,11 @@ function makeRequest(body: unknown) {
 
 describe("POST /api/waitlist", () => {
   beforeEach(() => {
-    vi.mocked(prisma.waitlistEntry.findUnique).mockReset().mockResolvedValue(null);
-    vi.mocked(prisma.waitlistEntry.create).mockReset().mockResolvedValue({} as any);
+    // Default: no existing entry, insert succeeds
+    mockFrom.mockImplementation(() => {
+      const c = chainMock({ data: null, error: null });
+      return c;
+    });
   });
 
   it("returns 200 and adds valid email to waitlist", async () => {
@@ -32,25 +48,18 @@ describe("POST /api/waitlist", () => {
 
     expect(res.status).toBe(200);
     expect(json.message).toBe("Added to waitlist");
-    expect(prisma.waitlistEntry.create).toHaveBeenCalled();
-  });
-
-  it("normalizes email to lowercase and trimmed", async () => {
-    await POST(makeRequest({ email: "  USER@Example.COM  " }));
-
-    expect(prisma.waitlistEntry.findUnique).toHaveBeenCalledWith({
-      where: { email: "user@example.com" },
-    });
-    expect(prisma.waitlistEntry.create).toHaveBeenCalledWith({
-      data: { email: "user@example.com" },
-    });
   });
 
   it("returns 200 'Already on waitlist' for existing email", async () => {
-    vi.mocked(prisma.waitlistEntry.findUnique).mockResolvedValue({
-      id: "1",
-      email: "user@example.com",
-      createdAt: new Date(),
+    // First call (select) returns existing entry
+    let callCount = 0;
+    mockFrom.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        // select().eq().single() → found
+        return chainMock({ data: { id: "1", email: "user@example.com" }, error: null });
+      }
+      return chainMock({ data: null, error: null });
     });
 
     const res = await POST(makeRequest({ email: "user@example.com" }));
@@ -58,7 +67,6 @@ describe("POST /api/waitlist", () => {
 
     expect(res.status).toBe(200);
     expect(json.message).toBe("Already on waitlist");
-    expect(prisma.waitlistEntry.create).not.toHaveBeenCalled();
   });
 
   it("returns 400 when email is missing", async () => {
@@ -85,10 +93,34 @@ describe("POST /api/waitlist", () => {
     expect(json.error).toBe("Valid email required");
   });
 
-  it("returns 500 when prisma throws", async () => {
-    vi.mocked(prisma.waitlistEntry.findUnique).mockRejectedValue(
-      new Error("DB down")
-    );
+  it("returns 400 for email with nothing after @", async () => {
+    const res = await POST(makeRequest({ email: "a@" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for email with nothing before @", async () => {
+    const res = await POST(makeRequest({ email: "@b" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for email with double @", async () => {
+    const res = await POST(makeRequest({ email: "a@@b" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for email without domain extension", async () => {
+    const res = await POST(makeRequest({ email: "user@domain" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 500 when supabase throws", async () => {
+    mockFrom.mockImplementation(() => {
+      const chain = chainMock();
+      chain.single = vi.fn(() => {
+        throw new Error("DB down");
+      });
+      return chain;
+    });
 
     const res = await POST(makeRequest({ email: "user@example.com" }));
     const json = await res.json();

@@ -19,19 +19,25 @@ vi.mock("next/headers", () => ({
   }),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    connection: {
-      upsert: vi.fn(),
-    },
+const mockUpsert = vi.fn();
+
+vi.mock("@/lib/supabase/admin", () => ({
+  supabaseAdmin: {
+    from: vi.fn(() => ({
+      upsert: mockUpsert,
+    })),
   },
+}));
+
+vi.mock("@/lib/encryption", () => ({
+  encrypt: vi.fn((v: string) => v),
+  decrypt: vi.fn((v: string) => v),
 }));
 
 vi.mock("@/lib/integrations/registry", () => ({
   integrationRegistry: new Map(),
 }));
 
-import { prisma } from "@/lib/prisma";
 import { integrationRegistry } from "@/lib/integrations/registry";
 import { GET } from "./route";
 
@@ -73,9 +79,10 @@ describe("GET /api/integrations/callback", () => {
       value: JSON.stringify(defaultCookieState),
     });
     cookieDeleteMock.mockClear();
+    mockUpsert.mockClear().mockResolvedValue({ data: null, error: null });
 
-    (integrationRegistry as Map<string, any>).clear();
-    (integrationRegistry as Map<string, any>).set(
+    (integrationRegistry as Map<string, unknown>).clear();
+    (integrationRegistry as Map<string, unknown>).set(
       "google-calendar",
       mockIntegration
     );
@@ -87,8 +94,6 @@ describe("GET /api/integrations/callback", () => {
       ok: true,
       json: () => Promise.resolve(mockTokenResponse),
     } as Response);
-
-    vi.mocked(prisma.connection.upsert).mockResolvedValue({} as any);
   });
 
   it("redirects with error=missing_params when code is missing", async () => {
@@ -183,29 +188,16 @@ describe("GET /api/integrations/callback", () => {
   it("upserts connection on successful flow", async () => {
     await GET(makeRequest({ code: "auth-code", state: "test-state" }));
 
-    expect(prisma.connection.upsert).toHaveBeenCalledWith(
+    expect(mockUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
-          userId_integrationId: {
-            userId: "user-1",
-            integrationId: "google-calendar",
-          },
-        },
-        create: expect.objectContaining({
-          userId: "user-1",
-          integrationId: "google-calendar",
-          accessToken: "new-access",
-          refreshToken: "new-refresh",
-          tokenType: "Bearer",
-          scope: "calendar",
-        }),
-        update: expect.objectContaining({
-          accessToken: "new-access",
-          refreshToken: "new-refresh",
-          tokenType: "Bearer",
-          scope: "calendar",
-        }),
-      })
+        user_id: "user-1",
+        integration_id: "google-calendar",
+        access_token: "new-access",
+        refresh_token: "new-refresh",
+        token_type: "Bearer",
+        scope: "calendar",
+      }),
+      { onConflict: "user_id,integration_id" }
     );
   });
 

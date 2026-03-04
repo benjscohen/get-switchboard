@@ -1,15 +1,56 @@
-import NextAuth from "next-auth";
-import { authConfig } from "@/lib/auth.config";
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
 
-const { auth } = NextAuth(authConfig);
+export async function middleware(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({ request });
 
-export default auth((req) => {
-  if (!req.auth && req.nextUrl.pathname.startsWith("/dashboard")) {
-    const loginUrl = new URL("/login", req.url);
-    return Response.redirect(loginUrl);
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          supabaseResponse = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  // Refresh session (important for Server Components)
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { pathname } = request.nextUrl;
+
+  // Protect /dashboard and /admin routes
+  if (!user && (pathname.startsWith("/dashboard") || pathname.startsWith("/admin"))) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
   }
-});
+
+  // Redirect logged-in users away from /login
+  if (user && pathname === "/login") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  return supabaseResponse;
+}
 
 export const config = {
-  matcher: ["/dashboard/:path*"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|icon.svg|og-image.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };

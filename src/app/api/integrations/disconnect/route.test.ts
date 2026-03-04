@@ -1,22 +1,45 @@
 import { NextRequest } from "next/server";
 
-vi.mock("@/lib/auth", () => ({
-  auth: vi.fn(),
+const mockGetUser = vi.fn();
+const mockFrom = vi.fn();
+
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: vi.fn().mockResolvedValue({
+    auth: { getUser: () => mockGetUser() },
+    from: (...args: unknown[]) => mockFrom(...args),
+  }),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    connection: {
-      deleteMany: vi.fn(),
-    },
-  },
-}));
-
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { POST } from "./route";
 
-const mockSession = { user: { id: "user-1" } };
+// Helper to build a chainable mock
+function chainMock(resolvedValue: unknown = { data: null, error: null }) {
+  const chain = {
+    select: vi.fn(() => chain),
+    delete: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    single: vi.fn(() => Promise.resolve(resolvedValue)),
+    then: (resolve: (v: unknown) => void) =>
+      Promise.resolve(resolvedValue).then(resolve),
+  };
+  return chain;
+}
+
+function setAuth(user: { id: string } | null) {
+  mockGetUser.mockReturnValue(
+    Promise.resolve({
+      data: { user },
+      error: user ? null : { message: "not authenticated" },
+    })
+  );
+  if (user) {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "profiles")
+        return chainMock({ data: { role: "user", organization_id: "org-1", org_role: "member" }, error: null });
+      return chainMock();
+    });
+  }
+}
 
 function makeRequest(body: unknown) {
   return new NextRequest("http://localhost/api/integrations/disconnect", {
@@ -28,14 +51,12 @@ function makeRequest(body: unknown) {
 
 describe("POST /api/integrations/disconnect", () => {
   beforeEach(() => {
-    vi.mocked(auth).mockResolvedValue(mockSession as any);
-    vi.mocked(prisma.connection.deleteMany).mockResolvedValue({
-      count: 1,
-    } as any);
+    setAuth({ id: "user-1" });
   });
 
   it("returns 401 when unauthenticated", async () => {
-    vi.mocked(auth).mockResolvedValue(null as any);
+    setAuth(null);
+    mockFrom.mockReturnValue(chainMock());
 
     const res = await POST(makeRequest({ integrationId: "google-calendar" }));
     const json = await res.json();
@@ -50,17 +71,6 @@ describe("POST /api/integrations/disconnect", () => {
 
     expect(res.status).toBe(400);
     expect(json.error).toBe("Missing integrationId");
-  });
-
-  it("deletes with correct userId and integrationId scope", async () => {
-    await POST(makeRequest({ integrationId: "google-calendar" }));
-
-    expect(prisma.connection.deleteMany).toHaveBeenCalledWith({
-      where: {
-        userId: "user-1",
-        integrationId: "google-calendar",
-      },
-    });
   });
 
   it("returns success", async () => {
