@@ -14,6 +14,7 @@ import { getValidTokens } from "@/lib/integrations/token-refresh";
 import type { McpToolResult } from "@/lib/integrations/types";
 import { logUsage } from "@/lib/usage-log";
 import { isToolAllowed } from "@/lib/permissions";
+import { getToolRisk, isRiskAllowedByScope } from "@/lib/mcp/tool-risk";
 import { proxyToolCall } from "@/lib/mcp/proxy-client";
 import { filterToolsForUser, type ToolMeta } from "@/lib/mcp/tool-filtering";
 import {
@@ -23,6 +24,22 @@ import {
   type SkillRecord,
 } from "@/lib/mcp/skill-filtering";
 import { z } from "zod";
+
+// Per-user rate limits by risk level
+const RISK_RATE_LIMITS: Record<string, number> = {
+  read: 120,
+  write: 30,
+  destructive: 5,
+};
+
+function checkToolRateLimit(userId: string, toolName: string) {
+  const risk = getToolRisk(toolName);
+  return checkRateLimit(
+    `mcp:user:${userId}:${risk}`,
+    RISK_RATE_LIMITS[risk],
+    60_000
+  );
+}
 
 // Metadata map for filtering tools/list per-user
 const toolMeta = new Map<string, ToolMeta>();
@@ -203,6 +220,7 @@ function registerTools(server: McpServer) {
               integrationId: integration.id,
               status: "unauthorized",
               organizationId,
+              riskLevel: getToolRisk(tool.name),
             });
             return {
               content: [{ type: "text" as const, text: "Unauthorized" }],
@@ -229,9 +247,51 @@ function registerTools(server: McpServer) {
               status: "unauthorized",
               errorMessage: "Tool not available",
               organizationId,
+              riskLevel: getToolRisk(tool.name),
             });
             return {
               content: [{ type: "text" as const, text: "Tool not available" }],
+              isError: true,
+            };
+          }
+
+          // API key scope check
+          const apiKeyScope = extra.authInfo?.extra?.apiKeyScope as string | undefined;
+          if (apiKeyScope && apiKeyScope !== "full") {
+            const risk = getToolRisk(tool.name);
+            if (!isRiskAllowedByScope(risk, apiKeyScope)) {
+              logUsage({
+                userId,
+                apiKeyId,
+                toolName: tool.name,
+                integrationId: integration.id,
+                status: "unauthorized",
+                errorMessage: "Tool not available for this API key scope",
+                organizationId,
+                riskLevel: getToolRisk(tool.name),
+              });
+              return {
+                content: [{ type: "text" as const, text: "Tool not available" }],
+                isError: true,
+              };
+            }
+          }
+
+          // Per-user rate limit by risk level
+          const rl = checkToolRateLimit(userId, tool.name);
+          if (!rl.allowed) {
+            logUsage({
+              userId,
+              apiKeyId,
+              toolName: tool.name,
+              integrationId: integration.id,
+              status: "error",
+              errorMessage: "Rate limit exceeded",
+              organizationId,
+              riskLevel: getToolRisk(tool.name),
+            });
+            return {
+              content: [{ type: "text" as const, text: `Rate limit exceeded. Try again in ${rl.retryAfter}s.` }],
               isError: true,
             };
           }
@@ -261,6 +321,7 @@ function registerTools(server: McpServer) {
               errorMessage: "Integration not connected",
               durationMs: Date.now() - startTime,
               organizationId,
+              riskLevel: getToolRisk(tool.name),
             });
             return {
               content: [
@@ -288,6 +349,7 @@ function registerTools(server: McpServer) {
               status: "success",
               durationMs: Date.now() - startTime,
               organizationId,
+              riskLevel: getToolRisk(tool.name),
             });
             if (
               result &&
@@ -318,6 +380,7 @@ function registerTools(server: McpServer) {
               errorMessage: message,
               durationMs: Date.now() - startTime,
               organizationId,
+              riskLevel: getToolRisk(tool.name),
             });
 
             // Determine a useful client-facing message
@@ -390,6 +453,7 @@ function registerTools(server: McpServer) {
             integrationId,
             status: "unauthorized",
             organizationId,
+            riskLevel: getToolRisk(namespacedName),
           });
           return {
             content: [{ type: "text" as const, text: "Unauthorized" }],
@@ -408,6 +472,7 @@ function registerTools(server: McpServer) {
             status: "unauthorized",
             errorMessage: "Tool not available for this organization",
             organizationId,
+            riskLevel: getToolRisk(namespacedName),
           });
           return {
             content: [{ type: "text" as const, text: "Tool not available" }],
@@ -434,9 +499,51 @@ function registerTools(server: McpServer) {
             status: "unauthorized",
             errorMessage: "Tool not available",
             organizationId,
+            riskLevel: getToolRisk(namespacedName),
           });
           return {
             content: [{ type: "text" as const, text: "Tool not available" }],
+            isError: true,
+          };
+        }
+
+        // API key scope check
+        const apiKeyScope = extra.authInfo?.extra?.apiKeyScope as string | undefined;
+        if (apiKeyScope && apiKeyScope !== "full") {
+          const risk = getToolRisk(namespacedName);
+          if (!isRiskAllowedByScope(risk, apiKeyScope)) {
+            logUsage({
+              userId,
+              apiKeyId,
+              toolName: namespacedName,
+              integrationId,
+              status: "unauthorized",
+              errorMessage: "Tool not available for this API key scope",
+              organizationId,
+              riskLevel: getToolRisk(namespacedName),
+            });
+            return {
+              content: [{ type: "text" as const, text: "Tool not available" }],
+              isError: true,
+            };
+          }
+        }
+
+        // Per-user rate limit by risk level
+        const rl = checkToolRateLimit(userId, namespacedName);
+        if (!rl.allowed) {
+          logUsage({
+            userId,
+            apiKeyId,
+            toolName: namespacedName,
+            integrationId,
+            status: "error",
+            errorMessage: "Rate limit exceeded",
+            organizationId,
+            riskLevel: getToolRisk(namespacedName),
+          });
+          return {
+            content: [{ type: "text" as const, text: `Rate limit exceeded. Try again in ${rl.retryAfter}s.` }],
             isError: true,
           };
         }
@@ -460,6 +567,7 @@ function registerTools(server: McpServer) {
             errorMessage: isPerUser ? "No personal API key configured" : "No API key configured",
             durationMs: Date.now() - startTime,
             organizationId,
+            riskLevel: getToolRisk(namespacedName),
           });
           return {
             content: [
@@ -489,6 +597,7 @@ function registerTools(server: McpServer) {
             status: result.isError ? "error" : "success",
             durationMs: Date.now() - startTime,
             organizationId,
+            riskLevel: getToolRisk(namespacedName),
           });
           return result;
         } catch (err: unknown) {
@@ -503,6 +612,7 @@ function registerTools(server: McpServer) {
             errorMessage: message,
             durationMs: Date.now() - startTime,
             organizationId,
+            riskLevel: getToolRisk(namespacedName),
           });
           return {
             content: [{ type: "text" as const, text: "An internal error occurred" }],
@@ -539,6 +649,7 @@ function registerTools(server: McpServer) {
             integrationId,
             status: "unauthorized",
             organizationId,
+            riskLevel: getToolRisk(tool.name),
           });
           return {
             content: [{ type: "text" as const, text: "Unauthorized" }],
@@ -565,9 +676,51 @@ function registerTools(server: McpServer) {
             status: "unauthorized",
             errorMessage: "Tool not available",
             organizationId,
+            riskLevel: getToolRisk(tool.name),
           });
           return {
             content: [{ type: "text" as const, text: "Tool not available" }],
+            isError: true,
+          };
+        }
+
+        // API key scope check
+        const apiKeyScope = extra.authInfo?.extra?.apiKeyScope as string | undefined;
+        if (apiKeyScope && apiKeyScope !== "full") {
+          const risk = getToolRisk(tool.name);
+          if (!isRiskAllowedByScope(risk, apiKeyScope)) {
+            logUsage({
+              userId,
+              apiKeyId,
+              toolName: tool.name,
+              integrationId,
+              status: "unauthorized",
+              errorMessage: "Tool not available for this API key scope",
+              organizationId,
+              riskLevel: getToolRisk(tool.name),
+            });
+            return {
+              content: [{ type: "text" as const, text: "Tool not available" }],
+              isError: true,
+            };
+          }
+        }
+
+        // Per-user rate limit by risk level
+        const rl = checkToolRateLimit(userId, tool.name);
+        if (!rl.allowed) {
+          logUsage({
+            userId,
+            apiKeyId,
+            toolName: tool.name,
+            integrationId,
+            status: "error",
+            errorMessage: "Rate limit exceeded",
+            organizationId,
+            riskLevel: getToolRisk(tool.name),
+          });
+          return {
+            content: [{ type: "text" as const, text: `Rate limit exceeded. Try again in ${rl.retryAfter}s.` }],
             isError: true,
           };
         }
@@ -598,6 +751,7 @@ function registerTools(server: McpServer) {
               errorMessage: "Integration not connected",
               durationMs: Date.now() - startTime,
               organizationId,
+              riskLevel: getToolRisk(tool.name),
             });
             return {
               content: [
@@ -624,6 +778,7 @@ function registerTools(server: McpServer) {
               errorMessage: message,
               durationMs: Date.now() - startTime,
               organizationId,
+              riskLevel: getToolRisk(tool.name),
             });
             return {
               content: [{ type: "text" as const, text: message }],
@@ -649,6 +804,7 @@ function registerTools(server: McpServer) {
               errorMessage,
               durationMs: Date.now() - startTime,
               organizationId,
+              riskLevel: getToolRisk(tool.name),
             });
             return {
               content: [
@@ -679,6 +835,7 @@ function registerTools(server: McpServer) {
             status: result.isError ? "error" : "success",
             durationMs: Date.now() - startTime,
             organizationId,
+            riskLevel: getToolRisk(tool.name),
           });
           return result;
         } catch (err: unknown) {
@@ -693,6 +850,7 @@ function registerTools(server: McpServer) {
             errorMessage: message,
             durationMs: Date.now() - startTime,
             organizationId,
+            riskLevel: getToolRisk(tool.name),
           });
           return {
             content: [{ type: "text" as const, text: "An internal error occurred" }],
@@ -727,6 +885,7 @@ function registerTools(server: McpServer) {
       proxyUserKeys: extra.authInfo?.extra?.proxyUserKeys as
         | Record<string, string>
         | undefined,
+      apiKeyScope: extra.authInfo?.extra?.apiKeyScope as string | undefined,
     });
 
     return { tools };
@@ -778,7 +937,7 @@ const authedHandler = withMcpAuth(
     const keyHash = hashApiKey(bearerToken);
     const { data: apiKey } = await supabaseAdmin
       .from("api_keys")
-      .select("user_id, id, organization_id")
+      .select("user_id, id, organization_id, scope")
       .eq("key_hash", keyHash)
       .is("revoked_at", null)
       .single();
@@ -890,6 +1049,7 @@ const authedHandler = withMcpAuth(
         integrationOrgKeys,
         proxyUserKeys,
         teamIds,
+        apiKeyScope: apiKey.scope ?? "full",
       },
     };
   },

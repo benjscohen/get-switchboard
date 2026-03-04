@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   const status = params.get("status");
   const tool = params.get("tool");
   const userId = params.get("userId");
+  const riskLevel = params.get("riskLevel");
 
   const days = period === "24h" ? 1 : period === "30d" ? 30 : 7;
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -22,6 +23,7 @@ export async function GET(req: NextRequest) {
     filter_status: status || null,
     filter_tool: tool || null,
     filter_user_id: userId || null,
+    filter_risk_level: riskLevel || null,
     page_offset: (page - 1) * limit,
     page_limit: limit,
   });
@@ -43,6 +45,7 @@ export async function GET(req: NextRequest) {
       status: log.status,
       errorMessage: log.error_message,
       durationMs: log.duration_ms,
+      riskLevel: log.risk_level ?? null,
       createdAt: log.created_at,
     })),
     total: Number(result.total),

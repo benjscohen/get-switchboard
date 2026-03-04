@@ -9,6 +9,7 @@ interface UsageRow {
   status: string;
   errorMessage: string | null;
   durationMs: number | null;
+  riskLevel: string | null;
   createdAt: string;
 }
 
@@ -30,6 +31,7 @@ export function UsageTable({ logs, page, totalPages, onPageChange }: UsageTableP
               <th className="pb-2 pr-4 font-medium">User</th>
               <th className="pb-2 pr-4 font-medium">Key</th>
               <th className="pb-2 pr-4 font-medium">Tool</th>
+              <th className="pb-2 pr-4 font-medium">Risk</th>
               <th className="pb-2 pr-4 font-medium">Status</th>
               <th className="pb-2 pr-4 font-medium">Duration</th>
             </tr>
@@ -47,6 +49,21 @@ export function UsageTable({ logs, page, totalPages, onPageChange }: UsageTableP
                   {log.apiKeyPrefix ? `${log.apiKeyPrefix}...` : "—"}
                 </td>
                 <td className="py-2 pr-4">{log.toolName ?? "—"}</td>
+                <td className="py-2 pr-4">
+                  {log.riskLevel ? (
+                    <span
+                      className={
+                        log.riskLevel === "read"
+                          ? "text-blue-500"
+                          : log.riskLevel === "destructive"
+                            ? "text-red-500"
+                            : "text-amber-500"
+                      }
+                    >
+                      {log.riskLevel}
+                    </span>
+                  ) : "—"}
+                </td>
                 <td className="py-2 pr-4">
                   <span
                     className={
@@ -72,7 +89,7 @@ export function UsageTable({ logs, page, totalPages, onPageChange }: UsageTableP
             ))}
             {logs.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-text-tertiary">
+                <td colSpan={7} className="py-8 text-center text-text-tertiary">
                   No logs found
                 </td>
               </tr>

@@ -14,6 +14,7 @@ interface UsageData {
     status: string;
     errorMessage: string | null;
     durationMs: number | null;
+    riskLevel: string | null;
     createdAt: string;
   }>;
   page: number;
@@ -27,6 +28,7 @@ export function UsageLogs() {
   const [period, setPeriod] = useState("7d");
   const [status, setStatus] = useState("");
   const [tool, setTool] = useState("");
+  const [riskLevel, setRiskLevel] = useState("");
   const [page, setPage] = useState(1);
 
   const fetchData = useCallback(async () => {
@@ -34,13 +36,14 @@ export function UsageLogs() {
     const params = new URLSearchParams({ page: String(page), period });
     if (status) params.set("status", status);
     if (tool) params.set("tool", tool);
+    if (riskLevel) params.set("riskLevel", riskLevel);
 
     const res = await fetch(`/api/admin/usage?${params}`);
     if (res.ok) {
       setData(await res.json());
     }
     setLoading(false);
-  }, [page, period, status, tool]);
+  }, [page, period, status, tool, riskLevel]);
 
   useEffect(() => {
     fetchData();
@@ -48,7 +51,7 @@ export function UsageLogs() {
 
   useEffect(() => {
     setPage(1);
-  }, [period, status, tool]);
+  }, [period, status, tool, riskLevel]);
 
   return (
     <div className="space-y-6">
@@ -70,6 +73,16 @@ export function UsageLogs() {
             { value: "success", label: "Success" },
             { value: "error", label: "Error" },
             { value: "unauthorized", label: "Unauthorized" },
+          ]}
+        />
+        <Select
+          value={riskLevel}
+          onChange={(e) => setRiskLevel(e.target.value)}
+          options={[
+            { value: "", label: "All risk levels" },
+            { value: "read", label: "Read" },
+            { value: "write", label: "Write" },
+            { value: "destructive", label: "Destructive" },
           ]}
         />
         <input

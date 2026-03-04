@@ -34,7 +34,7 @@ export function PermissionsEditor({ userId, isSelf }: PermissionsEditorProps) {
   const [success, setSuccess] = useState("");
 
   // Local editing state
-  const [mode, setMode] = useState<"full" | "custom">("full");
+  const [mode, setMode] = useState<"full" | "read_only" | "custom">("full");
   const [editIntegrations, setEditIntegrations] = useState<
     Map<string, { enabled: boolean; allTools: boolean; selectedTools: Set<string> }>
   >(new Map());
@@ -45,7 +45,7 @@ export function PermissionsEditor({ userId, isSelf }: PermissionsEditorProps) {
     if (res.ok) {
       const d: PermissionsData = await res.json();
       setData(d);
-      setMode(d.permissionsMode as "full" | "custom");
+      setMode(d.permissionsMode as "full" | "read_only" | "custom");
       initEditState(d);
     }
     setLoading(false);
@@ -178,6 +178,17 @@ export function PermissionsEditor({ userId, isSelf }: PermissionsEditorProps) {
           <input
             type="radio"
             name="permMode"
+            value="read_only"
+            checked={mode === "read_only"}
+            onChange={() => setMode("read_only")}
+            className="accent-accent"
+          />
+          Read only
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="radio"
+            name="permMode"
             value="custom"
             checked={mode === "custom"}
             onChange={() => setMode("custom")}
@@ -190,6 +201,12 @@ export function PermissionsEditor({ userId, isSelf }: PermissionsEditorProps) {
       {mode === "full" && (
         <p className="text-sm text-text-secondary">
           This user can access all integrations and tools.
+        </p>
+      )}
+
+      {mode === "read_only" && (
+        <p className="text-sm text-text-secondary">
+          This user can only use read-only tools. Write and destructive operations are blocked.
         </p>
       )}
 

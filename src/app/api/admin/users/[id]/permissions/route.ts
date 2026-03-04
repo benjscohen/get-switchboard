@@ -68,9 +68,9 @@ export async function PUT(
     integrations: Array<{ integrationId: string; allowedTools: string[] }>;
   };
 
-  if (permissionsMode !== "full" && permissionsMode !== "custom") {
+  if (!["full", "custom", "read_only"].includes(permissionsMode)) {
     return NextResponse.json(
-      { error: "permissionsMode must be 'full' or 'custom'" },
+      { error: "permissionsMode must be 'full', 'custom', or 'read_only'" },
       { status: 400 }
     );
   }
@@ -85,8 +85,8 @@ export async function PUT(
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  if (permissionsMode === "full") {
-    // Clear all access rows and set mode to full
+  if (permissionsMode === "full" || permissionsMode === "read_only") {
+    // Clear all access rows and set mode
     await supabaseAdmin
       .from("user_integration_access")
       .delete()
@@ -94,11 +94,11 @@ export async function PUT(
 
     await supabaseAdmin
       .from("profiles")
-      .update({ permissions_mode: "full" })
+      .update({ permissions_mode: permissionsMode })
       .eq("id", id);
 
     return NextResponse.json({
-      permissionsMode: "full",
+      permissionsMode,
       integrations: [],
     });
   }

@@ -71,11 +71,11 @@ export default async function DashboardPage() {
     orgId
       ? supabaseAdmin
           .from("api_keys")
-          .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at")
+          .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope")
           .eq("organization_id", orgId)
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
-      : Promise.resolve({ data: [] as Array<{ id: string; name: string; key_prefix: string; last_used_at: string | null; created_at: string; user_id: string; revoked_at: string | null }> }),
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string; key_prefix: string; last_used_at: string | null; created_at: string; user_id: string; revoked_at: string | null; scope: string }> }),
     supabaseAdmin.from("proxy_user_keys").select("integration_id").eq("user_id", user.id),
   ]);
 
@@ -88,6 +88,7 @@ export default async function DashboardPage() {
     lastUsedAt: k.last_used_at,
     createdAt: k.created_at,
     revokedAt: k.revoked_at,
+    scope: (k as { scope?: string }).scope ?? "full",
   }));
 
   const userKeySet = new Set((userKeys ?? []).map((k) => k.server_id));

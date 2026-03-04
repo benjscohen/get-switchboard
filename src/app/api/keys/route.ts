@@ -11,7 +11,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data: keys, error } = await supabase
     .from("api_keys")
-    .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at")
+    .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope")
     .eq("organization_id", authResult.organizationId)
     .eq("user_id", authResult.userId)
     .order("created_at", { ascending: false });
@@ -27,6 +27,7 @@ export async function GET() {
     lastUsedAt: k.last_used_at,
     createdAt: k.created_at,
     revokedAt: k.revoked_at,
+    scope: k.scope ?? "full",
   }));
 
   return NextResponse.json(mapped);
@@ -46,6 +47,14 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const name = body.name?.trim() || "Default";
+  const scope = body.scope?.trim() || "full";
+
+  if (!["full", "read_write", "read_only"].includes(scope)) {
+    return NextResponse.json(
+      { error: "scope must be 'full', 'read_write', or 'read_only'" },
+      { status: 400 }
+    );
+  }
 
   const { raw, hash, prefix } = generateApiKey();
 
@@ -56,13 +65,14 @@ export async function POST(request: Request) {
     name,
     key_hash: hash,
     key_prefix: prefix,
+    scope,
   });
 
   if (error) {
     return NextResponse.json({ error: "Failed to create API key" }, { status: 500 });
   }
 
-  return NextResponse.json({ key: raw, prefix, name });
+  return NextResponse.json({ key: raw, prefix, name, scope });
 }
 
 export async function DELETE(request: Request) {

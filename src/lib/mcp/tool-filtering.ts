@@ -1,4 +1,5 @@
 import { isToolAllowed } from "@/lib/permissions";
+import { getToolRisk, isRiskAllowedByScope } from "@/lib/mcp/tool-risk";
 
 export type ToolMeta = { integrationId: string; orgId: string | null; keyMode?: "org" | "per_user"; proxyOAuth?: boolean };
 
@@ -16,6 +17,7 @@ export type FilterContext = {
   integrationAccess?: Array<{ integrationId: string; allowedTools: string[] }>;
   integrationOrgKeys?: Record<string, string>;
   proxyUserKeys?: Record<string, string>;
+  apiKeyScope?: string;
 };
 
 /**
@@ -69,6 +71,11 @@ export function filterToolsForUser(
           )
         )
           return false;
+      }
+
+      // API key scope filtering
+      if (ctx.apiKeyScope && ctx.apiKeyScope !== "full") {
+        if (!isRiskAllowedByScope(getToolRisk(name), ctx.apiKeyScope)) return false;
       }
 
       return true;

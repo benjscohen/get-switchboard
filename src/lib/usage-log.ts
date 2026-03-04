@@ -9,6 +9,7 @@ export function logUsage(data: {
   errorMessage?: string;
   durationMs?: number;
   organizationId?: string;
+  riskLevel?: string;
 }) {
   supabaseAdmin
     .from("usage_logs")
@@ -21,6 +22,7 @@ export function logUsage(data: {
       error_message: data.errorMessage ?? null,
       duration_ms: data.durationMs ?? null,
       organization_id: data.organizationId ?? null,
+      risk_level: data.riskLevel ?? null,
     })
     .then();
 }

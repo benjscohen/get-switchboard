@@ -55,21 +55,40 @@ export async function getValidTokens(
       throw new Error(`Unknown integration: ${connection.integrationId}`);
     }
 
-    const { data: clientRow } = await supabaseAdmin
-      .from("proxy_oauth_clients")
-      .select("client_id, client_secret")
-      .eq("integration_id", connection.integrationId)
-      .single();
+    const { oauth } = proxyIntegration;
 
-    if (!clientRow) {
-      throw new Error(
-        `No OAuth client registered for ${connection.integrationId}`
-      );
+    if (oauth.clientIdEnvVar) {
+      // Static OAuth credentials from env vars
+      const envClientId = process.env[oauth.clientIdEnvVar];
+      const envClientSecret = oauth.clientSecretEnvVar
+        ? process.env[oauth.clientSecretEnvVar]
+        : undefined;
+      if (!envClientId) {
+        throw new Error(
+          `Missing OAuth credentials for ${connection.integrationId}`
+        );
+      }
+      tokenUrl = oauth.tokenUrl;
+      clientId = envClientId;
+      clientSecret = envClientSecret;
+    } else {
+      // DCR flow — get credentials from DB
+      const { data: clientRow } = await supabaseAdmin
+        .from("proxy_oauth_clients")
+        .select("client_id, client_secret")
+        .eq("integration_id", connection.integrationId)
+        .single();
+
+      if (!clientRow) {
+        throw new Error(
+          `No OAuth client registered for ${connection.integrationId}`
+        );
+      }
+
+      tokenUrl = oauth.tokenUrl;
+      clientId = clientRow.client_id;
+      clientSecret = clientRow.client_secret ?? undefined;
     }
-
-    tokenUrl = proxyIntegration.oauth.tokenUrl;
-    clientId = clientRow.client_id;
-    clientSecret = clientRow.client_secret ?? undefined;
   }
 
   const body: Record<string, string> = {

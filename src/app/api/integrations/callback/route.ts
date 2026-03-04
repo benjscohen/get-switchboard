@@ -63,25 +63,45 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const { data: clientRow } = await supabaseAdmin
-      .from("proxy_oauth_clients")
-      .select("client_id, client_secret")
-      .eq("integration_id", stored.integrationId)
-      .single();
+    const { oauth } = proxyIntegration;
+    let proxyClientId: string;
+    let proxyClientSecret: string | undefined;
 
-    if (!clientRow) {
-      return NextResponse.redirect(
-        `${getAppOrigin(req)}/dashboard?error=not_configured`
-      );
+    if (oauth.clientIdEnvVar) {
+      // Static OAuth credentials from env vars
+      proxyClientId = process.env[oauth.clientIdEnvVar] ?? "";
+      proxyClientSecret = oauth.clientSecretEnvVar
+        ? process.env[oauth.clientSecretEnvVar]
+        : undefined;
+      if (!proxyClientId) {
+        return NextResponse.redirect(
+          `${getAppOrigin(req)}/dashboard?error=not_configured`
+        );
+      }
+    } else {
+      // DCR flow — get credentials from DB
+      const { data: clientRow } = await supabaseAdmin
+        .from("proxy_oauth_clients")
+        .select("client_id, client_secret")
+        .eq("integration_id", stored.integrationId)
+        .single();
+
+      if (!clientRow) {
+        return NextResponse.redirect(
+          `${getAppOrigin(req)}/dashboard?error=not_configured`
+        );
+      }
+      proxyClientId = clientRow.client_id;
+      proxyClientSecret = clientRow.client_secret ?? undefined;
     }
 
-    tokenUrl = proxyIntegration.oauth.tokenUrl;
+    tokenUrl = oauth.tokenUrl;
     tokenBody = {
       grant_type: "authorization_code",
       code,
       redirect_uri: redirectUri,
-      client_id: clientRow.client_id,
-      ...(clientRow.client_secret ? { client_secret: clientRow.client_secret } : {}),
+      client_id: proxyClientId,
+      ...(proxyClientSecret ? { client_secret: proxyClientSecret } : {}),
       ...(stored.codeVerifier ? { code_verifier: stored.codeVerifier } : {}),
     };
   } else {

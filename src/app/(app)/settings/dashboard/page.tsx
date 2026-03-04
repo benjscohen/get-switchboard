@@ -42,16 +42,18 @@ export default async function SettingsDashboardPage() {
     count: Number(r.count),
   }));
 
+  const destructiveCount = Number(stats.destructiveCount ?? 0);
   const errorRate = totalRequests > 0 ? ((errorCount / totalRequests) * 100).toFixed(1) : "0";
 
   return (
     <div className="space-y-8">
       {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard label="Total Requests (7d)" value={totalRequests} />
         <StatCard label="Active Users (7d)" value={activeUsers} />
         <StatCard label="Error Rate (7d)" value={`${errorRate}%`} />
         <StatCard label="Requests Today" value={requestsToday} />
+        <StatCard label="Destructive Actions (7d)" value={destructiveCount} />
       </div>
 
       {/* Requests over time */}

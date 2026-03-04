@@ -42,7 +42,14 @@ interface ApiKeyEntry {
   lastUsedAt: string | null;
   createdAt: string;
   revokedAt: string | null;
+  scope?: string;
 }
+
+const SCOPE_LABELS: Record<string, string> = {
+  full: "Full access",
+  read_write: "Read + Write",
+  read_only: "Read only",
+};
 
 export function ConnectCard({
   origin,
@@ -55,6 +62,7 @@ export function ConnectCard({
 }) {
   const [keys, setKeys] = useState<ApiKeyEntry[]>(initialKeys);
   const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyScope, setNewKeyScope] = useState("full");
   const [newRawKey, setNewRawKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [manageExpanded, setManageExpanded] = useState(false);
@@ -67,12 +75,13 @@ export function ConnectCard({
     const res = await fetch("/api/keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newKeyName || "Default" }),
+      body: JSON.stringify({ name: newKeyName || "Default", scope: newKeyScope }),
     });
     if (res.ok) {
       const data = await res.json();
       setNewRawKey(data.key);
       setNewKeyName("");
+      setNewKeyScope("full");
       setKeys((prev) => [
         {
           id: crypto.randomUUID(),
@@ -81,6 +90,7 @@ export function ConnectCard({
           lastUsedAt: null,
           createdAt: new Date().toISOString(),
           revokedAt: null,
+          scope: data.scope ?? "full",
         },
         ...prev,
       ]);
@@ -178,6 +188,15 @@ export function ConnectCard({
                   onChange={(e) => setNewKeyName(e.target.value)}
                   className="max-w-xs"
                 />
+                <select
+                  value={newKeyScope}
+                  onChange={(e) => setNewKeyScope(e.target.value)}
+                  className="rounded-lg border border-border bg-bg px-3 py-1.5 text-sm"
+                >
+                  <option value="full">Full access</option>
+                  <option value="read_write">Read + Write</option>
+                  <option value="read_only">Read only</option>
+                </select>
                 <Button size="sm" onClick={generate} disabled={loading}>
                   {loading ? "Generating..." : "Generate Key"}
                 </Button>
@@ -267,6 +286,15 @@ export function ConnectCard({
               onChange={(e) => setNewKeyName(e.target.value)}
               className="max-w-xs"
             />
+            <select
+              value={newKeyScope}
+              onChange={(e) => setNewKeyScope(e.target.value)}
+              className="rounded-lg border border-border bg-bg px-3 py-1.5 text-sm"
+            >
+              <option value="full">Full access</option>
+              <option value="read_write">Read + Write</option>
+              <option value="read_only">Read only</option>
+            </select>
             <Button size="sm" onClick={generate} disabled={loading}>
               {loading ? "Generating..." : "New Key"}
             </Button>
@@ -289,6 +317,11 @@ export function ConnectCard({
                   </p>
                   <p className="font-mono text-xs text-text-tertiary">
                     {k.keyPrefix}...
+                    {k.scope && k.scope !== "full" && (
+                      <span className="ml-2 font-sans text-amber-500">
+                        {SCOPE_LABELS[k.scope] ?? k.scope}
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

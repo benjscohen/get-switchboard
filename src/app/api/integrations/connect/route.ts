@@ -69,14 +69,27 @@ export async function GET(req: NextRequest) {
   }
 
   if (proxyIntegration?.oauth) {
-    // Proxy OAuth flow with PKCE + DCR
     const { oauth } = proxyIntegration;
+    let clientId: string;
 
-    const credentials = await getOrRegisterClient(
-      integrationId,
-      oauth.registrationUrl,
-      redirectUri
-    );
+    if (oauth.clientIdEnvVar) {
+      // Static OAuth credentials from env vars
+      clientId = process.env[oauth.clientIdEnvVar] ?? "";
+      if (!clientId) {
+        return NextResponse.json(
+          { error: "Integration not configured" },
+          { status: 500 }
+        );
+      }
+    } else {
+      // DCR flow (existing)
+      const credentials = await getOrRegisterClient(
+        integrationId,
+        oauth.registrationUrl!,
+        redirectUri
+      );
+      clientId = credentials.clientId;
+    }
 
     const { codeVerifier, codeChallenge } = await generatePkce();
     const state = crypto.randomUUID();
@@ -91,7 +104,7 @@ export async function GET(req: NextRequest) {
     }), OAUTH_COOKIE_OPTIONS);
 
     const params = new URLSearchParams({
-      client_id: credentials.clientId,
+      client_id: clientId,
       redirect_uri: redirectUri,
       response_type: "code",
       scope: oauth.scopes.join(" "),

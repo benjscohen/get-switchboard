@@ -13,7 +13,9 @@ export type CatalogEntry = {
 export type ProxyOAuthConfig = {
   authUrl: string;
   tokenUrl: string;
-  registrationUrl: string; // DCR endpoint
+  registrationUrl?: string; // DCR endpoint (optional if using static credentials)
+  clientIdEnvVar?: string; // Env var for client ID (static OAuth)
+  clientSecretEnvVar?: string; // Env var for client secret (static OAuth)
   scopes: string[];
 };
 

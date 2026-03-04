@@ -4,6 +4,7 @@ import {
 } from "@/lib/integrations/registry";
 import { proxyIntegrationRegistry } from "@/lib/integrations/proxy-registry";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getToolRisk } from "@/lib/mcp/tool-risk";
 
 type IntegrationAccessRow = {
   integrationId: string;
@@ -25,6 +26,9 @@ export function isToolAllowed(
   integrationId: string,
   toolName: string
 ): boolean {
+  if (permissionsMode === "read_only") {
+    return getToolRisk(toolName) === "read";
+  }
   if (permissionsMode !== "custom") return true;
 
   const row = integrationAccess.find(
