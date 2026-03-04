@@ -10,7 +10,6 @@ type DocsToolDef = Omit<IntegrationToolDef, "execute"> & {
 };
 
 type DocRequest = docs_v1.Schema$Request;
-type RGB = { red: number; green: number; blue: number };
 
 // ── Helpers ──
 
@@ -22,9 +21,18 @@ function pt(value: number): docs_v1.Schema$Dimension {
   return { magnitude: value, unit: "PT" };
 }
 
-function optColor(c: RGB | undefined) {
-  if (!c) return undefined;
-  return { color: { rgbColor: c } };
+function hexToRgb(hex: string): { red: number; green: number; blue: number } {
+  const h = hex.replace("#", "");
+  return {
+    red: parseInt(h.substring(0, 2), 16) / 255,
+    green: parseInt(h.substring(2, 4), 16) / 255,
+    blue: parseInt(h.substring(4, 6), 16) / 255,
+  };
+}
+
+function optColor(hex: string | undefined) {
+  if (!hex) return undefined;
+  return { color: { rgbColor: hexToRgb(hex) } };
 }
 
 function buildLocation(
@@ -86,12 +94,12 @@ function buildTextStyle(a: Record<string, unknown>) {
     fields.push("fontSize");
   }
 
-  const fg = optColor(a.foregroundColor as RGB | undefined);
+  const fg = optColor(a.foregroundColor as string | undefined);
   if (fg) {
     style.foregroundColor = fg;
     fields.push("foregroundColor");
   }
-  const bg = optColor(a.backgroundColor as RGB | undefined);
+  const bg = optColor(a.backgroundColor as string | undefined);
   if (bg) {
     style.backgroundColor = bg;
     fields.push("backgroundColor");
@@ -212,7 +220,7 @@ function buildParagraphStyle(a: Record<string, unknown>) {
     fields.push("borderRight");
   }
 
-  const sc = optColor(a.shadingColor as RGB | undefined);
+  const sc = optColor(a.shadingColor as string | undefined);
   if (sc) {
     style.shading = { backgroundColor: sc };
     fields.push("shading");
@@ -322,16 +330,37 @@ export const DOCS_TOOLS: DocsToolDef[] = [
   // ── 1. Create Document ──
   {
     name: "google_docs_create_document",
-    description: "Create a new Google Docs document",
+    description:
+      "Create a new Google Docs document, optionally with initial text content",
     schema: s.createDocumentSchema,
-    execute: (a, docs) =>
-      docs.documents
-        .create({ requestBody: { title: a.title as string } })
-        .then((r) => ({
-          documentId: r.data.documentId,
-          title: r.data.title,
-          revisionId: r.data.revisionId,
-        })),
+    execute: async (a, docs) => {
+      const r = await docs.documents.create({
+        requestBody: { title: a.title as string },
+      });
+      const docId = r.data.documentId!;
+
+      if (a.body_text) {
+        await docs.documents.batchUpdate({
+          documentId: docId,
+          requestBody: {
+            requests: [
+              {
+                insertText: {
+                  endOfSegmentLocation: {},
+                  text: a.body_text as string,
+                },
+              },
+            ],
+          },
+        });
+      }
+
+      return {
+        documentId: docId,
+        title: r.data.title,
+        revisionId: r.data.revisionId,
+      };
+    },
   },
 
   // ── 2. Get Document ──
@@ -436,21 +465,39 @@ export const DOCS_TOOLS: DocsToolDef[] = [
   {
     name: "google_docs_insert_text",
     description:
-      "Insert text at a specific index, or append to the end of a segment if index is omitted",
+      "Insert text at a specific index, or use position 'start'/'end' for convenience, or append by default",
     schema: s.insertTextSchema,
     execute: (a, docs) => {
+      const position = a.position as string | undefined;
       const idx = a.index as number | undefined;
-      const request: DocRequest = idx !== undefined
-        ? { insertText: { location: buildLocation(idx, a), text: a.text as string } }
-        : {
-            insertText: {
-              endOfSegmentLocation: {
-                segmentId: (a.segmentId as string) || undefined,
-                tabId: (a.tabId as string) || undefined,
-              },
-              text: a.text as string,
+      let request: DocRequest;
+
+      if (position === "start") {
+        request = {
+          insertText: {
+            location: buildLocation(1, a),
+            text: a.text as string,
+          },
+        };
+      } else if (position === "end" || (idx === undefined && !position)) {
+        request = {
+          insertText: {
+            endOfSegmentLocation: {
+              segmentId: (a.segmentId as string) || undefined,
+              tabId: (a.tabId as string) || undefined,
             },
-          };
+            text: a.text as string,
+          },
+        };
+      } else {
+        request = {
+          insertText: {
+            location: buildLocation(idx!, a),
+            text: a.text as string,
+          },
+        };
+      }
+
       return docs.documents
         .batchUpdate({
           documentId: did(a),
@@ -576,17 +623,17 @@ export const DOCS_TOOLS: DocsToolDef[] = [
     },
   },
 
-  // ── 10. Manage Tables ──
+  // ── 10. Manage Tables (structural) ──
   {
     name: "google_docs_manage_tables",
     description:
-      "Table operations: insert table, insert/delete rows and columns, merge/unmerge cells, set column width, row height, cell style, pin header rows",
+      "Table structural operations: insert table, insert/delete rows and columns, merge/unmerge cells, pin header rows",
     schema: s.manageTablesSchema,
     execute: (a, docs) => {
-      const action = a.action as string;
+      const op = a.operation as string;
       const requests: DocRequest[] = [];
 
-      switch (action) {
+      switch (op) {
         case "insert_table":
           requests.push({
             insertTable: {
@@ -655,7 +702,40 @@ export const DOCS_TOOLS: DocsToolDef[] = [
           });
           break;
 
-        case "column_properties":
+        case "pin_headers":
+          requests.push({
+            pinTableHeaderRows: {
+              tableStartLocation: { index: a.tableStartIndex as number },
+              pinnedHeaderRowsCount: a.pinnedHeaderRows as number,
+            },
+          });
+          break;
+
+        default:
+          return Promise.resolve({ error: `Unknown table operation: ${op}` });
+      }
+
+      return docs.documents
+        .batchUpdate({
+          documentId: did(a),
+          requestBody: { requests },
+        })
+        .then((r) => r.data);
+    },
+  },
+
+  // ── 10b. Format Table (styling) ──
+  {
+    name: "google_docs_format_table",
+    description:
+      "Table formatting: set cell background/padding/alignment, row height, or column width",
+    schema: s.formatTableSchema,
+    execute: (a, docs) => {
+      const op = a.operation as string;
+      const requests: DocRequest[] = [];
+
+      switch (op) {
+        case "column_width":
           requests.push({
             updateTableColumnProperties: {
               tableStartLocation: { index: a.tableStartIndex as number },
@@ -694,7 +774,7 @@ export const DOCS_TOOLS: DocsToolDef[] = [
         case "cell_style": {
           const cellStyle: Record<string, unknown> = {};
           const cellFields: string[] = [];
-          const bgc = optColor(a.cellBgColor as RGB | undefined);
+          const bgc = optColor(a.cellBgColor as string | undefined);
           if (bgc) {
             cellStyle.backgroundColor = bgc;
             cellFields.push("backgroundColor");
@@ -733,17 +813,8 @@ export const DOCS_TOOLS: DocsToolDef[] = [
           break;
         }
 
-        case "pin_headers":
-          requests.push({
-            pinTableHeaderRows: {
-              tableStartLocation: { index: a.tableStartIndex as number },
-              pinnedHeaderRowsCount: a.pinnedHeaderRows as number,
-            },
-          });
-          break;
-
         default:
-          return Promise.resolve({ error: `Unknown table action: ${action}` });
+          return Promise.resolve({ error: `Unknown format_table operation: ${op}` });
       }
 
       return docs.documents
@@ -762,10 +833,10 @@ export const DOCS_TOOLS: DocsToolDef[] = [
       "Insert page/section breaks or update section style (columns, margins, orientation, page numbering)",
     schema: s.manageSectionsSchema,
     execute: (a, docs) => {
-      const action = a.action as string;
+      const op = a.operation as string;
       const requests: DocRequest[] = [];
 
-      switch (action) {
+      switch (op) {
         case "insert_page_break":
           requests.push({
             insertPageBreak: {
@@ -858,7 +929,7 @@ export const DOCS_TOOLS: DocsToolDef[] = [
 
         default:
           return Promise.resolve({
-            error: `Unknown section action: ${action}`,
+            error: `Unknown section operation: ${op}`,
           });
       }
 
@@ -878,10 +949,10 @@ export const DOCS_TOOLS: DocsToolDef[] = [
       "Create or delete headers, footers, and footnotes in a document",
     schema: s.manageHeadersFootersSchema,
     execute: (a, docs) => {
-      const action = a.action as string;
+      const op = a.operation as string;
       let request: DocRequest;
 
-      switch (action) {
+      switch (op) {
         case "create_header":
           request = {
             createHeader: {
@@ -913,7 +984,7 @@ export const DOCS_TOOLS: DocsToolDef[] = [
           break;
         default:
           return Promise.resolve({
-            error: `Unknown header/footer action: ${action}`,
+            error: `Unknown header/footer operation: ${op}`,
           });
       }
 
@@ -933,10 +1004,10 @@ export const DOCS_TOOLS: DocsToolDef[] = [
       "Insert inline images, replace existing images, or delete positioned objects",
     schema: s.manageImagesSchema,
     execute: (a, docs) => {
-      const action = a.action as string;
+      const op = a.operation as string;
       let request: DocRequest;
 
-      switch (action) {
+      switch (op) {
         case "insert": {
           const size: Record<string, unknown> = {};
           const unit = (a.sizeUnit as string) || "PT";
@@ -973,7 +1044,7 @@ export const DOCS_TOOLS: DocsToolDef[] = [
           break;
         default:
           return Promise.resolve({
-            error: `Unknown image action: ${action}`,
+            error: `Unknown image operation: ${op}`,
           });
       }
 
@@ -993,9 +1064,9 @@ export const DOCS_TOOLS: DocsToolDef[] = [
       "Create, delete, replace content of, or list named ranges in a document",
     schema: s.manageNamedRangesSchema,
     execute: async (a, docs) => {
-      const action = a.action as string;
+      const op = a.operation as string;
 
-      if (action === "list") {
+      if (op === "list") {
         const doc = await docs.documents
           .get({ documentId: did(a) })
           .then((r) => r.data);
@@ -1014,7 +1085,7 @@ export const DOCS_TOOLS: DocsToolDef[] = [
       }
 
       let request: DocRequest;
-      switch (action) {
+      switch (op) {
         case "create":
           request = {
             createNamedRange: {
@@ -1048,7 +1119,7 @@ export const DOCS_TOOLS: DocsToolDef[] = [
           };
           break;
         default:
-          return { error: `Unknown named range action: ${action}` };
+          return { error: `Unknown named range operation: ${op}` };
       }
 
       return docs.documents
@@ -1067,11 +1138,11 @@ export const DOCS_TOOLS: DocsToolDef[] = [
       "Add, delete, or update tab properties in a multi-tab document. Note: tab CRUD requires Docs API support for tab operations.",
     schema: s.manageTabsSchema,
     execute: async (a, docs) => {
-      const action = a.action as string;
+      const op = a.operation as string;
 
       // Tab operations use newer API request types that may not be in all
       // googleapis versions. We construct the request objects manually.
-      switch (action) {
+      switch (op) {
         case "add": {
           const req = { addDocumentTab: { tabProperties: { title: a.title as string } } };
           return docs.documents
@@ -1118,7 +1189,7 @@ export const DOCS_TOOLS: DocsToolDef[] = [
             }));
         }
         default:
-          return { error: `Unknown tab action: ${action}` };
+          return { error: `Unknown tab operation: ${op}` };
       }
     },
   },
@@ -1166,7 +1237,7 @@ export const DOCS_TOOLS: DocsToolDef[] = [
         fields.push("marginFooter");
       }
 
-      const bgc = optColor(a.backgroundColor as RGB | undefined);
+      const bgc = optColor(a.backgroundColor as string | undefined);
       if (bgc) {
         style.background = { color: bgc };
         fields.push("background");
@@ -1235,45 +1306,4 @@ export const DOCS_TOOLS: DocsToolDef[] = [
     },
   },
 
-  // ── 17. Insert Special Element ──
-  {
-    name: "google_docs_insert_special_element",
-    description:
-      "Insert smart chips: @mention a person by email or insert a date chip",
-    schema: s.insertSpecialElementSchema,
-    execute: (a, docs) => {
-      const action = a.action as string;
-      const location = buildLocation(a.index as number, a);
-      let request: DocRequest;
-
-      if (action === "person") {
-        request = {
-          insertText: {
-            location,
-            text: (a.email as string) || "",
-          },
-        };
-        // The Docs API exposes person/date chips as read-only via textRun.
-        // InsertPersonRequest / InsertDateRequest are not in the public
-        // batchUpdate schema, so we fall back to inserting the email as text.
-        // If the API adds these, we can switch to the native request types.
-        return docs.documents
-          .batchUpdate({
-            documentId: did(a),
-            requestBody: { requests: [request] },
-          })
-          .then((r) => r.data);
-      }
-
-      // date — insert ISO date string as text
-      const dateStr = new Date().toISOString().split("T")[0];
-      request = { insertText: { location, text: dateStr } };
-      return docs.documents
-        .batchUpdate({
-          documentId: did(a),
-          requestBody: { requests: [request] },
-        })
-        .then((r) => r.data);
-    },
-  },
 ];

@@ -148,16 +148,16 @@ export const modifyMessageSchema = z.object({
 // 8. Trash/untrash message
 export const trashMessageSchema = z.object({
   messageId,
-  action: z
+  operation: z
     .enum(["trash", "untrash"])
     .describe("Whether to trash or untrash the message"),
 });
 
 // 9. Batch modify messages
 export const batchModifyMessagesSchema = z.object({
-  action: z
+  operation: z
     .enum(["modify", "delete"])
-    .describe("Batch action to perform"),
+    .describe("Batch operation to perform"),
   messageIds: z
     .string()
     .describe("Comma-separated message IDs to act on"),
@@ -197,7 +197,7 @@ export const getThreadSchema = z.object({
 
 // 12. Manage drafts
 export const manageDraftsSchema = z.object({
-  action: z
+  operation: z
     .enum(["create", "update", "list", "get", "delete", "send"])
     .describe("Draft operation to perform"),
   draftId: z
@@ -234,7 +234,7 @@ export const manageDraftsSchema = z.object({
 
 // 13. Manage labels
 export const manageLabelsSchema = z.object({
-  action: z
+  operation: z
     .enum(["list", "get", "create", "update", "delete"])
     .describe("Label operation to perform"),
   labelId: z
@@ -257,7 +257,7 @@ export const manageLabelsSchema = z.object({
 
 // 14. Manage vacation responder
 export const manageVacationSchema = z.object({
-  action: z
+  operation: z
     .enum(["get", "update"])
     .describe("Vacation responder operation"),
   enableAutoReply: z
@@ -292,7 +292,7 @@ export const manageVacationSchema = z.object({
 
 // 15. Manage filters
 export const manageFiltersSchema = z.object({
-  action: z
+  operation: z
     .enum(["list", "get", "create", "delete"])
     .describe("Filter operation to perform"),
   filterId: z

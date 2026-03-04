@@ -426,8 +426,8 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
     description: "Move a message to trash or restore it from trash",
     schema: s.trashMessageSchema,
     execute: async (a, gmail) => {
-      const action = a.action as string;
-      if (action === "trash") {
+      const op = a.operation as string;
+      if (op === "trash") {
         const res = await gmail.users.messages.trash({
           userId: "me",
           id: a.messageId as string,
@@ -449,10 +449,10 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
       "Batch modify labels on multiple messages, or permanently delete multiple messages",
     schema: s.batchModifyMessagesSchema,
     execute: async (a, gmail) => {
-      const action = a.action as string;
+      const op = a.operation as string;
       const ids = splitCsv(a.messageIds as string);
 
-      if (action === "delete") {
+      if (op === "delete") {
         await gmail.users.messages.batchDelete({
           userId: "me",
           requestBody: { ids },
@@ -525,9 +525,9 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
       "Create, update, list, get, delete, or send email drafts",
     schema: s.manageDraftsSchema,
     execute: async (a, gmail) => {
-      const action = a.action as string;
+      const op = a.operation as string;
 
-      switch (action) {
+      switch (op) {
         case "list": {
           const res = await gmail.users.drafts.list({
             userId: "me",
@@ -604,7 +604,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         }
 
         default:
-          return { error: `Unknown draft action: ${action}` };
+          return { error: `Unknown draft operation: ${op}` };
       }
     },
   },
@@ -616,9 +616,9 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
       "List, get, create, update, or delete Gmail labels",
     schema: s.manageLabelsSchema,
     execute: async (a, gmail) => {
-      const action = a.action as string;
+      const op = a.operation as string;
 
-      switch (action) {
+      switch (op) {
         case "list": {
           const res = await gmail.users.labels.list({ userId: "me" });
           return { labels: res.data.labels ?? [] };
@@ -680,7 +680,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         }
 
         default:
-          return { error: `Unknown label action: ${action}` };
+          return { error: `Unknown label operation: ${op}` };
       }
     },
   },
@@ -692,9 +692,9 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
       "Get or update the Gmail vacation/out-of-office auto-reply settings",
     schema: s.manageVacationSchema,
     execute: async (a, gmail) => {
-      const action = a.action as string;
+      const op = a.operation as string;
 
-      if (action === "get") {
+      if (op === "get") {
         const res = await gmail.users.settings.getVacation({
           userId: "me",
         });
@@ -725,9 +725,9 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
       "List, get, create, or delete Gmail filters (rules that automatically process incoming mail)",
     schema: s.manageFiltersSchema,
     execute: async (a, gmail) => {
-      const action = a.action as string;
+      const op = a.operation as string;
 
-      switch (action) {
+      switch (op) {
         case "list": {
           const res = await gmail.users.settings.filters.list({
             userId: "me",
@@ -780,7 +780,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         }
 
         default:
-          return { error: `Unknown filter action: ${action}` };
+          return { error: `Unknown filter operation: ${op}` };
       }
     },
   },

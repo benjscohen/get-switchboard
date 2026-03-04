@@ -18,11 +18,10 @@ export const segmentId = z
     "Segment ID to target a header, footer, or footnote (omit for document body)"
   );
 
-export const rgbColor = z.object({
-  red: z.number().min(0).max(1).describe("Red channel 0-1"),
-  green: z.number().min(0).max(1).describe("Green channel 0-1"),
-  blue: z.number().min(0).max(1).describe("Blue channel 0-1"),
-});
+export const hexColor = z
+  .string()
+  .regex(/^#[0-9A-Fa-f]{6}$/, "Must be a hex color like #FF0000")
+  .describe("Color as hex string (e.g. '#FF0000' for red)");
 
 export const insertionPoint = {
   index: z
@@ -56,12 +55,12 @@ export const textStyleFields = {
     .optional()
     .describe('Font name (e.g. "Arial", "Times New Roman")'),
   fontSize: z.number().optional().describe("Font size in points"),
-  foregroundColor: rgbColor
+  foregroundColor: hexColor
     .optional()
-    .describe("Text color as {red, green, blue} 0-1"),
-  backgroundColor: rgbColor
+    .describe("Text color as hex (e.g. '#FF0000')"),
+  backgroundColor: hexColor
     .optional()
-    .describe("Text highlight/background color as {red, green, blue} 0-1"),
+    .describe("Text highlight/background color as hex (e.g. '#FFFF00')"),
   linkUrl: z.string().optional().describe("URL to link the text to"),
   linkBookmarkId: z
     .string()
@@ -158,9 +157,9 @@ export const paragraphStyleFields = {
     .string()
     .optional()
     .describe('Right border as "width,#rrggbb,dashStyle"'),
-  shadingColor: rgbColor
+  shadingColor: hexColor
     .optional()
-    .describe("Paragraph background/shading color"),
+    .describe("Paragraph background/shading color as hex (e.g. '#E8F5E9')"),
 };
 
 // ── Per-tool schemas (17) ──
@@ -168,6 +167,10 @@ export const paragraphStyleFields = {
 // 1. Create document
 export const createDocumentSchema = z.object({
   title: z.string().describe("Title for the new document"),
+  body_text: z
+    .string()
+    .optional()
+    .describe("Optional initial text content for the document"),
 });
 
 // 2. Get document
@@ -206,6 +209,12 @@ export const searchSchema = z.object({
 export const insertTextSchema = z.object({
   documentId,
   text: z.string().describe("Text to insert"),
+  position: z
+    .enum(["start", "end"])
+    .optional()
+    .describe(
+      "Convenience position: 'start' (index 1) or 'end' (append). Overrides index if provided."
+    ),
   ...insertionPoint,
 });
 
@@ -292,11 +301,11 @@ export const formatParagraphSchema = z.object({
     .describe("Bullet/numbering preset (for create)"),
 });
 
-// 10. Manage tables
+// 10. Manage tables (structural operations only)
 export const manageTablesSchema = z.object({
   documentId,
   tabId,
-  action: z
+  operation: z
     .enum([
       "insert_table",
       "insert_row",
@@ -305,12 +314,9 @@ export const manageTablesSchema = z.object({
       "delete_column",
       "merge_cells",
       "unmerge_cells",
-      "column_properties",
-      "row_style",
-      "cell_style",
       "pin_headers",
     ])
-    .describe("Table operation to perform"),
+    .describe("Table structural operation to perform"),
   index: z
     .number()
     .int()
@@ -346,12 +352,42 @@ export const manageTablesSchema = z.object({
     .number()
     .int()
     .optional()
-    .describe("Number of rows to span (for merge/unmerge/cell_style)"),
+    .describe("Number of rows to span (for merge/unmerge)"),
   columnSpan: z
     .number()
     .int()
     .optional()
-    .describe("Number of columns to span (for merge/unmerge/cell_style)"),
+    .describe("Number of columns to span (for merge/unmerge)"),
+  pinnedHeaderRows: z
+    .number()
+    .int()
+    .optional()
+    .describe("Number of rows to pin as headers (0 to unpin)"),
+});
+
+// 10b. Format table (styling operations)
+export const formatTableSchema = z.object({
+  documentId,
+  tabId,
+  operation: z
+    .enum(["cell_style", "row_style", "column_width"])
+    .describe("Table formatting operation"),
+  tableStartIndex: z
+    .number()
+    .int()
+    .describe("Start index of the table in the document"),
+  rowIndex: z.number().int().optional().describe("Row index (0-based)"),
+  columnIndex: z.number().int().optional().describe("Column index (0-based)"),
+  rowSpan: z
+    .number()
+    .int()
+    .optional()
+    .describe("Number of rows to span (for cell_style)"),
+  columnSpan: z
+    .number()
+    .int()
+    .optional()
+    .describe("Number of columns to span (for cell_style)"),
   width: z.number().optional().describe("Column width in points"),
   widthType: z
     .enum(["EVENLY_DISTRIBUTED", "FIXED_WIDTH"])
@@ -365,7 +401,7 @@ export const manageTablesSchema = z.object({
     .boolean()
     .optional()
     .describe("Prevent row from overflowing across pages"),
-  cellBgColor: rgbColor.optional().describe("Cell background color"),
+  cellBgColor: hexColor.optional().describe("Cell background color as hex (e.g. '#E3F2FD')"),
   cellPaddingTop: z
     .number()
     .optional()
@@ -386,17 +422,12 @@ export const manageTablesSchema = z.object({
     .enum(["TOP", "MIDDLE", "BOTTOM"])
     .optional()
     .describe("Vertical content alignment in cell"),
-  pinnedHeaderRows: z
-    .number()
-    .int()
-    .optional()
-    .describe("Number of rows to pin as headers (0 to unpin)"),
 });
 
 // 11. Manage sections
 export const manageSectionsSchema = z.object({
   documentId,
-  action: z
+  operation: z
     .enum([
       "insert_page_break",
       "insert_section_break",
@@ -458,7 +489,7 @@ export const manageSectionsSchema = z.object({
 export const manageHeadersFootersSchema = z.object({
   documentId,
   tabId,
-  action: z
+  operation: z
     .enum([
       "create_header",
       "create_footer",
@@ -485,7 +516,7 @@ export const manageHeadersFootersSchema = z.object({
 export const manageImagesSchema = z.object({
   documentId,
   tabId,
-  action: z
+  operation: z
     .enum(["insert", "replace", "delete_positioned"])
     .describe("Image operation"),
   imageUri: z
@@ -522,7 +553,7 @@ export const manageImagesSchema = z.object({
 export const manageNamedRangesSchema = z.object({
   documentId,
   tabId,
-  action: z
+  operation: z
     .enum(["create", "delete", "replace_content", "list"])
     .describe("Named range operation"),
   name: z.string().optional().describe("Name for the range"),
@@ -546,7 +577,7 @@ export const manageNamedRangesSchema = z.object({
 // 15. Manage tabs
 export const manageTabsSchema = z.object({
   documentId,
-  action: z
+  operation: z
     .enum(["add", "delete", "update_properties"])
     .describe("Tab operation"),
   title: z.string().optional().describe("Title for the new tab"),
@@ -567,7 +598,9 @@ export const updateDocumentStyleSchema = z.object({
   marginRight: z.number().optional().describe("Right margin in points"),
   marginHeader: z.number().optional().describe("Header margin in points"),
   marginFooter: z.number().optional().describe("Footer margin in points"),
-  backgroundColor: rgbColor.optional().describe("Page background color"),
+  backgroundColor: hexColor
+    .optional()
+    .describe("Page background color as hex (e.g. '#FFFFFF')"),
   useFirstPageHeaderFooter: z
     .boolean()
     .optional()
@@ -598,12 +631,3 @@ export const updateDocumentStyleSchema = z.object({
   evenPageFooterId: z.string().optional().describe("Even page footer ID"),
 });
 
-// 17. Insert special element
-export const insertSpecialElementSchema = z.object({
-  documentId,
-  tabId,
-  action: z.enum(["person", "date"]).describe("Special element to insert"),
-  index: z.number().int().describe("Document index for insertion"),
-  segmentId,
-  email: z.string().optional().describe("Email address for @mention"),
-});

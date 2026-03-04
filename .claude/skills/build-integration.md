@@ -160,7 +160,7 @@ export const NOTION_TOOLS: NotionToolDef[] = [
 3. **Category comments** match schemas: `// ── Category (count) ──`
 4. **Cast args** — `a.fieldName as string`, `a.fieldName as number`, etc.
 5. **Clean return objects** — never dump raw API responses. Pick the fields that matter.
-6. **`switch/case` for multi-action tools** with `default: throw new Error(\`Unknown operation: ${op}\`)`
+6. **`switch/case` for multi-action tools** with `default: throw new Error(\`Unknown operation: ${op}\`)`. The discriminator field MUST be named `operation` (not `action`). This is consistent across all integrations (Sheets, Docs, Gmail).
 7. **No error handling in tools** — the MCP handler catches all errors and returns safe messages. Tools should throw on failure.
 8. **No token refresh in tools** — `getValidTokens()` handles this before `execute()` is called.
 
@@ -478,6 +478,7 @@ Apply these principles throughout:
 5. **Composable** — multi-action tools use `switch/case` on an `operation` enum, not separate tools per action
 6. **Defensive** — clean return objects (no raw API dumps), safe error messages (no leaked internals)
 7. **Progressive disclosure** — required fields first, optional fields last, sensible defaults
+8. **LLM-optimized** — prefer formats LLMs generate naturally (hex colors, named positions) over raw API formats (RGB objects, raw indices)
 
 ---
 
@@ -519,6 +520,14 @@ Before declaring the integration complete, verify every item:
 - [ ] All tests pass: `npx vitest run src/lib/integrations/{name}/`
 - [ ] Full suite passes: `npx vitest run` (no regressions)
 
+### Quality
+- [ ] Competitive benchmark: compared tool list against ProtonIQ / other MCP servers
+- [ ] LLM-friendliness: hex colors, convenience params, descriptive errors
+- [ ] End-to-end: tested each tool via MCP `tools/call` (not just schema tests)
+- [ ] No fake tools: every tool does what its description claims
+- [ ] Multi-action tools have ≤ 8 operations each
+- [ ] All multi-action tools use `operation` (not `action`)
+
 ---
 
 ## Common Pitfalls
@@ -535,6 +544,45 @@ Before declaring the integration complete, verify every item:
 | Using shared API keys when OAuth exists | Always use per-user OAuth if the provider supports it |
 | Not requesting offline access | Add `extraAuthParams: { access_type: "offline", prompt: "consent" }` for Google |
 | Building client from env vars | `createClient` receives per-user tokens — use those, not `process.env.API_KEY` |
+| RGB color objects in schemas | Use hex strings (`"#FF0000"`) — LLMs produce these naturally |
+| Using `action` for multi-op discriminator | Use `operation` consistently (ecosystem standard) |
+| Too many operations in one tool (>8) | Split into logical groupings (e.g. structural + formatting) |
+| Generic "An internal error occurred" | Surface API error messages — they help LLMs diagnose and retry |
+| Faking unsupported API operations | Omit the tool entirely — fake results are worse than no results |
+| No end-to-end MCP testing | Schema tests aren't enough — test via actual `tools/call` after deploy |
+
+---
+
+## Step 7: Quality Review & Testing
+
+After the integration passes all schema tests and is registered, perform a quality review before declaring it complete.
+
+### Competitive Benchmarking
+
+- Compare your tool list against ProtonIQ's equivalent (or other MCP servers for that API)
+- Check for missing convenience params, unintuitive input formats, missing tools
+- Document findings — even if your coverage is broader, the comparison may reveal UX gaps
+
+### LLM-Friendliness Review
+
+- **Colors**: use hex strings (`"#FF0000"`), not RGB objects (`{ red: 255, green: 0, blue: 0 }`)
+- **Positions**: add convenience params like `position: "start"/"end"` alongside raw index params
+- **Creation tools**: should accept optional initial content (e.g. `create_document` with `initialText`)
+- **Multi-action tools**: should have ≤ 8 operations; split if larger (e.g. structural + formatting)
+- **Error messages**: surface underlying API error messages, don't swallow them into generic errors
+
+### End-to-End MCP Testing
+
+- After schema tests pass, deploy and test each tool via actual MCP `tools/call`
+- Verify `tools/list` returns correct schemas
+- Test error paths: invalid IDs, expired tokens, missing permissions
+- Confirm error messages are descriptive (not "An internal error occurred")
+
+### No Fake Tools
+
+- If the underlying API doesn't support an operation, don't fake it with a workaround that produces misleading results
+- Better to omit a tool than to ship one that lies about what it does
+- Example: don't insert plain text and call it "insert smart chip"
 
 ---
 
@@ -606,4 +654,4 @@ Use these as reference when building new ones:
 | `google-sheets/` | Helpers, categories, shared fragments, comprehensive schemas |
 | `google-gmail/` | Shared composition fields (`compositionFields`), many tool variations |
 | `google-calendar/` | Comprehensive coverage, default values, clean returns |
-| `google-docs/` | Simpler integration, good starting point |
+| `google-docs/` | Gold standard after quality review — hex colors, `operation`, convenience params, format_table split |

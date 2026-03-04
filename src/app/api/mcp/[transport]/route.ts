@@ -165,14 +165,30 @@ function registerTools(server: McpServer) {
               durationMs: Date.now() - startTime,
               organizationId,
             });
-            const safeMessages = [
+
+            // Determine a useful client-facing message
+            let clientMessage: string;
+            const authMessages = [
               "Token expired and no refresh token available",
               "Token refresh failed. Please reconnect the integration.",
               "Integration not connected",
             ];
-            const clientMessage = safeMessages.includes(message)
-              ? message
-              : "An internal error occurred";
+            if (authMessages.includes(message)) {
+              clientMessage = message;
+            } else if (
+              err &&
+              typeof err === "object" &&
+              "response" in err
+            ) {
+              // Google API errors (GaxiosError) — surface the descriptive message
+              const apiMsg = (
+                err as { response?: { data?: { error?: { message?: string } } } }
+              ).response?.data?.error?.message;
+              clientMessage = apiMsg || message;
+            } else {
+              clientMessage = "An internal error occurred";
+            }
+
             return {
               content: [{ type: "text" as const, text: clientMessage }],
               isError: true,
