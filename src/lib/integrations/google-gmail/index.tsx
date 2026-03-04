@@ -4,13 +4,8 @@ import { GMAIL_TOOLS } from "./tools";
 
 function GmailIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" className="shrink-0">
-      <path d="M2.25 15.75h3V9l-4.5-3.375v9A1.125 1.125 0 002.25 15.75z" fill="#4285F4" />
-      <path d="M12.75 15.75h3a1.125 1.125 0 001.125-1.125v-9L12.75 9z" fill="#34A853" />
-      <path d="M12.75 3.375V9l4.125-3.375L14.625 3.75 12.75 2.25z" fill="#FBBC04" />
-      <path d="M5.25 9V3.375L9 6.375l3.75-3 .001 3.375-3.75 3L5.25 9z" fill="#EA4335" />
-      <path d="M.75 5.625L5.25 9V3.375L3.375 2.25 2.25 3.375z" fill="#C5221F" />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/integrations/gmail.svg" alt="" width={18} height={18} className="shrink-0" />
   );
 }
 
