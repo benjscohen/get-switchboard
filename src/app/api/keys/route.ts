@@ -11,7 +11,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data: keys, error } = await supabase
     .from("api_keys")
-    .select("id, name, key_prefix, last_used_at, created_at, user_id")
+    .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at")
     .eq("organization_id", authResult.organizationId)
     .order("created_at", { ascending: false });
 
@@ -42,6 +42,7 @@ export async function GET() {
       createdAt: k.created_at,
       createdBy: creator?.name ?? creator?.email ?? null,
       isOwn: k.user_id === authResult.userId,
+      revokedAt: k.revoked_at,
     };
   });
 
@@ -93,20 +94,23 @@ export async function DELETE(request: Request) {
   }
 
   const supabase = await createClient();
+  const revokedAt = new Date().toISOString();
 
-  // Org admins/owners can delete any org key; members can only delete their own
+  // Org admins/owners can revoke any org key; members can only revoke their own
   if (authResult.orgRole === "owner" || authResult.orgRole === "admin") {
     await supabase
       .from("api_keys")
-      .delete()
+      .update({ revoked_at: revokedAt })
       .eq("id", id)
-      .eq("organization_id", authResult.organizationId);
+      .eq("organization_id", authResult.organizationId)
+      .is("revoked_at", null);
   } else {
     await supabase
       .from("api_keys")
-      .delete()
+      .update({ revoked_at: revokedAt })
       .eq("id", id)
-      .eq("user_id", authResult.userId);
+      .eq("user_id", authResult.userId)
+      .is("revoked_at", null);
   }
 
   return NextResponse.json({ success: true });

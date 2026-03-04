@@ -382,6 +382,7 @@ const authedHandler = withMcpAuth(
       .from("api_keys")
       .select("user_id, id, organization_id")
       .eq("key_hash", keyHash)
+      .is("revoked_at", null)
       .single();
 
     if (!apiKey) return undefined;

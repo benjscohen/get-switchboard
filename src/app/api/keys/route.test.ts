@@ -28,8 +28,11 @@ function chainMock(resolvedValue: unknown = { data: [], error: null }) {
   const chain = {
     select: vi.fn(() => chain),
     insert: vi.fn(() => chain),
+    update: vi.fn(() => chain),
     delete: vi.fn(() => chain),
     eq: vi.fn(() => chain),
+    is: vi.fn(() => chain),
+    in: vi.fn(() => chain),
     order: vi.fn(() => chain),
     single: vi.fn(() => Promise.resolve(resolvedValue)),
     then: (resolve: (v: unknown) => void) =>
@@ -96,13 +99,25 @@ describe("GET /api/keys", () => {
           key_prefix: "sk_live_abc",
           last_used_at: null,
           created_at: new Date().toISOString(),
+          user_id: "user-1",
+          revoked_at: null,
         },
       ],
       error: null,
     });
+    const profilesChain = chainMock({
+      data: [{ id: "user-1", name: "Test User", email: "test@example.com" }],
+      error: null,
+    });
+    let profileCallCount = 0;
     mockFrom.mockImplementation((table: string) => {
-      if (table === "profiles")
-        return chainMock({ data: { role: "user", organization_id: "org-1", org_role: "member" }, error: null });
+      if (table === "profiles") {
+        profileCallCount++;
+        // First call is requireAuth, second is profile lookup
+        if (profileCallCount === 1)
+          return chainMock({ data: { role: "user", organization_id: "org-1", org_role: "member" }, error: null });
+        return profilesChain;
+      }
       if (table === "api_keys") return keysChain;
       return chainMock();
     });
@@ -113,6 +128,7 @@ describe("GET /api/keys", () => {
     expect(res.status).toBe(200);
     expect(json).toHaveLength(1);
     expect(json[0].id).toBe("key-1");
+    expect(json[0].createdBy).toBe("Test User");
   });
 });
 

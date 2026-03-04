@@ -42,6 +42,7 @@ interface ApiKeyEntry {
   createdAt: string;
   createdBy: string | null;
   isOwn: boolean;
+  revokedAt: string | null;
 }
 
 export function ConnectCard({ origin }: { origin: string }) {
@@ -164,16 +165,24 @@ export function ConnectCard({ origin }: { origin: string }) {
       {keys.length > 0 && (
         <details className="group">
           <summary className="cursor-pointer text-sm text-text-tertiary hover:text-text-secondary">
-            {keys.length} existing key{keys.length !== 1 && "s"}
+            {keys.filter((k) => !k.revokedAt).length} active key{keys.filter((k) => !k.revokedAt).length !== 1 && "s"}
+            {keys.some((k) => k.revokedAt) && `, ${keys.filter((k) => k.revokedAt).length} revoked`}
           </summary>
           <div className="mt-2 space-y-2">
             {keys.map((k) => (
               <div
                 key={k.id}
-                className="flex items-center justify-between rounded-lg bg-bg px-3 py-2"
+                className={`flex items-center justify-between rounded-lg bg-bg px-3 py-2${k.revokedAt ? " opacity-50" : ""}`}
               >
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{k.name}</p>
+                  <p className="text-sm font-medium">
+                    {k.name}
+                    {k.revokedAt && (
+                      <span className="ml-2 text-xs font-normal text-red-400">
+                        Revoked
+                      </span>
+                    )}
+                  </p>
                   <div className="flex items-center gap-2">
                     <p className="font-mono text-xs text-text-tertiary">
                       {k.keyPrefix}...
@@ -189,13 +198,15 @@ export function ConnectCard({ origin }: { origin: string }) {
                   <span className="text-xs text-text-tertiary">
                     {new Date(k.createdAt).toLocaleDateString()}
                   </span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => revoke(k.id)}
-                  >
-                    Revoke
-                  </Button>
+                  {!k.revokedAt && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => revoke(k.id)}
+                    >
+                      Revoke
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}

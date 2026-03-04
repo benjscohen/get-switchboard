@@ -9,6 +9,7 @@ interface ApiKey {
   keyPrefix: string;
   lastUsedAt: string | null;
   createdAt: string;
+  revokedAt: string | null;
 }
 
 export function ApiKeysCard({ userId }: { userId: string }) {
@@ -54,10 +55,17 @@ export function ApiKeysCard({ userId }: { userId: string }) {
       {keys.map((k) => (
         <div
           key={k.id}
-          className="flex items-center justify-between rounded-lg bg-bg px-3 py-2"
+          className={`flex items-center justify-between rounded-lg bg-bg px-3 py-2${k.revokedAt ? " opacity-50" : ""}`}
         >
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{k.name}</p>
+            <p className="text-sm font-medium">
+              {k.name}
+              {k.revokedAt && (
+                <span className="ml-2 text-xs font-normal text-red-400">
+                  Revoked
+                </span>
+              )}
+            </p>
             <p className="font-mono text-xs text-text-tertiary">
               {k.keyPrefix}...
             </p>
@@ -69,15 +77,17 @@ export function ApiKeysCard({ userId }: { userId: string }) {
                 <div>Last used {new Date(k.lastUsedAt).toLocaleDateString()}</div>
               )}
             </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-red-500 hover:bg-red-500/10"
-              onClick={() => revoke(k.id)}
-              disabled={revokingId === k.id}
-            >
-              {revokingId === k.id ? "Revoking..." : "Revoke"}
-            </Button>
+            {!k.revokedAt && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-red-500 hover:bg-red-500/10"
+                onClick={() => revoke(k.id)}
+                disabled={revokingId === k.id}
+              >
+                {revokingId === k.id ? "Revoking..." : "Revoke"}
+              </Button>
+            )}
           </div>
         </div>
       ))}
