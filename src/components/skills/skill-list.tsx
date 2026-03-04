@@ -25,9 +25,16 @@ interface Skill {
 interface SkillListProps {
   skills: Skill[];
   canEdit: boolean;
+  teamNames: Record<string, string>;
   onEdit: (skill: Skill) => void;
   onDelete: (id: string) => void;
   onToggle: (id: string, enabled: boolean) => void;
+}
+
+function scopeBadgeLabel(skill: Skill, teamNames: Record<string, string>): string {
+  if (skill.scope === "organization") return "Organization";
+  if (skill.scope === "team") return teamNames[skill.teamId ?? ""] ?? "Team";
+  return "Personal";
 }
 
 function scopePrefix(scope: string) {
@@ -36,13 +43,16 @@ function scopePrefix(scope: string) {
   return "user";
 }
 
-export function SkillList({ skills, canEdit, onEdit, onDelete, onToggle }: SkillListProps) {
+export function SkillList({
+  skills,
+  canEdit,
+  teamNames,
+  onEdit,
+  onDelete,
+  onToggle,
+}: SkillListProps) {
   if (skills.length === 0) {
-    return (
-      <p className="py-8 text-center text-sm text-text-tertiary">
-        No skills yet.{canEdit && " Create one to get started."}
-      </p>
-    );
+    return null;
   }
 
   return (
@@ -56,6 +66,7 @@ export function SkillList({ skills, canEdit, onEdit, onDelete, onToggle }: Skill
                 <Badge>
                   {scopePrefix(skill.scope)}:{skill.slug}
                 </Badge>
+                <Badge variant="accent">{scopeBadgeLabel(skill, teamNames)}</Badge>
                 {skill.arguments.length > 0 && (
                   <span className="text-xs text-text-tertiary">
                     {skill.arguments.length} arg{skill.arguments.length !== 1 ? "s" : ""}

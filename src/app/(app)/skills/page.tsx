@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabList, TabTrigger, TabPanel } from "@/components/ui/tabs";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { SkillList } from "@/components/skills/skill-list";
 import { SkillEditor } from "@/components/skills/skill-editor";
+import type { SkillTemplate } from "@/lib/skills/templates";
 
 interface SkillArgument {
   name: string;
@@ -41,10 +43,13 @@ interface SkillsData {
 export default function SkillsPage() {
   const [skills, setSkills] = useState<SkillsData>({ organization: [], team: [], user: [] });
   const [teams, setTeams] = useState<Team[]>([]);
+  const [templates, setTemplates] = useState<SkillTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Skill | null>(null);
   const [creating, setCreating] = useState<"organization" | "team" | "user" | null>(null);
   const [orgRole, setOrgRole] = useState<string>("member");
+  const [addingTemplate, setAddingTemplate] = useState<string | null>(null);
+  const [showAllTemplates, setShowAllTemplates] = useState(false);
 
   const fetchSkills = useCallback(async () => {
     const res = await fetch("/api/skills");
@@ -68,17 +73,42 @@ export default function SkillsPage() {
     }
   }, []);
 
+  const fetchTemplates = useCallback(async () => {
+    const res = await fetch("/api/skill-templates");
+    if (res.ok) {
+      setTemplates(await res.json());
+    }
+  }, []);
+
   useEffect(() => {
-    Promise.all([fetchSkills(), fetchTeams(), fetchOrgRole()]).then(() =>
+    Promise.all([fetchSkills(), fetchTeams(), fetchOrgRole(), fetchTemplates()]).then(() =>
       setLoading(false)
     );
-  }, [fetchSkills, fetchTeams, fetchOrgRole]);
+  }, [fetchSkills, fetchTeams, fetchOrgRole, fetchTemplates]);
 
   const isOrgAdmin = orgRole === "owner" || orgRole === "admin";
 
-  // Server-side auth handles actual permissions; UI uses org admin as proxy for editability.
-  // Team leads can also edit team skills — the server enforces this on save.
   const canEditTeamIds = teams.map((t) => t.id);
+
+  // Build team name lookup
+  const teamNames = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const t of teams) map[t.id] = t.name;
+    return map;
+  }, [teams]);
+
+  // Flatten all skills into one list
+  const allSkills = useMemo(
+    () => [...skills.organization, ...skills.team, ...skills.user],
+    [skills]
+  );
+
+  // Track which template slugs are already added
+  const existingSlugs = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of allSkills) set.add(s.slug);
+    return set;
+  }, [allSkills]);
 
   async function handleSave(data: Partial<Skill>) {
     if (editing) {
@@ -113,6 +143,31 @@ export default function SkillsPage() {
     fetchSkills();
   }
 
+  async function handleAddTemplate(template: SkillTemplate) {
+    setAddingTemplate(template.id);
+    try {
+      const scope =
+        template.defaultScope === "organization" && isOrgAdmin
+          ? "organization"
+          : "user";
+      await fetch("/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: template.name,
+          slug: template.slug,
+          description: template.description,
+          content: template.content,
+          arguments: template.arguments,
+          scope,
+        }),
+      });
+      await fetchSkills();
+    } finally {
+      setAddingTemplate(null);
+    }
+  }
+
   if (loading) {
     return (
       <Container className="py-10">
@@ -121,52 +176,113 @@ export default function SkillsPage() {
     );
   }
 
+  const hasSkills = allSkills.length > 0;
+  const visibleTemplates = showAllTemplates || !hasSkills ? templates : templates.slice(0, 4);
+
   return (
     <Container className="py-10">
-      <div className="mb-8 flex items-center justify-between">
+      {/* Header */}
+      <div className="mb-2 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Skills</h1>
         <Button size="sm" onClick={() => setCreating("user")}>
           + New Skill
         </Button>
       </div>
+      <p className="mb-8 text-sm text-text-secondary">
+        Skills are reusable prompt templates available to your MCP clients. Use /skill-name or
+        select from prompts.
+      </p>
 
-      <Tabs defaultTab="organization">
-        <TabList className="mb-6">
-          <TabTrigger id="organization">Organization</TabTrigger>
-          <TabTrigger id="team">Teams</TabTrigger>
-          <TabTrigger id="user">Personal</TabTrigger>
-        </TabList>
+      {/* Templates section */}
+      {!hasSkills && (
+        <p className="mb-4 text-sm text-text-secondary">
+          Get started by adding skills from our templates, or create your own.
+        </p>
+      )}
 
-        <TabPanel id="organization">
+      <div className="mb-8">
+        <h2 className="mb-3 text-sm font-semibold text-text-secondary uppercase tracking-wider">
+          {hasSkills ? "Skill Templates" : "Templates"}
+        </h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {visibleTemplates.map((tpl) => {
+            const alreadyAdded = existingSlugs.has(tpl.slug);
+            const isAdding = addingTemplate === tpl.id;
+            return (
+              <Card key={tpl.id} hover={false} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-medium">{tpl.name}</h3>
+                      <Badge variant={tpl.category === "integration" ? "accent" : "default"}>
+                        {tpl.category === "integration"
+                          ? tpl.requiredIntegration?.replace("_", " ") ?? "Integration"
+                          : "General"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-text-secondary">{tpl.description}</p>
+                  </div>
+                  <div className="shrink-0">
+                    {alreadyAdded ? (
+                      <span className="inline-flex items-center text-xs text-text-tertiary">
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          className="mr-1"
+                        >
+                          <path d="M3 8.5l3.5 3.5 6.5-7" />
+                        </svg>
+                        Added
+                      </span>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleAddTemplate(tpl)}
+                        disabled={isAdding}
+                      >
+                        {isAdding ? "..." : "+ Add"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+
+        {hasSkills && templates.length > 4 && (
+          <button
+            onClick={() => setShowAllTemplates(!showAllTemplates)}
+            className="mt-3 text-xs text-accent hover:underline"
+          >
+            {showAllTemplates
+              ? "Show fewer templates"
+              : `Show all ${templates.length} templates`}
+          </button>
+        )}
+      </div>
+
+      {/* Skills list */}
+      {hasSkills && (
+        <>
+          <h2 className="mb-3 text-sm font-semibold text-text-secondary uppercase tracking-wider">
+            Your Skills
+          </h2>
           <SkillList
-            skills={skills.organization}
-            canEdit={isOrgAdmin}
-            onEdit={setEditing}
-            onDelete={handleDelete}
-            onToggle={handleToggle}
-          />
-        </TabPanel>
-
-        <TabPanel id="team">
-          <SkillList
-            skills={skills.team}
-            canEdit={isOrgAdmin || canEditTeamIds.length > 0}
-            onEdit={setEditing}
-            onDelete={handleDelete}
-            onToggle={handleToggle}
-          />
-        </TabPanel>
-
-        <TabPanel id="user">
-          <SkillList
-            skills={skills.user}
+            skills={allSkills}
             canEdit={true}
+            teamNames={teamNames}
             onEdit={setEditing}
             onDelete={handleDelete}
             onToggle={handleToggle}
           />
-        </TabPanel>
-      </Tabs>
+        </>
+      )}
 
       {(editing || creating) && (
         <SkillEditor
