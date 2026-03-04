@@ -1,4 +1,5 @@
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
+import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { hashApiKey } from "@/lib/crypto";
 import { decrypt } from "@/lib/encryption";
@@ -8,6 +9,9 @@ import { getValidTokens } from "@/lib/integrations/token-refresh";
 import { logUsage } from "@/lib/usage-log";
 import { isToolAllowed } from "@/lib/permissions";
 import { proxyToolCall } from "@/lib/mcp/proxy-client";
+
+// Metadata map for filtering tools/list per-user
+const toolMeta = new Map<string, { integrationId: string; orgId: string | null }>();
 
 // Load enabled custom MCP tools at module init
 const customToolsPromise = supabaseAdmin
@@ -24,6 +28,7 @@ const handler = createMcpHandler(
     // Register builtin integration tools
     for (const integration of allIntegrations) {
       for (const tool of integration.tools) {
+        toolMeta.set(tool.name, { integrationId: integration.id, orgId: null });
         server.tool(
           tool.name,
           tool.description,
@@ -185,6 +190,7 @@ const handler = createMcpHandler(
       const namespacedName = `${srv.slug}__${ct.tool_name}`;
       const integrationId = `custom:${srv.id}`;
 
+      toolMeta.set(namespacedName, { integrationId, orgId: srv.organization_id });
       server.tool(
         namespacedName,
         `[${srv.name}] ${ct.description}`,
@@ -325,6 +331,66 @@ const handler = createMcpHandler(
         }
       );
     }
+
+    // Override tools/list to filter per-user based on connections, org, and permissions
+    const registeredTools = (server as any)._registeredTools as Record<
+      string,
+      {
+        enabled: boolean;
+        description?: string;
+        inputSchema?: unknown;
+        annotations?: unknown;
+      }
+    >;
+
+    server.server.setRequestHandler(ListToolsRequestSchema, (_request, extra) => {
+      const connections = extra.authInfo?.extra?.connections as
+        | Array<{ integrationId: string }>
+        | undefined;
+      const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
+      const permissionsMode = extra.authInfo?.extra?.permissionsMode as string | undefined;
+      const integrationAccess = extra.authInfo?.extra?.integrationAccess as
+        | Array<{ integrationId: string; allowedTools: string[] }>
+        | undefined;
+
+      const connectedIntegrationIds = new Set(
+        connections?.map((c) => c.integrationId) ?? []
+      );
+
+      const tools = Object.entries(registeredTools)
+        .filter(([name, tool]) => {
+          if (!tool.enabled) return false;
+
+          const meta = toolMeta.get(name);
+          if (!meta) return false;
+
+          // Builtin tools: require a connection for the integration
+          if (!meta.integrationId.startsWith("custom:")) {
+            if (!connectedIntegrationIds.has(meta.integrationId)) return false;
+          }
+
+          // Custom tools: org-scoped check (global tools visible to all)
+          if (meta.orgId !== null && meta.orgId !== organizationId) return false;
+
+          // Permissions check
+          if (permissionsMode && integrationAccess) {
+            if (
+              !isToolAllowed(permissionsMode, integrationAccess, meta.integrationId, name)
+            )
+              return false;
+          }
+
+          return true;
+        })
+        .map(([name, tool]) => ({
+          name,
+          description: tool.description,
+          inputSchema: tool.inputSchema ?? { type: "object" as const },
+          annotations: tool.annotations,
+        }));
+
+      return { tools };
+    });
   },
   {
     serverInfo: {

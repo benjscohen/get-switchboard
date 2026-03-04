@@ -22,6 +22,26 @@ export const MCP_CLIENTS: McpClient[] = [
   },
 ];
 
+function buildJsonConfig(
+  url: string,
+  apiKey: string,
+  extraFields?: Record<string, string>
+): string {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        switchboard: {
+          ...extraFields,
+          url,
+          headers: { Authorization: `Bearer ${apiKey}` },
+        },
+      },
+    },
+    null,
+    2
+  );
+}
+
 export function generateSnippet(
   origin: string,
   apiKey: string,
@@ -31,35 +51,13 @@ export function generateSnippet(
 
   switch (clientId) {
     case "claude-desktop":
-      return JSON.stringify(
-        {
-          mcpServers: {
-            switchboard: {
-              url,
-              headers: { Authorization: `Bearer ${apiKey}` },
-            },
-          },
-        },
-        null,
-        2
-      );
+      return buildJsonConfig(url, apiKey);
 
     case "claude-code":
-      return `claude mcp add switchboard ${url} --header "Authorization: Bearer ${apiKey}"`;
+      return `claude mcp add --transport http switchboard ${url} --header "Authorization: Bearer ${apiKey}"`;
 
     case "cursor":
-      return JSON.stringify(
-        {
-          mcpServers: {
-            switchboard: {
-              url,
-              headers: { Authorization: `Bearer ${apiKey}` },
-            },
-          },
-        },
-        null,
-        2
-      );
+      return buildJsonConfig(url, apiKey, { type: "streamable-http" });
 
     default:
       return "";
