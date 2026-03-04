@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Container } from "@/components/ui/container";
+import { UserMenu } from "@/components/app/user-menu";
 
 export default async function AppLayout({
   children,
@@ -19,8 +20,8 @@ export default async function AppLayout({
     .eq("id", user.id)
     .single();
 
-  const displayName = profile?.name ?? user.user_metadata?.full_name ?? user.email;
-  const avatarUrl = profile?.image ?? user.user_metadata?.avatar_url;
+  const displayName = profile?.name ?? user.user_metadata?.full_name ?? user.email ?? "";
+  const avatarUrl = profile?.image ?? user.user_metadata?.avatar_url ?? null;
   const role = profile?.role ?? "user";
   const orgRole = profile?.org_role ?? "member";
   const orgRaw = profile?.organizations as unknown;
@@ -84,49 +85,12 @@ export default async function AppLayout({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-4">
-            {showOrgSettings && (
-              <a
-                href="/org"
-                className="text-sm text-text-secondary transition-colors hover:text-text-primary"
-              >
-                Org Settings
-              </a>
-            )}
-            {role === "admin" && (
-              <a
-                href="/admin"
-                className="text-sm text-accent transition-colors hover:text-accent/80"
-              >
-                Admin
-              </a>
-            )}
-            {avatarUrl && (
-              <img
-                src={avatarUrl}
-                alt=""
-                className="h-7 w-7 rounded-full"
-              />
-            )}
-            <span className="text-sm text-text-secondary">
-              {displayName}
-            </span>
-            <form
-              action={async () => {
-                "use server";
-                const supabase = await createClient();
-                await supabase.auth.signOut();
-                redirect("/");
-              }}
-            >
-              <button
-                type="submit"
-                className="text-sm text-text-tertiary transition-colors hover:text-text-primary"
-              >
-                Sign out
-              </button>
-            </form>
-          </div>
+          <UserMenu
+            displayName={displayName}
+            avatarUrl={avatarUrl}
+            showOrgSettings={showOrgSettings}
+            showAdmin={role === "admin"}
+          />
         </Container>
       </header>
       <main>{children}</main>

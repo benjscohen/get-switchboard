@@ -86,7 +86,7 @@ export default function McpServersPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Custom MCP Servers</h2>
+        <h2 className="text-lg font-semibold">MCP Servers</h2>
         <Button size="sm" onClick={() => setShowForm(!showForm)}>
           {showForm ? "Cancel" : "Add MCP Server"}
         </Button>
