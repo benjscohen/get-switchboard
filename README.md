@@ -2,7 +2,7 @@
 
 **One URL. Every tool.** The corporate app store for AI tools via MCP.
 
-Switchboard gives teams a single MCP endpoint that connects any AI agent to the tools they need — starting with an exhaustive Google Calendar integration. Admins manage integrations, users connect their accounts, and AI agents call tools through a secure, stateless gateway.
+Switchboard gives teams a single MCP endpoint that connects any AI agent to the tools they need — starting with deep Google Workspace integrations (Calendar, Docs, Gmail, Sheets). Admins manage integrations, users connect their accounts, and AI agents call tools through a secure, stateless gateway.
 
 ---
 
@@ -15,71 +15,75 @@ Stripe turned payment infrastructure — one of the most complex, regulated, hig
 **What this means in practice:**
 
 - **5-minute time to first tool call.** A developer should go from "I've never heard of Switchboard" to a working MCP endpoint calling Google Calendar in under 5 minutes. Sign up, connect Google, copy the endpoint URL, paste it into Claude/Cursor, done.
-- **Progressive complexity, not progressive confusion.** The simple path is obvious. Advanced features (custom integrations, org-wide policies, env var vaults) are there when you need them, invisible when you don't. No feature should make the default experience worse.
-- **Docs that teach, not just reference.** Every API endpoint, every tool, every config option should have a clear example. If someone has to read the source code to understand how to use it, we failed.
+- **Progressive complexity, not progressive confusion.** The simple path is obvious. Advanced features (custom MCP servers, org-wide policies, per-user permissions) are there when you need them, invisible when you don't.
 - **Beautiful defaults.** Sensible rate limits out of the box. Encryption on by default. Secure by default. The "I didn't configure anything" path should be production-ready, not a security hole.
-- **Copy-paste-run.** Code snippets in docs should work when pasted. Endpoint URLs should be clickable. API keys should be one click to generate. Every interaction should respect the developer's time.
-
-We're not building infrastructure that enterprises reluctantly adopt. We're building something developers *want* to use because it's genuinely delightful.
+- **Copy-paste-run.** Endpoint URLs should be clickable. API keys should be one click to generate. Every interaction should respect the developer's time.
 
 ---
 
 ## Repo Structure
 
-The root of this repo is a **Next.js 16 landing page** (already built). The product lives in `app/` as a Turborepo monorepo:
+Single Next.js 16 application — no monorepo, no microservices.
 
 ```
 switchboard/
-├── src/                          # Landing page (EXISTING, Next.js 16)
-│   ├── app/page.tsx              # Hero, Problem, HowItWorks, Integrations, Pricing, CTA
-│   ├── app/layout.tsx            # Root layout with Navbar + Footer
-│   ├── app/api/waitlist/         # Waitlist API endpoint
-│   ├── components/sections/      # Hero, Problem, HowItWorks, etc.
-│   ├── components/layout/        # Navbar, Footer
-│   ├── components/ui/            # Button, Card, Badge, Input, etc.
-│   └── lib/                      # Utils, fonts, constants
-├── package.json                  # Root — Turborepo workspace root
-├── pnpm-workspace.yaml           # Workspace definitions
-├── turbo.json                    # Turborepo config
-│
-├── app/
-│   ├── admin/                    # Next.js admin console
-│   │   ├── package.json
-│   │   ├── src/
-│   │   │   ├── app/              # App Router pages
-│   │   │   │   ├── (auth)/       # Login, signup, callback
-│   │   │   │   ├── (dashboard)/  # Dashboard, integrations, members, connect
-│   │   │   │   └── api/          # OAuth callbacks, Stripe webhooks
-│   │   │   ├── components/
-│   │   │   └── lib/
-│   │   └── Dockerfile
-│   │
-│   └── mcp-gateway/              # Express MCP gateway
-│       ├── package.json
-│       ├── src/
-│       │   ├── index.ts          # Express entry point
-│       │   ├── middleware/       # Auth, org-resolver, rate-limit
-│       │   ├── integrations/
-│       │   │   └── google-calendar/
-│       │   │       ├── tools.ts          # All tool definitions
-│       │   │       ├── handlers/         # One handler per tool (~25 handlers)
-│       │   │       ├── schemas.ts        # Zod schemas
-│       │   │       └── client.ts         # Google Calendar API wrapper
-│       │   └── lib/              # Supabase client, token manager, crypto
-│       └── Dockerfile
-│
-├── packages/
-│   ├── db/                       # Shared database types & queries
-│   ├── shared/                   # Shared types, constants, crypto utils
-│   └── tsconfig/                 # Shared TS configs
-│
-└── supabase/
-    ├── config.toml
-    ├── seed.sql
-    └── migrations/
-        ├── 00001_initial_schema.sql
-        ├── 00002_rls_policies.sql
-        └── 00003_functions.sql
+├── src/
+│   ├── app/
+│   │   ├── (marketing)/              # Landing page (Navbar + Footer)
+│   │   │   └── page.tsx              # Hero, Problem, HowItWorks, Integrations, Pricing, CTA
+│   │   ├── (app)/                    # Dashboard (auth-guarded)
+│   │   │   ├── dashboard/page.tsx    # Connections, custom MCP servers, API keys
+│   │   │   ├── org/page.tsx          # Org settings (admin/owner only)
+│   │   │   ├── admin/                # Super-admin panel (users, MCP servers, usage)
+│   │   │   └── layout.tsx            # Dashboard layout with auth guard
+│   │   ├── login/page.tsx            # Google OAuth login
+│   │   ├── auth/callback/route.ts    # OAuth code exchange
+│   │   └── api/
+│   │       ├── mcp/[transport]/      # MCP endpoint (Streamable HTTP)
+│   │       ├── keys/                 # API key CRUD
+│   │       ├── integrations/         # OAuth connect/disconnect/callback
+│   │       ├── org/                  # Org info, members, domains
+│   │       ├── admin/                # Admin: users, MCP servers, stats, usage
+│   │       └── waitlist/             # Waitlist signups
+│   ├── components/
+│   │   ├── sections/                 # Marketing: Hero, Problem, HowItWorks, etc.
+│   │   ├── layout/                   # Navbar, Footer
+│   │   ├── dashboard/                # ConnectCard, IntegrationList, CustomMcpKeyForm
+│   │   ├── admin/                    # StatCard, UsageTable, PermissionsEditor, etc.
+│   │   └── ui/                       # Button, Card, Badge, Input, Select, Tabs, etc.
+│   ├── lib/
+│   │   ├── supabase/                 # server.ts, client.ts, admin.ts
+│   │   ├── integrations/             # Registry, tools, schemas per integration
+│   │   │   ├── google-calendar/      # 33 tools
+│   │   │   ├── google-docs/          # 17 tools
+│   │   │   ├── google-gmail/         # 17 tools
+│   │   │   ├── google-sheets/        # 16 tools
+│   │   │   ├── registry.ts           # Integration registry
+│   │   │   ├── catalog.ts            # Builtin + custom MCP catalog
+│   │   │   ├── token-refresh.ts      # OAuth token refresh logic
+│   │   │   └── types.ts              # IntegrationConfig, CatalogEntry, etc.
+│   │   ├── mcp/
+│   │   │   └── proxy-client.ts       # Custom MCP server proxy (discover + call)
+│   │   ├── api-auth.ts               # requireAuth(), requireAdmin(), requireOrgAdmin()
+│   │   ├── crypto.ts                 # API key generation (sk_live_...) + SHA-256 hashing
+│   │   ├── encryption.ts             # AES-256-GCM token encryption
+│   │   ├── rate-limit.ts             # In-memory rate limiting
+│   │   ├── permissions.ts            # Per-user tool permissions (full/custom modes)
+│   │   ├── usage-log.ts              # Usage logging (fire-and-forget)
+│   │   ├── oauth-state.ts            # OAuth state management
+│   │   ├── constants.ts              # Site config, integrations, pricing
+│   │   └── utils.ts                  # Shared utilities
+│   └── test/
+│       └── setup.ts                  # Vitest setup
+├── supabase/
+│   └── migrations/                   # 6 migration files
+├── .github/workflows/
+│   └── test.yml                      # CI: runs vitest on PRs
+├── middleware.ts                      # Supabase SSR (cookie refresh + route protection)
+├── next.config.ts                    # Standalone output + security headers
+├── vitest.config.ts                  # Test config (coverage on lib + api)
+├── package.json                      # npm, not pnpm
+└── tsconfig.json
 ```
 
 ---
@@ -88,14 +92,17 @@ switchboard/
 
 | Layer | Technology |
 |---|---|
-| **Monorepo** | Turborepo + pnpm workspaces |
-| **Landing Page** | Next.js 16, React 19, Tailwind 4, Motion (existing, root) |
-| **Admin Console** | Next.js 15 (App Router), React 19, shadcn/ui, Tailwind |
-| **MCP Gateway** | Express 5, `@modelcontextprotocol/sdk`, `googleapis` |
-| **Database** | Supabase (Postgres + Auth + RLS) |
-| **Auth** | Supabase Auth (console) + Google OAuth (Calendar) + API keys (MCP) |
+| **Framework** | Next.js 16 (App Router), React 19, TypeScript 5 |
+| **Styling** | Tailwind CSS 4 |
+| **Animation** | Motion (Framer Motion) |
+| **Database** | Supabase (Postgres + RLS) via `@supabase/supabase-js` + `@supabase/ssr` |
+| **Auth** | Supabase Auth with Google OAuth |
+| **MCP** | `mcp-handler` v1.0.7 + `@modelcontextprotocol/sdk` |
+| **Google APIs** | `googleapis` v171 |
+| **Validation** | Zod 4 |
 | **Encryption** | AES-256-GCM (application-level token encryption) |
-| **Deployment** | Railway (admin + gateway services) |
+| **Testing** | Vitest 4, Testing Library |
+| **CI** | GitHub Actions (test on PR) |
 
 ---
 
@@ -103,280 +110,178 @@ switchboard/
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  AI Agent (Claude, GPT, etc.)                                    │
-│  Sends: POST /mcp  +  Authorization: Bearer <api-key>           │
+│  AI Agent (Claude, Cursor, etc.)                                 │
+│  Sends: POST /api/mcp  +  Authorization: Bearer <api-key>       │
 └───────────────────────────────┬──────────────────────────────────┘
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  MCP Gateway (Express 5)                                         │
-│                                                                  │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────────┐  │
-│  │ Auth         │→│ Org Resolver  │→│ Rate Limiter            │  │
-│  │ Middleware   │  │ (slug→org)   │  │ (per-key, per-user)    │  │
-│  └─────────────┘  └──────────────┘  └────────────────────────┘  │
+│  Next.js API Route: /api/mcp/[transport]                         │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
-│  │ McpServer (per-request, stateless)                         │  │
-│  │                                                            │  │
-│  │  google_calendar_*  (33 tools)                             │  │
+│  │ withMcpAuth (mcp-handler)                                  │  │
+│  │  → Hash bearer token (SHA-256), look up api_keys table     │  │
+│  │  → Load profile, permissions, connections, org context     │  │
+│  │  → Rate limit (120 req/min per org)                        │  │
+│  │  → Decrypt stored OAuth tokens (AES-256-GCM)               │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                                                                  │
-│  Token Manager: decrypt stored OAuth token → call Google API     │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │ createMcpHandler (per-request, stateless)                  │  │
+│  │                                                            │  │
+│  │  Builtin tools (83):                                       │  │
+│  │    google_calendar_*  (33)   google_docs_*   (17)          │  │
+│  │    google_gmail_*     (17)   google_sheets_* (16)          │  │
+│  │                                                            │  │
+│  │  Custom MCP proxy tools:                                   │  │
+│  │    {server_slug}__{tool_name}  (org-scoped)                │  │
+│  └────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
-                                │
-                    ┌───────────┴───────────┐
-                    ▼                       ▼
-            ┌──────────────┐       ┌──────────────┐
-            │ Supabase     │       │ Google        │
-            │ (Postgres)   │       │ Calendar API  │
-            │              │       │ v3            │
-            │ - orgs       │       └──────────────┘
-            │ - tokens     │
-            │ - api_keys   │
-            └──────────────┘
+                    │                       │
+        ┌───────────┴──────┐    ┌───────────┴──────┐
+        ▼                  ▼    ▼                  ▼
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ Supabase     │  │ Google       │  │ Custom MCP   │
+│ (Postgres)   │  │ Workspace    │  │ Servers      │
+│              │  │ APIs         │  │ (proxied)    │
+│ - profiles   │  └──────────────┘  └──────────────┘
+│ - api_keys   │
+│ - connections│
+│ - orgs       │
+└──────────────┘
 ```
 
 ### How a Request Flows
 
-1. AI agent sends `POST /{org-slug}/mcp` with `Authorization: Bearer <api-key>`
-2. Auth middleware hashes the key with SHA-256, looks up `api_keys` table
-3. Org resolver maps the slug to the organization and loads enabled integrations
-4. Rate limiter checks per-key and per-user quotas
-5. `McpServer` instantiated per-request (stateless Streamable HTTP transport)
-6. Tool handler decrypts the user's stored Google OAuth token (AES-256-GCM)
-7. Handler calls Google Calendar API v3 with the decrypted token
-8. Response returned via MCP protocol
+1. AI agent sends `POST /api/mcp` with `Authorization: Bearer <api-key>`
+2. `withMcpAuth` hashes the key with SHA-256, looks up `api_keys` table
+3. Loads user profile (status, permissions), org context, and integration access rules
+4. Rate limiter checks per-org quota (120 req/min)
+5. Decrypts the user's stored OAuth tokens (AES-256-GCM)
+6. `createMcpHandler` routes the tool call to the appropriate integration handler
+7. Handler calls the external API (Google, custom MCP server, etc.)
+8. Response returned via MCP protocol (Streamable HTTP transport)
 
 ---
 
-## MCP OAuth Best Practices
+## Builtin Integrations — 83 Tools
 
-### 1. Token Exchange, NOT Token Passthrough
+### Google Calendar (33 tools)
 
-The MCP spec explicitly warns against the "confused deputy" anti-pattern. Switchboard:
-- Receives an MCP bearer token (API key) and validates it
-- Uses **separately stored** Google OAuth credentials to call the Calendar API
-- The MCP token is **never** forwarded to Google
+| Category | Tools |
+|---|---|
+| **Events** (14) | list, get, create, update, patch, delete, move, quick_add, import, list_recurring_instances, rsvp, search, watch, batch |
+| **Calendars** (6) | list, get, create, update, delete, clear |
+| **Calendar List** (4) | get_entry, update_entry, add, remove |
+| **Sharing** (4) | list_sharing_rules, share, update_sharing, unshare |
+| **Availability** (1) | find_free_busy |
+| **Settings** (2) | get_settings, get_setting |
+| **Colors** (1) | get_colors |
+| **Notifications** (1) | stop_watching |
 
-### 2. Stateless Streamable HTTP Transport
+### Google Docs (17 tools)
 
-Each request is independent — no sticky sessions, no session store. Per-request `McpServer` instantiation. Horizontally scalable behind any load balancer.
+create_document, get_document, read_content, search, insert_text, replace_text, delete_content, format_text, format_paragraph, manage_tables, manage_sections, manage_headers_footers, manage_images, manage_named_ranges, manage_tabs, update_document_style, insert_special_element
 
-### 3. Application-Level Token Encryption
+### Google Gmail (17 tools)
 
-Google OAuth tokens are encrypted with AES-256-GCM before storage. The encryption key lives in environment variables, never in the database. Each token gets a unique IV.
+list_messages, get_message, get_attachment, send_message, reply_to_message, forward_message, modify_message, trash_message, batch_modify_messages, list_threads, get_thread, manage_drafts, manage_labels, manage_vacation, manage_filters, get_profile, list_history
 
-### 4. Rate Limiting Per API Key
+### Google Sheets (16 tools)
 
-Critical for MCP servers — LLMs aggressively retry tool calls. Per-token rate limiting with circuit breaker patterns prevent runaway costs.
+get_info, create, search, read, write, append, clear, sort_filter, manage_tabs, copy_tab, modify_structure, format, conditional_format, validate, manage_charts, manage_named_ranges
 
-### 5. Protected Resource Metadata (RFC 9728) — v0.2 Upgrade Path
+### Custom MCP Server Proxying
 
-`/.well-known/oauth-protected-resource` endpoint to advertise authorization server locations. The v0.1 API-key approach provides a clean upgrade path to full MCP OAuth 2.1.
+Beyond builtin integrations, admins can add custom MCP servers that get proxied through Switchboard:
+- **Org-scoped access control** — global servers (null org_id) available to all, org-specific servers restricted to members
+- **Shared or per-user API keys** — shared key set by admin, or each user provides their own
+- **Automatic tool discovery** — tools discovered from the remote server and namespaced as `{server_slug}__{tool_name}`
+- **Unified auth and rate limiting** — all requests go through the same API key auth and rate limiting
 
 ---
 
-## Note: Progressive Disclosure of Tools
+## Multi-Tenant Architecture
 
-As the tool count grows (100+ across integrations), token cost and tool-selection accuracy become concerns — each tool definition is ~400-500 tokens, and LLMs lose accuracy past ~30 tools in a flat list.
+Switchboard uses domain-based organization routing:
 
-**Today, this is largely a solved problem on the client side.** Claude Code already implements `ToolSearch` with deferred loading. The Claude API supports `defer_loading: true` per tool. As the MCP ecosystem matures, more clients will follow — the spec is actively standardizing `tools/discover` and `tools/load` ([Discussion #532](https://github.com/orgs/modelcontextprotocol/discussions/532), [SEP #1888](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1888)).
-
-**Our stance:** Don't over-engineer server-side progressive disclosure while clients are solving this. If we hit a point where dumb clients (no built-in tool search) are a significant user segment, we'll add a `find_tools` meta-tool with semantic search and schema-on-demand. Until then, we focus on making each tool definition as clean and well-documented as possible so client-side discovery works well.
-
----
-
-## Google Calendar Tools — Complete Reference
-
-33 MCP tools covering all 44 Google Calendar API v3 methods across 8 resource types.
-
-### Events (14 tools)
-
-| Tool | API Method | Description |
-|---|---|---|
-| `google_calendar_list_events` | Events.list | List events with filtering (date range, calendar, query, pagination) |
-| `google_calendar_get_event` | Events.get | Get full event details |
-| `google_calendar_create_event` | Events.insert | Create event (attendees, location, recurrence, reminders, Google Meet, attachments, all-day, focus time, out-of-office, working location) |
-| `google_calendar_update_event` | Events.update | Full event update |
-| `google_calendar_patch_event` | Events.patch | Partial event update (change just one field) |
-| `google_calendar_delete_event` | Events.delete | Delete event with notification control |
-| `google_calendar_move_event` | Events.move | Move event to a different calendar |
-| `google_calendar_quick_add` | Events.quickAdd | Create event from natural language ("Lunch with Bob Tuesday at noon") |
-| `google_calendar_import_event` | Events.import | Import a private copy of an existing event (iCal) |
-| `google_calendar_list_recurring_instances` | Events.instances | List all occurrences of a recurring event |
-| `google_calendar_rsvp` | Events.patch | Accept/decline/tentative an event invitation |
-| `google_calendar_search_events` | Events.list (q) | Full-text search across events |
-| `google_calendar_watch_events` | Events.watch | Set up push notifications for event changes |
-| `google_calendar_batch_events` | Batch API | Batch create/update/delete multiple events |
-
-### Calendars (6 tools)
-
-| Tool | API Method | Description |
-|---|---|---|
-| `google_calendar_list_calendars` | CalendarList.list | List all calendars the user has access to |
-| `google_calendar_get_calendar` | Calendars.get | Get calendar metadata (name, timezone, etc.) |
-| `google_calendar_create_calendar` | Calendars.insert | Create a new secondary calendar |
-| `google_calendar_update_calendar` | Calendars.update | Update calendar metadata |
-| `google_calendar_delete_calendar` | Calendars.delete | Delete a secondary calendar |
-| `google_calendar_clear_calendar` | Calendars.clear | Delete ALL events from primary calendar |
-
-### Calendar List / Personalization (4 tools)
-
-| Tool | API Method | Description |
-|---|---|---|
-| `google_calendar_get_calendar_entry` | CalendarList.get | Get personalized calendar entry (colors, visibility) |
-| `google_calendar_update_calendar_entry` | CalendarList.patch | Update calendar colors, visibility, default reminders |
-| `google_calendar_add_calendar` | CalendarList.insert | Add an existing calendar to the user's list |
-| `google_calendar_remove_calendar` | CalendarList.delete | Remove calendar from the user's list |
-
-### Sharing & Permissions (4 tools)
-
-| Tool | API Method | Description |
-|---|---|---|
-| `google_calendar_list_sharing_rules` | ACL.list | List all sharing rules for a calendar |
-| `google_calendar_share_calendar` | ACL.insert | Share calendar with user/group/domain (set access level) |
-| `google_calendar_update_sharing` | ACL.update | Change sharing permissions |
-| `google_calendar_unshare_calendar` | ACL.delete | Remove sharing access |
-
-### Availability (1 tool)
-
-| Tool | API Method | Description |
-|---|---|---|
-| `google_calendar_find_free_busy` | Freebusy.query | Query free/busy across multiple calendars and users |
-
-### Settings (2 tools)
-
-| Tool | API Method | Description |
-|---|---|---|
-| `google_calendar_get_settings` | Settings.list | Get all user settings (timezone, date format, week start, etc.) |
-| `google_calendar_get_setting` | Settings.get | Get a specific setting value |
-
-### Colors (1 tool)
-
-| Tool | API Method | Description |
-|---|---|---|
-| `google_calendar_get_colors` | Colors.get | Get available color palette for events and calendars |
-
-### Notifications (1 tool)
-
-| Tool | API Method | Description |
-|---|---|---|
-| `google_calendar_stop_watching` | Channels.stop | Stop a push notification channel |
-
-### Key Event Features Supported
-
-- **All event types**: Default, Focus Time, Out of Office, Working Location, Birthday
-- **Recurrence**: Full RFC 5545 support (RRULE, RDATE, EXDATE)
-- **Conference data**: Google Meet link creation
-- **Attachments**: Google Drive file attachments
-- **Extended properties**: Custom metadata (private and shared)
-- **Attendee management**: Add/remove attendees, optional flag, additional guests
-- **Reminders**: Custom overrides (email/popup, up to 5 per event)
-- **Visibility/transparency**: Public/private, busy/free
-- **Natural language**: QuickAdd for creating events from plain text
+- Every user belongs to exactly one organization
+- On signup, the `handle_new_user()` trigger extracts the email domain, checks against `personal_email_domains` (gmail.com, etc.), and either matches to an existing org via `organization_domains` or creates a personal org
+- Org roles: `owner`, `admin`, `member`
+- API keys are org-scoped — they inherit the creating user's connections
+- Connections (OAuth tokens) are per-user
 
 ---
 
 ## Database Schema
 
-6 core tables in Supabase (Postgres) with Row Level Security on all tables.
+Supabase Postgres with Row Level Security on all tables. 6 migration files.
 
-### `organizations`
-| Column | Type | Notes |
+### Core Tables
+
+| Table | Purpose | Key Columns |
 |---|---|---|
-| id | uuid | PK |
-| name | text | Display name |
-| slug | text | Unique, used in MCP URL (`/{slug}/mcp`) |
-| plan | text | `free`, `pro`, `enterprise` |
-| stripe_customer_id | text | Nullable |
-| created_at | timestamptz | |
+| `organizations` | Multi-tenant orgs | id, name, slug, is_personal |
+| `organization_domains` | Maps email domains to orgs | organization_id, domain, is_primary |
+| `personal_email_domains` | Lookup (gmail.com, etc.) | domain (PK) |
+| `profiles` | Users | id, email, name, role, status, permissions_mode, organization_id, org_role |
+| `connections` | Encrypted OAuth tokens (per-user) | user_id, integration_id, access_token, refresh_token, expires_at |
+| `api_keys` | MCP auth (org-scoped) | user_id, organization_id, key_hash, key_prefix, name |
+| `usage_logs` | Tool usage tracking | user_id (text), tool_name, integration_id, status, duration_ms, organization_id |
+| `user_integration_access` | Per-user tool permissions | user_id, integration_id, allowed_tools[] |
+| `custom_mcp_servers` | Custom MCP server configs | name, slug, server_url, auth_type, shared_api_key, key_mode, organization_id |
+| `custom_mcp_tools` | Tools from custom servers | server_id, tool_name, description, input_schema, enabled |
+| `custom_mcp_user_keys` | Per-user keys for custom servers | user_id, server_id, api_key |
+| `waitlist_entries` | Waitlist signups | email |
 
-### `organization_members`
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| organization_id | uuid | FK → organizations |
-| user_id | uuid | FK → auth.users |
-| role | text | `admin`, `member` |
-| created_at | timestamptz | |
+### Key Relationships
 
-### `integrations`
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| slug | text | `google-calendar` |
-| name | text | Display name |
-| description | text | |
-| icon_url | text | |
-| oauth_scopes | text[] | Required scopes |
-
-Seeded with `google-calendar` for v0.1.
-
-### `organization_integrations`
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| organization_id | uuid | FK → organizations |
-| integration_id | uuid | FK → integrations |
-| enabled | boolean | |
-| created_at | timestamptz | |
-
-### `user_oauth_tokens`
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| user_id | uuid | FK → auth.users |
-| organization_id | uuid | FK → organizations |
-| integration_id | uuid | FK → integrations |
-| encrypted_access_token | text | AES-256-GCM encrypted |
-| encrypted_refresh_token | text | AES-256-GCM encrypted |
-| iv | text | Unique initialization vector |
-| token_expires_at | timestamptz | |
-| scopes | text[] | Granted scopes |
-| created_at | timestamptz | |
-
-### `api_keys`
-| Column | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| organization_id | uuid | FK → organizations |
-| user_id | uuid | FK → auth.users (who created it) |
-| key_hash | text | SHA-256 hash (raw key shown once) |
-| name | text | Human-readable label |
-| last_used_at | timestamptz | |
-| expires_at | timestamptz | Nullable |
-| created_at | timestamptz | |
+- `profiles.organization_id` → `organizations.id` (every user belongs to one org)
+- `profiles.role` = platform-level (`admin`/`user`); `profiles.org_role` = org-level (`owner`/`admin`/`member`)
+- `api_keys.organization_id` → `organizations.id` (NOT NULL, org-scoped)
+- `api_keys.user_id` = creator (audit trail; their connections are used for tool calls)
+- `connections` are per-user (OAuth tokens are personal)
+- `custom_mcp_servers.organization_id` nullable (null = global)
 
 ---
 
 ## Auth Flows
 
-### 1. Admin Console — Supabase Auth
+### 1. Dashboard — Supabase Auth + Google OAuth
 
-Standard email/password or Google social login via Supabase Auth. Handles session management, password reset, etc.
+Users sign in via Google OAuth through Supabase Auth. The OAuth callback at `/auth/callback` exchanges the code for a session. Middleware at `middleware.ts` refreshes cookies and protects `/dashboard` and `/admin` routes.
 
-### 2. Google Calendar OAuth — Per-User Token Exchange
+### 2. Integration OAuth — Per-User Token Exchange
 
 ```
-User clicks "Connect Google Calendar" in admin console
-  → Redirect to Google OAuth consent screen
-  → access_type: 'offline', prompt: 'consent', PKCE enabled
-  → Google redirects back with authorization code
-  → Server exchanges code for access + refresh tokens
-  → Tokens encrypted with AES-256-GCM
-  → Stored in user_oauth_tokens table
+User clicks "Connect" on an integration in the dashboard
+  → Redirect to provider OAuth consent screen (e.g., Google)
+  → Provider redirects back with authorization code
+  → /api/integrations/callback exchanges code for tokens
+  → Tokens encrypted with AES-256-GCM, stored in connections table
 ```
 
 ### 3. MCP Endpoint — API Key Auth
 
 ```
-Admin generates API key in console
+Admin generates API key in dashboard
   → Raw key shown ONCE (e.g., sk_live_abc123...)
   → SHA-256 hash stored in api_keys table
-  → AI agent includes key in Authorization header
-  → Gateway hashes incoming key, matches against stored hash
+  → AI agent includes key in Authorization: Bearer header
+  → withMcpAuth hashes incoming key, matches against stored hash
 ```
+
+---
+
+## Security
+
+- **RLS on all tables** — Supabase Row Level Security enforced; service-role client used only for MCP, admin, and public endpoints
+- **AES-256-GCM encryption** — OAuth tokens encrypted at rest with unique IV per token. Format: `v1:iv:tag:ciphertext`
+- **SHA-256 API key hashing** — Raw keys shown once, only hashes stored
+- **Rate limiting** — 120 req/min per organization (in-memory)
+- **Security headers** — X-Frame-Options DENY, HSTS, CSP, Permissions-Policy (no camera/mic/geo)
+- **Stateless MCP** — Per-request handler, no sticky sessions. Horizontally scalable.
+- **Token exchange, not passthrough** — MCP bearer token is never forwarded to external APIs. Separately stored OAuth credentials are used.
 
 ---
 
@@ -385,14 +290,13 @@ Admin generates API key in console
 ### Prerequisites
 
 - Node.js 20+
-- pnpm 9+
 - Supabase CLI (`npx supabase init`)
-- Google Cloud project with Calendar API enabled
+- Google Cloud project with Calendar, Docs, Gmail, and Sheets APIs enabled
 - Google OAuth 2.0 credentials (Web application type)
 
 ### Environment Variables
 
-**`app/admin/.env.local`**
+**`.env.local`**
 ```env
 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
@@ -400,26 +304,15 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-GOOGLE_REDIRECT_URI=http://localhost:3001/api/auth/google/callback
-```
 
-**`app/mcp-gateway/.env`**
-```env
-PORT=4000
-SUPABASE_URL=http://127.0.0.1:54321
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-
-TOKEN_ENCRYPTION_KEY=your-32-byte-hex-key
+TOKEN_ENCRYPTION_KEY=your-32-byte-base64-key
 ```
 
 ### Local Development
 
 ```bash
 # Install dependencies
-pnpm install
+npm install
 
 # Start Supabase locally
 npx supabase start
@@ -427,20 +320,16 @@ npx supabase start
 # Run migrations
 npx supabase db reset
 
-# Start all services (landing page, admin, gateway)
-pnpm dev
+# Start dev server (with Turbopack)
+npm run dev
 ```
 
-| Service | URL |
-|---|---|
-| Landing page | http://localhost:3000 |
-| Admin console | http://localhost:3001 |
-| MCP gateway | http://localhost:4000 |
+App runs at **http://localhost:3000**.
 
 ### Test the MCP Endpoint
 
 ```bash
-curl -X POST http://localhost:4000/your-org-slug/mcp \
+curl -X POST http://localhost:3000/api/mcp \
   -H "Authorization: Bearer sk_live_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -450,89 +339,23 @@ curl -X POST http://localhost:4000/your-org-slug/mcp \
   }'
 ```
 
----
+### Running Tests
 
-## Implementation Phases
-
-### Phase 1 — Foundation
-- Turborepo monorepo setup with pnpm workspaces
-- `pnpm-workspace.yaml` and `turbo.json`
-- Supabase project initialization
-- Database migrations (all 6 tables + RLS policies)
-- Shared packages (`packages/db`, `packages/shared`, `packages/tsconfig`)
-
-### Phase 2 — Admin Console Auth & Org
-- Next.js app in `app/admin/`
-- Supabase Auth (login, signup, password reset)
-- Organization CRUD (create, invite members, manage roles)
-- Dashboard layout with sidebar navigation
-
-### Phase 3 — Integrations & OAuth
-- Google Calendar OAuth flow (consent → token exchange → encrypted storage)
-- Token encryption/decryption utilities (AES-256-GCM)
-- API key generation and management UI
-- "Connect" page showing integration status
-
-### Phase 4 — MCP Gateway Core
-- Express 5 app in `app/mcp-gateway/`
-- Auth middleware (API key validation via SHA-256 hash lookup)
-- Org resolver middleware (slug → organization)
-- Rate limiting middleware (per-key, per-user)
-- MCP SDK integration (Streamable HTTP transport, per-request `McpServer`)
-- Token manager (decrypt stored OAuth tokens for API calls)
-
-### Phase 5 — Google Calendar Tools
-- All 33 tool definitions with Zod input schemas
-- Handler implementations (one file per handler group)
-- Google Calendar API v3 client wrapper
-- End-to-end testing with real Google Calendar
-
-### Phase 6 — Deployment
-- Dockerfiles for admin console and MCP gateway
-- Railway configuration (two services)
-- Custom domain + DNS setup
-- Production rate limiting and error handling
-- Audit logging
-
-### Phase 7 — Stripe (Deferrable)
-- Billing integration
-- Plan enforcement
-- Usage metering
-
-### Phase 8 — Secure Environment Variable Vault
-- Allow users to securely store environment variables (API keys, secrets, config) in Switchboard
-- Sync env vars across devices — developers pull their `.env` from Switchboard instead of passing secrets through Slack/email
-- Scoped access: org-wide variables (shared DB credentials, service URLs) vs. user-specific variables (personal API tokens)
-- CLI tool or MCP integration to inject stored variables into local dev environments (`switchboard env pull`)
-- Encryption at rest (AES-256-GCM, same pattern as OAuth tokens) with audit logging for access
-
-### Phase 9 — User-Contributed Integrations
-- Allow users to add custom integrations beyond the built-in set (Google Calendar, etc.)
-- Two scopes: **company-wide** (admin publishes an integration available to all org members) and **user-specific** (individual users add personal integrations only they can access)
-- Integration authoring UI: define tool names, schemas, OAuth config, and handler endpoints
-- Support for bring-your-own MCP server (proxy through Switchboard for unified auth and rate limiting)
-- Community integration marketplace — orgs can share and discover integrations built by other teams
+```bash
+npm test              # Run all tests
+npm run test:watch    # Watch mode
+npm run test:coverage # Coverage report (src/lib + src/app/api)
+```
 
 ---
 
-## Deployment
+## Progressive Disclosure of Tools
 
-Both services deploy to Railway as separate containers.
+As the tool count grows (83 builtin + custom), token cost and tool-selection accuracy become concerns — each tool definition is ~400-500 tokens, and LLMs lose accuracy past ~30 tools in a flat list.
 
-```
-Railway Project: switchboard
-├── Service: admin    (app/admin/Dockerfile)     → admin.switchboard.dev
-├── Service: gateway  (app/mcp-gateway/Dockerfile) → api.switchboard.dev
-└── Service: supabase (managed)                  → db.switchboard.dev
-```
+**Today, this is largely a solved problem on the client side.** Claude Code already implements `ToolSearch` with deferred loading. The Claude API supports `defer_loading: true` per tool. As the MCP ecosystem matures, more clients will follow.
 
-### MCP Endpoint URL Pattern
-
-```
-https://api.switchboard.dev/{org-slug}/mcp
-```
-
-Each organization gets a unique slug. AI agents configure this single URL to access all enabled integrations.
+**Our stance:** Don't over-engineer server-side progressive disclosure while clients are solving this. If we hit a point where dumb clients (no built-in tool search) are a significant user segment, we'll add a `find_tools` meta-tool with semantic search and schema-on-demand. Until then, we focus on making each tool definition as clean and well-documented as possible so client-side discovery works well.
 
 ---
 

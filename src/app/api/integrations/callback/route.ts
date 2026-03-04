@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
     : null;
 
   // Upsert connection
-  await supabaseAdmin
+  const { error: upsertError } = await supabaseAdmin
     .from("connections")
     .upsert(
       {
@@ -104,6 +104,13 @@ export async function GET(req: NextRequest) {
       },
       { onConflict: "user_id,integration_id" }
     );
+
+  if (upsertError) {
+    console.error("Connection upsert failed:", upsertError);
+    return NextResponse.redirect(
+      `${getAppOrigin(req)}/dashboard?error=save_failed`
+    );
+  }
 
   return NextResponse.redirect(
     `${getAppOrigin(req)}/dashboard?connected=${stored.integrationId}`
