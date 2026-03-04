@@ -85,12 +85,17 @@ export default async function AppLayout({
                 {org.name}
               </span>
             )}
+            <Link
+              href="/skills"
+              className="text-sm text-text-secondary transition-colors hover:text-text-primary"
+            >
+              Skills
+            </Link>
           </div>
           <UserMenu
             displayName={displayName}
             avatarUrl={avatarUrl}
-            showOrgSettings={showOrgSettings}
-            showAdmin={role === "admin"}
+            showSettings={showOrgSettings || role === "admin"}
           />
         </Container>
       </header>

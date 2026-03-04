@@ -48,15 +48,21 @@ export function IntegrationList({
   proxyIntegrations = [],
   perUserProxyIntegrations = [],
   initialCustomIntegrations = [],
+  subtitle,
 }: {
   initialIntegrations: IntegrationItem[];
   proxyIntegrations?: IntegrationItem[];
   perUserProxyIntegrations?: PerUserProxyItem[];
   initialCustomIntegrations?: CustomMcpItem[];
+  subtitle?: string;
 }) {
-  const [integrations, setIntegrations] = useState(initialIntegrations);
+  const [integrations, setIntegrations] = useState(
+    [...initialIntegrations].sort((a, b) => Number(a.connected) - Number(b.connected))
+  );
   const [customIntegrations, setCustomIntegrations] = useState(initialCustomIntegrations);
-  const [perUserProxies, setPerUserProxies] = useState(perUserProxyIntegrations);
+  const [perUserProxies, setPerUserProxies] = useState(
+    [...perUserProxyIntegrations].sort((a, b) => Number(a.hasPersonalKey) - Number(b.hasPersonalKey))
+  );
 
   const handleDisconnect = (id: string) => {
     setIntegrations((prev) =>
@@ -90,9 +96,12 @@ export function IntegrationList({
 
   return (
     <Card hover={false}>
-      <h2 className="mb-4 text-sm font-medium text-text-secondary">
+      <h2 className={`text-sm font-medium text-text-secondary ${subtitle ? "mb-1" : "mb-4"}`}>
         Integrations
       </h2>
+      {subtitle && (
+        <p className="mb-4 text-xs text-text-tertiary">{subtitle}</p>
+      )}
       <div className="space-y-3">
         {integrations.map((integration) => (
           <IntegrationRow

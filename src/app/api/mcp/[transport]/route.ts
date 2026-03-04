@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { ListToolsRequestSchema, ListPromptsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { withMcpAuth } from "mcp-handler";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { hashApiKey } from "@/lib/crypto";
@@ -16,6 +16,13 @@ import { logUsage } from "@/lib/usage-log";
 import { isToolAllowed } from "@/lib/permissions";
 import { proxyToolCall } from "@/lib/mcp/proxy-client";
 import { filterToolsForUser, type ToolMeta } from "@/lib/mcp/tool-filtering";
+import {
+  filterSkillsForUser,
+  skillPromptName,
+  interpolateSkillContent,
+  type SkillRecord,
+} from "@/lib/mcp/skill-filtering";
+import { z } from "zod";
 
 // Metadata map for filtering tools/list per-user
 const toolMeta = new Map<string, ToolMeta>();
@@ -48,6 +55,130 @@ let resolvedProxyTools: { tools: ProxyTool[]; fromFallback: boolean } | null = n
 proxyToolsPromise.then((r) => {
   resolvedProxyTools = r;
 });
+
+// Load all enabled skills at module init
+const skillsPromise = supabaseAdmin
+  .from("skills")
+  .select("id, name, slug, description, content, arguments, organization_id, team_id, user_id, enabled")
+  .eq("enabled", true)
+  .then((res) => {
+    if (res.error) console.error("[MCP] skills query error:", res.error);
+    return (res.data ?? []) as SkillRecord[];
+  });
+
+let resolvedSkills: SkillRecord[] | null = null;
+skillsPromise.then((skills) => {
+  resolvedSkills = skills;
+});
+
+function registerSkills(server: McpServer) {
+  const skills = resolvedSkills ?? [];
+
+  // Register each skill as an MCP prompt
+  for (const skill of skills) {
+    const promptName = skillPromptName(skill);
+
+    if (skill.arguments.length > 0) {
+      const zodShape: Record<string, z.ZodString | z.ZodOptional<z.ZodString>> = {};
+      for (const arg of skill.arguments) {
+        zodShape[arg.name] = arg.required
+          ? z.string().describe(arg.description || "")
+          : z.string().describe(arg.description || "").optional();
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      server.prompt(promptName, skill.description || skill.name, zodShape as any, (args: Record<string, string>) => ({
+        messages: [{ role: "user" as const, content: { type: "text" as const, text: interpolateSkillContent(skill.content, args) } }],
+      }));
+    } else {
+      server.prompt(promptName, skill.description || skill.name, () => ({
+        messages: [{ role: "user" as const, content: { type: "text" as const, text: skill.content } }],
+      }));
+    }
+  }
+
+  // Register list_skills tool
+  server.tool(
+    "list_skills",
+    "List available skills (prompt templates) for the current user",
+    {},
+    async (_args, extra) => {
+      const userId = extra.authInfo?.extra?.userId as string | undefined;
+      const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
+      const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
+
+      const visible = filterSkillsForUser(skills, { userId, organizationId, teamIds });
+      const list = visible.map((s) => ({
+        name: skillPromptName(s),
+        description: s.description,
+        argumentCount: s.arguments.length,
+      }));
+
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(list, null, 2) }],
+      };
+    }
+  );
+
+  // Register get_skill tool
+  server.tool(
+    "get_skill",
+    "Get a skill's content by its prompt name (e.g. org:code-review)",
+    { name: z.string().describe("The skill prompt name (e.g. org:code-review)") },
+    async (args, extra) => {
+      const userId = extra.authInfo?.extra?.userId as string | undefined;
+      const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
+      const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
+
+      const visible = filterSkillsForUser(skills, { userId, organizationId, teamIds });
+      const requestedName = args.name;
+      const skill = visible.find((s) => skillPromptName(s) === requestedName);
+
+      if (!skill) {
+        return {
+          content: [{ type: "text" as const, text: `Skill "${requestedName}" not found or not available` }],
+          isError: true,
+        };
+      }
+
+      const content = skill.content;
+
+      return {
+        content: [{ type: "text" as const, text: content }],
+      };
+    }
+  );
+
+  // Override prompts/list to filter per-user
+  const registeredPrompts = (server as unknown as { _registeredPrompts: Record<string, {
+    description?: string;
+    argsSchema?: unknown;
+  }> })._registeredPrompts;
+
+  server.server.setRequestHandler(ListPromptsRequestSchema, (_request, extra) => {
+    const userId = extra.authInfo?.extra?.userId as string | undefined;
+    const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
+    const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
+
+    const visible = filterSkillsForUser(skills, { userId, organizationId, teamIds });
+    const visibleNames = new Set(visible.map(skillPromptName));
+
+    const prompts = Object.entries(registeredPrompts)
+      .filter(([name]) => visibleNames.has(name))
+      .map(([name, prompt]) => ({
+        name,
+        description: prompt.description,
+        arguments: skills
+          .find((s) => skillPromptName(s) === name)
+          ?.arguments.map((a) => ({
+            name: a.name,
+            description: a.description,
+            required: a.required,
+          })) ?? [],
+      }));
+
+    return { prompts };
+  });
+}
 
 function registerTools(server: McpServer) {
   // Register builtin integration tools
@@ -543,12 +674,15 @@ function registerTools(server: McpServer) {
 }
 
 async function mcpHandler(req: Request): Promise<Response> {
-  // Ensure custom tools and proxy tools are loaded before first request
+  // Ensure custom tools, proxy tools, and skills are loaded before first request
   if (resolvedCustomTools === null) {
     resolvedCustomTools = await customToolsPromise;
   }
   if (resolvedProxyTools === null) {
     resolvedProxyTools = await proxyToolsPromise;
+  }
+  if (resolvedSkills === null) {
+    resolvedSkills = await skillsPromise;
   }
 
   // Auto-discover proxy tools if we're using fallback (DB is empty)
@@ -566,6 +700,7 @@ async function mcpHandler(req: Request): Promise<Response> {
     { name: "switchboard", version: "1.0.0" },
   );
   registerTools(server);
+  registerSkills(server);
   await server.connect(transport);
 
   const authInfo = (req as Request & { auth?: unknown }).auth as
@@ -672,6 +807,14 @@ const authedHandler = withMcpAuth(
       proxyUserKeys[k.integration_id] = decrypt(k.api_key);
     }
 
+    // Load team memberships for skill filtering
+    const { data: teamMemberships } = await supabaseAdmin
+      .from("team_members")
+      .select("team_id")
+      .eq("user_id", apiKey.user_id);
+
+    const teamIds = (teamMemberships ?? []).map((m) => m.team_id);
+
     return {
       token: bearerToken,
       clientId: apiKey.user_id,
@@ -686,6 +829,7 @@ const authedHandler = withMcpAuth(
         customMcpKeys,
         integrationOrgKeys,
         proxyUserKeys,
+        teamIds,
       },
     };
   },

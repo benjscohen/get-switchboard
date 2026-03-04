@@ -3,22 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const links = [
-  { href: "/admin", label: "Overview" },
-  { href: "/admin/users", label: "Users" },
-  { href: "/admin/usage", label: "Usage Logs" },
-  { href: "/admin/mcp-servers", label: "MCP Servers" },
-];
+interface SettingsNavProps {
+  tabs: { href: string; label: string }[];
+}
 
-export function AdminNav() {
+export function SettingsNav({ tabs }: SettingsNavProps) {
   const pathname = usePathname();
 
   return (
     <nav className="flex gap-1">
-      {links.map(({ href, label }) => {
+      {tabs.map(({ href, label }, i) => {
         const isActive =
-          href === "/admin"
-            ? pathname === "/admin"
+          i === 0
+            ? pathname === href
             : pathname.startsWith(href);
 
         return (

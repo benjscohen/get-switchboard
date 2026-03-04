@@ -184,13 +184,22 @@ export default async function DashboardPage() {
       <DashboardToasts />
       <h1 className="mb-8 text-2xl font-bold">Dashboard</h1>
       <div className="space-y-6">
+        <ConnectCard
+          origin={origin}
+          initialKeys={initialKeys}
+          connectionStats={{
+            connected: integrations.filter(i => i.connected).length
+              + perUserProxyIntegrations.filter(i => i.hasPersonalKey).length,
+            total: integrations.length + perUserProxyIntegrations.length,
+          }}
+        />
         <IntegrationList
           initialIntegrations={integrations}
           proxyIntegrations={proxyIntegrations}
           perUserProxyIntegrations={perUserProxyIntegrations}
           initialCustomIntegrations={customIntegrations}
+          subtitle="Connect services to make their tools available through your MCP client."
         />
-        <ConnectCard origin={origin} initialKeys={initialKeys} />
       </div>
     </Container>
   );

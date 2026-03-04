@@ -8,15 +8,13 @@ import { createClient } from "@/lib/supabase/client";
 interface UserMenuProps {
   displayName: string;
   avatarUrl: string | null;
-  showOrgSettings: boolean;
-  showAdmin: boolean;
+  showSettings: boolean;
 }
 
 export function UserMenu({
   displayName,
   avatarUrl,
-  showOrgSettings,
-  showAdmin,
+  showSettings,
 }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -66,24 +64,16 @@ export function UserMenu({
 
       {open && (
         <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border bg-bg py-1 shadow-lg">
-          {showOrgSettings && (
-            <Link
-              href="/org"
-              className="block px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-card hover:text-text-primary"
-            >
-              Org Settings
-            </Link>
-          )}
-          {showAdmin && (
-            <Link
-              href="/admin"
-              className="block px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-card hover:text-text-primary"
-            >
-              Admin
-            </Link>
-          )}
-          {(showOrgSettings || showAdmin) && (
-            <div className="my-1 border-t border-border" />
+          {showSettings && (
+            <>
+              <Link
+                href="/settings"
+                className="block px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-card hover:text-text-primary"
+              >
+                Settings
+              </Link>
+              <div className="my-1 border-t border-border" />
+            </>
           )}
           <button
             onClick={handleSignOut}

@@ -47,14 +47,20 @@ interface ApiKeyEntry {
 export function ConnectCard({
   origin,
   initialKeys,
+  connectionStats,
 }: {
   origin: string;
   initialKeys: ApiKeyEntry[];
+  connectionStats?: { connected: number; total: number };
 }) {
   const [keys, setKeys] = useState<ApiKeyEntry[]>(initialKeys);
   const [newKeyName, setNewKeyName] = useState("");
   const [newRawKey, setNewRawKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [manageExpanded, setManageExpanded] = useState(false);
+
+  const activeKeys = keys.filter((k) => !k.revokedAt);
+  const hasActiveKeys = activeKeys.length > 0;
 
   async function generate() {
     setLoading(true);
@@ -67,7 +73,6 @@ export function ConnectCard({
       const data = await res.json();
       setNewRawKey(data.key);
       setNewKeyName("");
-      // Optimistically add the new key to local state
       setKeys((prev) => [
         {
           id: crypto.randomUUID(),
@@ -86,7 +91,6 @@ export function ConnectCard({
   }
 
   async function revoke(id: string) {
-    // Optimistically mark as revoked
     setKeys((prev) =>
       prev.map((k) =>
         k.id === id ? { ...k, revokedAt: new Date().toISOString() } : k
@@ -95,7 +99,7 @@ export function ConnectCard({
     await revokeApiKey(id);
   }
 
-  // State B: key was just generated — show snippets
+  // Mode 2: key was just generated — show snippets
   if (newRawKey) {
     return (
       <Card hover={false}>
@@ -151,32 +155,124 @@ export function ConnectCard({
     );
   }
 
-  // State A: generate key form
-  return (
-    <Card hover={false}>
-      <h2 className="mb-4 text-sm font-medium text-text-secondary">
-        Your API Keys
-      </h2>
+  // Mode 1: First visit (no active keys) — Get Started
+  if (!hasActiveKeys) {
+    return (
+      <Card hover={false}>
+        <h2 className="mb-4 text-sm font-medium text-text-secondary">
+          Get Started
+        </h2>
 
-      <div className="mb-4 flex gap-2">
-        <Input
-          placeholder="Key name (optional)"
-          value={newKeyName}
-          onChange={(e) => setNewKeyName(e.target.value)}
-          className="max-w-xs"
-        />
-        <Button size="sm" onClick={generate} disabled={loading}>
-          {loading ? "Generating..." : "Generate Key"}
-        </Button>
+        <div className="space-y-4">
+          {/* Step 1 — active */}
+          <div className="flex gap-3">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-white text-xs font-medium">
+              1
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium mb-2">Generate an API key</p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Key name (optional)"
+                  value={newKeyName}
+                  onChange={(e) => setNewKeyName(e.target.value)}
+                  className="max-w-xs"
+                />
+                <Button size="sm" onClick={generate} disabled={loading}>
+                  {loading ? "Generating..." : "Generate Key"}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Step 2 — dimmed */}
+          <div className="flex gap-3 opacity-50">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-white text-xs font-medium">
+              2
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium">Add to your MCP client</p>
+              <p className="text-xs text-text-tertiary">
+                You&apos;ll get a config snippet to copy after generating a key.
+              </p>
+            </div>
+          </div>
+
+          {/* Step 3 — dimmed */}
+          <div className="flex gap-3 opacity-50">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-white text-xs font-medium">
+              3
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium">Connect services below</p>
+              <p className="text-xs text-text-tertiary">
+                Link your accounts to make their tools available through MCP.
+              </p>
+            </div>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  // Mode 3: Returning user (has active keys) — compact status bar
+  return (
+    <div className="rounded-xl border border-border bg-bg-card">
+      <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2 text-sm">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 text-green-500">
+            <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="font-medium">MCP client connected</span>
+          <span className="text-text-tertiary">·</span>
+          <span className="text-text-tertiary">
+            {activeKeys.length} active key{activeKeys.length !== 1 && "s"}
+          </span>
+          {connectionStats && connectionStats.connected < connectionStats.total && (
+            <>
+              <span className="text-text-tertiary">·</span>
+              <span className="text-amber-500">
+                {connectionStats.connected} of {connectionStats.total} services connected
+              </span>
+            </>
+          )}
+        </div>
+        <button
+          onClick={() => setManageExpanded(!manageExpanded)}
+          className="inline-flex items-center gap-1 text-sm text-text-tertiary transition-colors hover:text-text-primary cursor-pointer"
+        >
+          Manage keys
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`transition-transform ${manageExpanded ? "rotate-180" : ""}`}
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
       </div>
 
-      {keys.length > 0 && (
-        <details className="group">
-          <summary className="cursor-pointer text-sm text-text-tertiary hover:text-text-secondary">
-            {keys.filter((k) => !k.revokedAt).length} active key{keys.filter((k) => !k.revokedAt).length !== 1 && "s"}
-            {keys.some((k) => k.revokedAt) && `, ${keys.filter((k) => k.revokedAt).length} revoked`}
-          </summary>
-          <div className="mt-2 space-y-2">
+      {manageExpanded && (
+        <div className="border-t border-border px-4 py-3">
+          <div className="mb-3 flex gap-2">
+            <Input
+              placeholder="Key name (optional)"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              className="max-w-xs"
+            />
+            <Button size="sm" onClick={generate} disabled={loading}>
+              {loading ? "Generating..." : "New Key"}
+            </Button>
+          </div>
+
+          <div className="space-y-2">
             {keys.map((k) => (
               <div
                 key={k.id}
@@ -191,12 +287,9 @@ export function ConnectCard({
                       </span>
                     )}
                   </p>
-                  <div className="flex items-center gap-2">
-                    <p className="font-mono text-xs text-text-tertiary">
-                      {k.keyPrefix}...
-                    </p>
-
-                  </div>
+                  <p className="font-mono text-xs text-text-tertiary">
+                    {k.keyPrefix}...
+                  </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-text-tertiary">
@@ -215,14 +308,8 @@ export function ConnectCard({
               </div>
             ))}
           </div>
-        </details>
+        </div>
       )}
-
-      {keys.length === 0 && (
-        <p className="text-sm text-text-tertiary">
-          No API keys yet. Generate one to connect your MCP client.
-        </p>
-      )}
-    </Card>
+    </div>
   );
 }

@@ -30,35 +30,13 @@ vi.mock("@/lib/supabase/client", () => ({
 }));
 
 describe("UserMenu", () => {
-  it("renders Org Settings and Admin as Link components when dropdown is open", async () => {
+  it("renders Settings link when dropdown is open", async () => {
     const user = userEvent.setup();
     render(
       <UserMenu
         displayName="Test User"
         avatarUrl={null}
-        showOrgSettings={true}
-        showAdmin={true}
-      />
-    );
-
-    await user.click(screen.getByRole("button"));
-
-    const links = screen.getAllByTestId("next-link");
-    expect(links).toHaveLength(2);
-    expect(links[0]).toHaveAttribute("href", "/org");
-    expect(links[0]).toHaveTextContent("Org Settings");
-    expect(links[1]).toHaveAttribute("href", "/admin");
-    expect(links[1]).toHaveTextContent("Admin");
-  });
-
-  it("hides Org Settings link when showOrgSettings is false", async () => {
-    const user = userEvent.setup();
-    render(
-      <UserMenu
-        displayName="Test User"
-        avatarUrl={null}
-        showOrgSettings={false}
-        showAdmin={true}
+        showSettings={true}
       />
     );
 
@@ -66,6 +44,23 @@ describe("UserMenu", () => {
 
     const links = screen.getAllByTestId("next-link");
     expect(links).toHaveLength(1);
-    expect(links[0]).toHaveTextContent("Admin");
+    expect(links[0]).toHaveAttribute("href", "/settings");
+    expect(links[0]).toHaveTextContent("Settings");
+  });
+
+  it("hides Settings link when showSettings is false", async () => {
+    const user = userEvent.setup();
+    render(
+      <UserMenu
+        displayName="Test User"
+        avatarUrl={null}
+        showSettings={false}
+      />
+    );
+
+    await user.click(screen.getByRole("button"));
+
+    const links = screen.queryAllByTestId("next-link");
+    expect(links).toHaveLength(0);
   });
 });
