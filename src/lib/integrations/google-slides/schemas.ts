@@ -29,7 +29,7 @@ export const positionInPt = z.object({
   y: z.number().describe("Y position in points from top-left"),
 });
 
-// ── Per-tool schemas (12) ──
+// ── Per-tool schemas (13) ──
 
 // 1. Get presentation
 export const getPresentationSchema = z.object({
@@ -283,7 +283,7 @@ export const updatePageSchema = z.object({
   presentationId,
   pageObjectId,
   operation: z
-    .enum(["background_color", "background_image", "transition", "apply_layout"])
+    .enum(["background_color", "background_image", "apply_layout"])
     .describe("Page-level operation"),
   backgroundColor: hexColor
     .optional()
@@ -292,24 +292,6 @@ export const updatePageSchema = z.object({
     .string()
     .optional()
     .describe("Public URL for background image"),
-  transitionType: z
-    .enum([
-      "NONE",
-      "FADE",
-      "SLIDE_FROM_LEFT",
-      "SLIDE_FROM_RIGHT",
-      "FLIP",
-      "CUBE",
-      "GALLERY",
-      "PUSH",
-      "ZOOM",
-    ])
-    .optional()
-    .describe("Slide transition effect"),
-  transitionDuration: z
-    .number()
-    .optional()
-    .describe("Transition duration in milliseconds"),
   layoutId: z
     .string()
     .optional()
@@ -320,8 +302,19 @@ export const updatePageSchema = z.object({
 export const batchUpdateSchema = z.object({
   presentationId,
   requests: z
-    .string()
+    .union([
+      z.string(),
+      z.array(z.record(z.string(), z.unknown())),
+    ])
     .describe(
-      "JSON array of Slides API batchUpdate requests (raw API format)"
+      "Slides API batchUpdate requests — pass a JSON string or a native array of request objects"
     ),
+});
+
+// 13. Delete element
+export const deleteElementSchema = z.object({
+  presentationId,
+  objectIds: z
+    .union([z.string(), z.array(z.string())])
+    .describe("Element object ID(s) to delete — single string or array of strings"),
 });

@@ -2,6 +2,10 @@ import {
   integrationRegistry,
   getToolNamesForIntegration,
 } from "@/lib/integrations/registry";
+import {
+  proxyIntegrationRegistry,
+  getProxyToolNames,
+} from "@/lib/integrations/proxy-registry";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type IntegrationAccessRow = {
@@ -49,8 +53,13 @@ export async function validatePermissionsPayload(
   const customEntries = integrations.filter((e) =>
     e.integrationId.startsWith("custom:")
   );
+  const proxyEntries = integrations.filter((e) =>
+    e.integrationId.startsWith("proxy:")
+  );
   const builtinEntries = integrations.filter(
-    (e) => !e.integrationId.startsWith("custom:")
+    (e) =>
+      !e.integrationId.startsWith("custom:") &&
+      !e.integrationId.startsWith("proxy:")
   );
 
   // Validate builtin integrations
@@ -65,6 +74,23 @@ export async function validatePermissionsPayload(
       if (!validTools.includes(tool)) {
         errors.push(
           `Unknown tool "${tool}" for integration "${entry.integrationId}"`
+        );
+      }
+    }
+  }
+
+  // Validate native proxy integrations
+  for (const entry of proxyEntries) {
+    const proxyId = entry.integrationId.replace("proxy:", "");
+    if (!proxyIntegrationRegistry.has(proxyId)) {
+      errors.push(`Unknown proxy integration: ${entry.integrationId}`);
+      continue;
+    }
+    const validTools = getProxyToolNames(proxyId);
+    for (const tool of entry.allowedTools) {
+      if (!validTools.includes(tool)) {
+        errors.push(
+          `Unknown tool "${tool}" for proxy integration "${entry.integrationId}"`
         );
       }
     }

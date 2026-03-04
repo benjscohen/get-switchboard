@@ -6,6 +6,7 @@ import { IntegrationList } from "@/components/dashboard/integration-list";
 import { ConnectCard } from "@/components/dashboard/connect-card";
 import { DashboardToasts } from "@/components/dashboard/dashboard-toasts";
 import { allIntegrations } from "@/lib/integrations/registry";
+import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 import { headers } from "next/headers";
 
 export default async function DashboardPage() {
@@ -91,6 +92,32 @@ export default async function DashboardPage() {
     };
   });
 
+  // Load org's enabled native proxy integrations
+  const { data: orgKeys } = orgId
+    ? await supabaseAdmin
+        .from("integration_org_keys")
+        .select("integration_id, enabled")
+        .eq("organization_id", orgId)
+        .eq("enabled", true)
+    : { data: [] };
+
+  const enabledProxyIds = new Set(
+    (orgKeys ?? []).map((k) => k.integration_id)
+  );
+
+  const proxyIntegrations = allProxyIntegrations
+    .filter((p) => enabledProxyIds.has(p.id))
+    .map((p) => ({
+      id: `proxy:${p.id}`,
+      name: p.name,
+      description: p.description,
+      icon: p.icon(),
+      toolCount: p.toolCount,
+      tools: p.tools.map((t) => ({ name: t.name, description: t.description })),
+      connected: true,
+      kind: "native-proxy" as const,
+    }));
+
   const headersList = await headers();
   const host = headersList.get("host") ?? "localhost:3000";
   const proto = headersList.get("x-forwarded-proto") ?? "http";
@@ -103,6 +130,7 @@ export default async function DashboardPage() {
       <div className="space-y-6">
         <IntegrationList
           integrations={integrations}
+          proxyIntegrations={proxyIntegrations}
           customIntegrations={customIntegrations}
         />
         <ConnectCard origin={origin} />

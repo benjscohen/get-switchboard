@@ -25,6 +25,19 @@ export const labelIds = z
   .optional()
   .describe("Comma-separated label IDs (e.g. \"INBOX,UNREAD\")");
 
+export const attachmentItem = z.object({
+  filename: z.string().describe("Attachment file name (e.g. 'report.pdf')"),
+  mimeType: z.string().describe("MIME type (e.g. 'application/pdf')"),
+  base64Data: z.string().describe("Base64-encoded file content"),
+});
+
+export const attachmentsField = {
+  attachments: z
+    .array(attachmentItem)
+    .optional()
+    .describe("File attachments as base64-encoded data"),
+};
+
 export const compositionFields = {
   to: z.string().describe("Recipient email address(es), comma-separated"),
   subject: z.string().describe("Email subject line"),
@@ -82,6 +95,7 @@ export const getAttachmentSchema = z.object({
 // 4. Send message
 export const sendMessageSchema = z.object({
   ...compositionFields,
+  ...attachmentsField,
   replyTo: z
     .string()
     .optional()
@@ -108,6 +122,7 @@ export const replyToMessageSchema = z.object({
     .enum(["text/plain", "text/html"])
     .optional()
     .describe("Body content type (default text/plain)"),
+  ...attachmentsField,
 });
 
 // 6. Forward message
@@ -130,6 +145,11 @@ export const forwardMessageSchema = z.object({
     .enum(["text/plain", "text/html"])
     .optional()
     .describe("Body content type (default text/plain)"),
+  ...attachmentsField,
+  includeOriginalAttachments: z
+    .boolean()
+    .optional()
+    .describe("Include attachments from the original message (default true)"),
 });
 
 // 7. Modify message
@@ -228,6 +248,7 @@ export const manageDraftsSchema = z.object({
     .enum(["text/plain", "text/html"])
     .optional()
     .describe("Body content type (default text/plain)"),
+  ...attachmentsField,
   maxResults,
   pageToken,
 });

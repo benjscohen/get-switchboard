@@ -1,4 +1,5 @@
 import { allIntegrations } from "./registry";
+import { allProxyIntegrations } from "./proxy-registry";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { CatalogEntry } from "./types";
 
@@ -39,10 +40,22 @@ export async function getCustomMcpCatalog(): Promise<CatalogEntry[]> {
   });
 }
 
+export function getNativeProxyCatalog(): CatalogEntry[] {
+  return allProxyIntegrations.map((i) => ({
+    id: i.id,
+    name: i.name,
+    description: i.description,
+    kind: "native-proxy",
+    toolCount: i.toolCount,
+    tools: i.tools.map((t) => ({ name: t.name, description: t.description })),
+  }));
+}
+
 export async function getFullCatalog(): Promise<CatalogEntry[]> {
   const [builtin, custom] = await Promise.all([
     getBuiltinCatalog(),
     getCustomMcpCatalog(),
   ]);
-  return [...builtin, ...custom];
+  const nativeProxy = getNativeProxyCatalog();
+  return [...builtin, ...nativeProxy, ...custom];
 }

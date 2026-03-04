@@ -1,7 +1,7 @@
 import { slides_v1 } from "googleapis";
 import type { IntegrationToolDef } from "../types";
 import type { McpToolResult } from "../types";
-import { hexToRgb, optColor } from "../shared/color";
+import { hexToRgb } from "../shared/color";
 import * as s from "./schemas";
 
 type SlidesToolDef = Omit<IntegrationToolDef, "execute"> & {
@@ -30,28 +30,6 @@ function emuSize(
   return {
     width: { magnitude: emu(w), unit: "EMU" },
     height: { magnitude: emu(h), unit: "EMU" },
-  };
-}
-
-/** Build AffineTransform for position and size */
-function emuTransform(
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  rotation?: number
-): slides_v1.Schema$AffineTransform {
-  const rad = ((rotation ?? 0) * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  return {
-    scaleX: cos * (emu(w) / 12700 / (w || 1)) || cos,
-    scaleY: cos * (emu(h) / 12700 / (h || 1)) || cos,
-    shearX: -sin,
-    shearY: sin,
-    translateX: emu(x),
-    translateY: emu(y),
-    unit: "EMU",
   };
 }
 
@@ -947,96 +925,92 @@ export const SLIDES_TOOLS: SlidesToolDef[] = [
           const newH = a.height as number | undefined;
           const rot = a.rotation as number | undefined;
 
-          // Build the new size if specified
-          if (newW !== undefined && newH !== undefined) {
-            requests.push({
-              updatePageElementTransform: {
-                objectId: objId,
-                applyMode: "ABSOLUTE",
-                transform: {
-                  scaleX: 1,
-                  scaleY: 1,
-                  shearX: 0,
-                  shearY: 0,
-                  translateX: emu(newX ?? 0),
-                  translateY: emu(newY ?? 0),
-                  unit: "EMU",
-                },
-              },
-            });
-            // Also update size
-            requests.push({
-              updateTableCellProperties: undefined as unknown as slides_v1.Schema$UpdateTableCellPropertiesRequest,
-            });
-            // Actually, size is set via updatePageElementTransform with the size
-            // Let's use a simpler approach - just set transform
-            requests.pop(); // remove the placeholder
-          } else if (
-            newX !== undefined ||
-            newY !== undefined ||
-            rot !== undefined
-          ) {
-            const transform: slides_v1.Schema$AffineTransform =
-              {
-                scaleX: 1,
-                scaleY: 1,
-                shearX: 0,
-                shearY: 0,
-                translateX: emu(newX ?? 0),
-                translateY: emu(newY ?? 0),
-                unit: "EMU",
-              };
-            if (rot !== undefined) {
-              const rad = (rot * Math.PI) / 180;
-              transform.scaleX = Math.cos(rad);
-              transform.scaleY = Math.cos(rad);
-              transform.shearX = -Math.sin(rad);
-              transform.shearY = Math.sin(rad);
-            }
-            requests.push({
-              updatePageElementTransform: {
-                objectId: objId,
-                applyMode: "ABSOLUTE",
-                transform,
-              },
-            });
-          }
-
           if (
-            newW !== undefined ||
-            newH !== undefined
+            newX === undefined &&
+            newY === undefined &&
+            newW === undefined &&
+            newH === undefined &&
+            rot === undefined
           ) {
-            // Use updatePageElementsSize (not directly available).
-            // Instead we use updatePageElementTransform with scale factors.
-            // For a clean approach, get current size and compute scale.
-            // Simplest: just set transform with desired position and use
-            // a subsequent size update via updatePageProperties workaround.
-            // Actually the Slides API handles size via the element's size
-            // property in the transform. Let's do the full transform approach.
-            if (requests.length === 0) {
-              requests.push({
-                updatePageElementTransform: {
-                  objectId: objId,
-                  applyMode: "ABSOLUTE",
-                  transform: {
-                    scaleX: 1,
-                    scaleY: 1,
-                    shearX: 0,
-                    shearY: 0,
-                    translateX: emu(newX ?? 0),
-                    translateY: emu(newY ?? 0),
-                    unit: "EMU",
-                  },
-                },
-              });
-            }
-          }
-
-          if (requests.length === 0) {
             return {
               message: "No transform properties provided",
             };
           }
+
+          // Fetch current element state to preserve values not being changed
+          const pres = await slides.presentations.get({
+            presentationId: pid(a),
+          });
+          let currentEl: slides_v1.Schema$PageElement | undefined;
+          for (const slide of pres.data.slides ?? []) {
+            currentEl = (slide.pageElements ?? []).find(
+              (el) => el.objectId === objId
+            );
+            if (currentEl) break;
+          }
+          // Also check masters and layouts
+          if (!currentEl) {
+            for (const master of pres.data.masters ?? []) {
+              currentEl = (master.pageElements ?? []).find(
+                (el) => el.objectId === objId
+              );
+              if (currentEl) break;
+            }
+          }
+          if (!currentEl) {
+            for (const layout of pres.data.layouts ?? []) {
+              currentEl = (layout.pageElements ?? []).find(
+                (el) => el.objectId === objId
+              );
+              if (currentEl) break;
+            }
+          }
+
+          // Current state from the element
+          const curTransform = currentEl?.transform;
+          const curSizeW = currentEl?.size?.width?.magnitude ?? emu(300);
+          const curSizeH = currentEl?.size?.height?.magnitude ?? emu(50);
+          const curTranslateX = curTransform?.translateX ?? 0;
+          const curTranslateY = curTransform?.translateY ?? 0;
+
+          // Desired values (fall back to current)
+          const desiredX = newX !== undefined ? emu(newX) : curTranslateX;
+          const desiredY = newY !== undefined ? emu(newY) : curTranslateY;
+
+          // Scale factors: desiredSize / baseSize (base size = element's size property in EMU)
+          const scaleX = newW !== undefined ? emu(newW) / (curSizeW || 1) : (curTransform?.scaleX ?? 1);
+          const scaleY = newH !== undefined ? emu(newH) / (curSizeH || 1) : (curTransform?.scaleY ?? 1);
+
+          // Build affine transform matrix (rotation combined with scale)
+          const rad = rot !== undefined
+            ? (rot * Math.PI) / 180
+            : curTransform?.shearY != null && curTransform?.scaleX != null
+              ? Math.atan2(curTransform.shearY, curTransform.scaleX)
+              : 0;
+          const cos = Math.cos(rad);
+          const sin = Math.sin(rad);
+
+          // For the absolute transform, scaleX/Y encode both scale and rotation:
+          // | scaleX*cos  -scaleY*sin  translateX |
+          // | scaleX*sin   scaleY*cos  translateY |
+          const absScaleX = Math.abs(scaleX);
+          const absScaleY = Math.abs(scaleY);
+
+          requests.push({
+            updatePageElementTransform: {
+              objectId: objId,
+              applyMode: "ABSOLUTE",
+              transform: {
+                scaleX: absScaleX * cos,
+                scaleY: absScaleY * cos,
+                shearX: -absScaleY * sin,
+                shearY: absScaleX * sin,
+                translateX: desiredX,
+                translateY: desiredY,
+                unit: "EMU",
+              },
+            },
+          });
           break;
         }
 
@@ -1086,7 +1060,7 @@ export const SLIDES_TOOLS: SlidesToolDef[] = [
   {
     name: "google_slides_update_page",
     description:
-      "Slide-level properties: background color/image, transition effects, or apply a layout",
+      "Slide-level properties: background color/image or apply a layout",
     schema: s.updatePageSchema,
     execute: async (a, slides) => {
       const op = a.operation as string;
@@ -1129,35 +1103,6 @@ export const SLIDES_TOOLS: SlidesToolDef[] = [
           });
           break;
 
-        case "transition": {
-          const transType =
-            (a.transitionType as string) || "NONE";
-          const duration =
-            (a.transitionDuration as number) || 500;
-          requests.push({
-            updatePageProperties: {
-              objectId: pageId,
-              pageProperties: {
-                pageBackgroundFill: undefined,
-              },
-              fields: "",
-            },
-          });
-          // Transitions are set via slideProperties, not directly
-          // via updatePageProperties. Use updateSlideProperties.
-          requests.pop();
-          requests.push({
-            updateSlideProperties: {
-              objectId: pageId,
-              slideProperties: {
-                isSkipped: false,
-              },
-              fields: "isSkipped",
-            },
-          });
-          break;
-        }
-
         case "apply_layout":
           requests.push({
             updateSlideProperties: {
@@ -1189,12 +1134,36 @@ export const SLIDES_TOOLS: SlidesToolDef[] = [
   {
     name: "google_slides_batch_update",
     description:
-      "Raw batchUpdate escape hatch: send a JSON array of Slides API requests directly for advanced operations",
+      "Raw batchUpdate escape hatch: send Slides API requests directly (as a JSON string or native array) for advanced operations",
     schema: s.batchUpdateSchema,
     execute: async (a, slides) => {
-      const requests = JSON.parse(
-        a.requests as string
+      const raw = a.requests;
+      const requests = (
+        typeof raw === "string"
+          ? JSON.parse(raw)
+          : raw
       ) as slides_v1.Schema$Request[];
+      const res =
+        await slides.presentations.batchUpdate({
+          presentationId: pid(a),
+          requestBody: { requests },
+        });
+      return res.data;
+    },
+  },
+
+  // ── 13. Delete Element ──
+  {
+    name: "google_slides_delete_element",
+    description:
+      "Delete one or more elements from a presentation by object ID",
+    schema: s.deleteElementSchema,
+    execute: async (a, slides) => {
+      const raw = a.objectIds;
+      const ids = typeof raw === "string" ? [raw] : raw as string[];
+      const requests: slides_v1.Schema$Request[] = ids.map((id) => ({
+        deleteObject: { objectId: id },
+      }));
       const res =
         await slides.presentations.batchUpdate({
           presentationId: pid(a),

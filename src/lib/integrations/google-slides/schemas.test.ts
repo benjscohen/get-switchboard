@@ -17,6 +17,7 @@ import {
   formatElementSchema,
   updatePageSchema,
   batchUpdateSchema,
+  deleteElementSchema,
 } from "./schemas";
 
 // ── Shared fragments ──
@@ -659,11 +660,10 @@ describe("updatePageSchema", () => {
     ).toThrow();
   });
 
-  it("accepts all 4 operations", () => {
+  it("accepts all 3 operations", () => {
     for (const operation of [
       "background_color",
       "background_image",
-      "transition",
       "apply_layout",
     ] as const) {
       const result = updatePageSchema.parse({
@@ -697,47 +697,12 @@ describe("updatePageSchema", () => {
     );
   });
 
-  it("accepts transition with type and duration", () => {
-    const result = updatePageSchema.parse({
-      presentationId: "pres1",
-      pageObjectId: "p",
-      operation: "transition",
-      transitionType: "FADE",
-      transitionDuration: 750,
-    });
-    expect(result.transitionType).toBe("FADE");
-    expect(result.transitionDuration).toBe(750);
-  });
-
-  it("accepts all transition types", () => {
-    for (const transitionType of [
-      "NONE",
-      "FADE",
-      "SLIDE_FROM_LEFT",
-      "SLIDE_FROM_RIGHT",
-      "FLIP",
-      "CUBE",
-      "GALLERY",
-      "PUSH",
-      "ZOOM",
-    ] as const) {
-      const result = updatePageSchema.parse({
-        presentationId: "pres1",
-        pageObjectId: "p",
-        operation: "transition",
-        transitionType,
-      });
-      expect(result.transitionType).toBe(transitionType);
-    }
-  });
-
-  it("rejects invalid transition type", () => {
+  it("rejects removed transition operation", () => {
     expect(() =>
       updatePageSchema.parse({
         presentationId: "pres1",
         pageObjectId: "p",
         operation: "transition",
-        transitionType: "DISSOLVE",
       })
     ).toThrow();
   });
@@ -763,12 +728,57 @@ describe("batchUpdateSchema", () => {
     ).toThrow();
   });
 
-  it("accepts valid input", () => {
+  it("accepts JSON string input", () => {
     const result = batchUpdateSchema.parse({
       presentationId: "pres1",
       requests: '[{"deleteObject":{"objectId":"g123"}}]',
     });
     expect(result.requests).toContain("deleteObject");
+  });
+
+  it("accepts native array input", () => {
+    const result = batchUpdateSchema.parse({
+      presentationId: "pres1",
+      requests: [{ deleteObject: { objectId: "g123" } }],
+    });
+    expect(Array.isArray(result.requests)).toBe(true);
+    expect(result.requests).toHaveLength(1);
+  });
+});
+
+// ── Delete element schema ──
+
+describe("deleteElementSchema", () => {
+  it("requires presentationId and objectIds", () => {
+    expect(() => deleteElementSchema.parse({})).toThrow();
+    expect(() =>
+      deleteElementSchema.parse({ presentationId: "pres1" })
+    ).toThrow();
+  });
+
+  it("accepts a single object ID string", () => {
+    const result = deleteElementSchema.parse({
+      presentationId: "pres1",
+      objectIds: "g123",
+    });
+    expect(result.objectIds).toBe("g123");
+  });
+
+  it("accepts an array of object IDs", () => {
+    const result = deleteElementSchema.parse({
+      presentationId: "pres1",
+      objectIds: ["g123", "g456", "g789"],
+    });
+    expect(result.objectIds).toEqual(["g123", "g456", "g789"]);
+  });
+
+  it("rejects non-string values", () => {
+    expect(() =>
+      deleteElementSchema.parse({
+        presentationId: "pres1",
+        objectIds: 123,
+      })
+    ).toThrow();
   });
 });
 
@@ -788,6 +798,7 @@ describe("schemas with required fields reject empty object", () => {
     ["formatElementSchema", formatElementSchema],
     ["updatePageSchema", updatePageSchema],
     ["batchUpdateSchema", batchUpdateSchema],
+    ["deleteElementSchema", deleteElementSchema],
   ] as const)("%s rejects {}", (_name, schema) => {
     expect(() => schema.parse({})).toThrow();
   });
@@ -796,7 +807,7 @@ describe("schemas with required fields reject empty object", () => {
 // ── Cross-cutting: tool count ──
 
 describe("tool count", () => {
-  it("exports exactly 12 per-tool schemas", () => {
+  it("exports exactly 13 per-tool schemas", () => {
     const schemas = [
       getPresentationSchema,
       getSlideContentSchema,
@@ -810,7 +821,8 @@ describe("tool count", () => {
       formatElementSchema,
       updatePageSchema,
       batchUpdateSchema,
+      deleteElementSchema,
     ];
-    expect(schemas).toHaveLength(12);
+    expect(schemas).toHaveLength(13);
   });
 });

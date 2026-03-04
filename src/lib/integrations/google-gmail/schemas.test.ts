@@ -5,6 +5,8 @@ import {
   maxResults,
   labelIds,
   compositionFields,
+  attachmentItem,
+  attachmentsField,
   listMessagesSchema,
   getMessageSchema,
   getAttachmentSchema,
@@ -643,6 +645,85 @@ describe("other schemas", () => {
       expect(result.labelId).toBe("INBOX");
       expect(result.historyTypes).toBe("messageAdded,labelAdded");
     });
+  });
+});
+
+// ── Attachment support ──
+
+describe("attachment support", () => {
+  const validAttachment = {
+    filename: "report.pdf",
+    mimeType: "application/pdf",
+    base64Data: "dGVzdA==",
+  };
+
+  it("sendMessageSchema accepts attachments array", () => {
+    const result = sendMessageSchema.parse({
+      to: "a@b.com",
+      subject: "hi",
+      body: "hello",
+      attachments: [validAttachment],
+    });
+    expect(result.attachments).toHaveLength(1);
+    expect(result.attachments![0].filename).toBe("report.pdf");
+  });
+
+  it("sendMessageSchema works without attachments (backward compat)", () => {
+    const result = sendMessageSchema.parse({
+      to: "a@b.com",
+      subject: "hi",
+      body: "hello",
+    });
+    expect(result.attachments).toBeUndefined();
+  });
+
+  it("forwardMessageSchema accepts includeOriginalAttachments", () => {
+    const result = forwardMessageSchema.parse({
+      messageId: "m1",
+      to: "forward@b.com",
+      includeOriginalAttachments: false,
+    });
+    expect(result.includeOriginalAttachments).toBe(false);
+  });
+
+  it("manageDraftsSchema accepts attachments for create", () => {
+    const result = manageDraftsSchema.parse({
+      operation: "create",
+      to: "a@b.com",
+      subject: "Draft",
+      body: "Content",
+      attachments: [validAttachment],
+    });
+    expect(result.attachments).toHaveLength(1);
+  });
+
+  it("rejects attachment with missing required fields", () => {
+    expect(() =>
+      sendMessageSchema.parse({
+        to: "a@b.com",
+        subject: "hi",
+        body: "hello",
+        attachments: [{ filename: "test.txt" }],
+      })
+    ).toThrow();
+
+    expect(() =>
+      sendMessageSchema.parse({
+        to: "a@b.com",
+        subject: "hi",
+        body: "hello",
+        attachments: [{ filename: "test.txt", mimeType: "text/plain" }],
+      })
+    ).toThrow();
+
+    expect(() =>
+      sendMessageSchema.parse({
+        to: "a@b.com",
+        subject: "hi",
+        body: "hello",
+        attachments: [{ mimeType: "text/plain", base64Data: "dGVzdA==" }],
+      })
+    ).toThrow();
   });
 });
 

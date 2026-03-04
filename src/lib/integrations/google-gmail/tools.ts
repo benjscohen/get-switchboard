@@ -19,6 +19,20 @@ function splitCsv(s: string | undefined): string[] {
     .filter(Boolean);
 }
 
+interface Attachment {
+  filename: string;
+  mimeType: string;
+  base64Data: string;
+}
+
+function wrapBase64(data: string, lineLength = 76): string {
+  const lines: string[] = [];
+  for (let i = 0; i < data.length; i += lineLength) {
+    lines.push(data.slice(i, i + lineLength));
+  }
+  return lines.join("\r\n");
+}
+
 function buildMimeMessage(opts: {
   to: string;
   subject: string;
@@ -29,21 +43,54 @@ function buildMimeMessage(opts: {
   contentType?: string;
   inReplyTo?: string;
   references?: string;
+  attachments?: Attachment[];
 }): string {
   const ct = opts.contentType || "text/plain";
-  const lines: string[] = [];
-  lines.push(`To: ${opts.to}`);
-  if (opts.cc) lines.push(`Cc: ${opts.cc}`);
-  if (opts.bcc) lines.push(`Bcc: ${opts.bcc}`);
-  lines.push(`Subject: ${opts.subject}`);
-  if (opts.replyTo) lines.push(`Reply-To: ${opts.replyTo}`);
-  if (opts.inReplyTo) lines.push(`In-Reply-To: ${opts.inReplyTo}`);
-  if (opts.references) lines.push(`References: ${opts.references}`);
-  lines.push(`Content-Type: ${ct}; charset=utf-8`);
-  lines.push("MIME-Version: 1.0");
-  lines.push("");
-  lines.push(opts.body);
-  return lines.join("\r\n");
+  const hasAttachments = opts.attachments && opts.attachments.length > 0;
+
+  const headerLines: string[] = [];
+  headerLines.push(`To: ${opts.to}`);
+  if (opts.cc) headerLines.push(`Cc: ${opts.cc}`);
+  if (opts.bcc) headerLines.push(`Bcc: ${opts.bcc}`);
+  headerLines.push(`Subject: ${opts.subject}`);
+  if (opts.replyTo) headerLines.push(`Reply-To: ${opts.replyTo}`);
+  if (opts.inReplyTo) headerLines.push(`In-Reply-To: ${opts.inReplyTo}`);
+  if (opts.references) headerLines.push(`References: ${opts.references}`);
+  headerLines.push("MIME-Version: 1.0");
+
+  if (!hasAttachments) {
+    headerLines.push(`Content-Type: ${ct}; charset=utf-8`);
+    headerLines.push("");
+    headerLines.push(opts.body);
+    return headerLines.join("\r\n");
+  }
+
+  // multipart/mixed with boundary
+  const boundary = `----=_Part_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  headerLines.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+  headerLines.push("");
+
+  const parts: string[] = [];
+
+  // Body part
+  parts.push(`--${boundary}`);
+  parts.push(`Content-Type: ${ct}; charset=utf-8`);
+  parts.push("");
+  parts.push(opts.body);
+
+  // Attachment parts
+  for (const att of opts.attachments!) {
+    parts.push(`--${boundary}`);
+    parts.push(`Content-Type: ${att.mimeType}; name="${att.filename}"`);
+    parts.push("Content-Transfer-Encoding: base64");
+    parts.push(`Content-Disposition: attachment; filename="${att.filename}"`);
+    parts.push("");
+    parts.push(wrapBase64(att.base64Data));
+  }
+
+  parts.push(`--${boundary}--`);
+
+  return headerLines.join("\r\n") + "\r\n" + parts.join("\r\n");
 }
 
 function encodeBase64Url(mime: string): string {
@@ -278,6 +325,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         bcc: a.bcc as string | undefined,
         replyTo: a.replyTo as string | undefined,
         contentType: a.contentType as string | undefined,
+        attachments: a.attachments as Attachment[] | undefined,
       });
       const res = await gmail.users.messages.send({
         userId: "me",
@@ -332,6 +380,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         contentType: a.contentType as string | undefined,
         inReplyTo: origMessageId,
         references: origMessageId,
+        attachments: a.attachments as Attachment[] | undefined,
       });
 
       const res = await gmail.users.messages.send({
@@ -381,6 +430,33 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         ? `${userText}\r\n\r\n${forwardHeader}\r\n${origBody}`
         : `${forwardHeader}\r\n${origBody}`;
 
+      // Collect attachments
+      const allAttachments: Attachment[] = [];
+
+      // Include original attachments unless explicitly disabled
+      if (a.includeOriginalAttachments !== false) {
+        const origAttachments = extractAttachmentInfo(orig.data.payload);
+        for (const att of origAttachments) {
+          const attRes = await gmail.users.messages.attachments.get({
+            userId: "me",
+            messageId: a.messageId as string,
+            id: att.attachmentId,
+          });
+          if (attRes.data.data) {
+            allAttachments.push({
+              filename: att.filename,
+              mimeType: att.mimeType,
+              base64Data: attRes.data.data.replace(/-/g, "+").replace(/_/g, "/"),
+            });
+          }
+        }
+      }
+
+      // Append any new attachments
+      if (a.attachments) {
+        allAttachments.push(...(a.attachments as Attachment[]));
+      }
+
       const mime = buildMimeMessage({
         to: a.to as string,
         subject,
@@ -388,6 +464,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         cc: a.cc as string | undefined,
         bcc: a.bcc as string | undefined,
         contentType: a.contentType as string | undefined,
+        attachments: allAttachments.length > 0 ? allAttachments : undefined,
       });
 
       const res = await gmail.users.messages.send({
@@ -562,6 +639,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
             cc: a.cc as string | undefined,
             bcc: a.bcc as string | undefined,
             contentType: a.contentType as string | undefined,
+            attachments: a.attachments as Attachment[] | undefined,
           });
           const res = await gmail.users.drafts.create({
             userId: "me",
@@ -578,6 +656,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
             cc: a.cc as string | undefined,
             bcc: a.bcc as string | undefined,
             contentType: a.contentType as string | undefined,
+            attachments: a.attachments as Attachment[] | undefined,
           });
           const res = await gmail.users.drafts.update({
             userId: "me",

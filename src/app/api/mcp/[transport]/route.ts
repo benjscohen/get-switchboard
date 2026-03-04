@@ -7,6 +7,7 @@ import { hashApiKey } from "@/lib/crypto";
 import { decrypt } from "@/lib/encryption";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { allIntegrations } from "@/lib/integrations/registry";
+import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 import { getValidTokens } from "@/lib/integrations/token-refresh";
 import type { McpToolResult } from "@/lib/integrations/types";
 import { logUsage } from "@/lib/usage-log";
@@ -369,6 +370,130 @@ function registerTools(server: McpServer) {
     );
   }
 
+  // Register native proxy integration tools
+  for (const proxy of allProxyIntegrations) {
+    const integrationId = `proxy:${proxy.id}`;
+    for (const tool of proxy.tools) {
+      toolMeta.set(tool.name, { integrationId, orgId: null });
+      server.tool(
+        tool.name,
+        tool.description,
+        tool.inputSchema,
+        async (args, extra) => {
+          const startTime = Date.now();
+          const userId = extra.authInfo?.extra?.userId as string | undefined;
+          const apiKeyId = extra.authInfo?.extra?.apiKeyId as string | undefined;
+          const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
+
+          if (!userId) {
+            logUsage({
+              userId: "unknown",
+              apiKeyId,
+              toolName: tool.name,
+              integrationId,
+              status: "unauthorized",
+              organizationId,
+            });
+            return {
+              content: [{ type: "text" as const, text: "Unauthorized" }],
+              isError: true,
+            };
+          }
+
+          // Check per-user tool permissions
+          const permissionsMode = extra.authInfo?.extra?.permissionsMode as string | undefined;
+          const integrationAccess = extra.authInfo?.extra?.integrationAccess as
+            | Array<{ integrationId: string; allowedTools: string[] }>
+            | undefined;
+
+          if (
+            permissionsMode &&
+            integrationAccess &&
+            !isToolAllowed(permissionsMode, integrationAccess, integrationId, tool.name)
+          ) {
+            logUsage({
+              userId,
+              apiKeyId,
+              toolName: tool.name,
+              integrationId,
+              status: "unauthorized",
+              errorMessage: "Tool not available",
+              organizationId,
+            });
+            return {
+              content: [{ type: "text" as const, text: "Tool not available" }],
+              isError: true,
+            };
+          }
+
+          // Look up the org's API key for this proxy integration
+          const integrationOrgKeys = extra.authInfo?.extra?.integrationOrgKeys as
+            | Record<string, string>
+            | undefined;
+          const apiKey = integrationOrgKeys?.[proxy.id];
+
+          if (!apiKey) {
+            logUsage({
+              userId,
+              apiKeyId,
+              toolName: tool.name,
+              integrationId,
+              status: "error",
+              errorMessage: "No API key configured for this integration",
+              durationMs: Date.now() - startTime,
+              organizationId,
+            });
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Integration "${proxy.name}" is not configured. An org admin must add an API key in Organization Settings.`,
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          try {
+            const result = await proxyToolCall(
+              proxy.serverUrl,
+              apiKey,
+              tool.name,
+              args as Record<string, unknown>
+            );
+            logUsage({
+              userId,
+              apiKeyId,
+              toolName: tool.name,
+              integrationId,
+              status: result.isError ? "error" : "success",
+              durationMs: Date.now() - startTime,
+              organizationId,
+            });
+            return result;
+          } catch (err: unknown) {
+            const message =
+              err instanceof Error ? err.message : "Unknown error";
+            logUsage({
+              userId,
+              apiKeyId,
+              toolName: tool.name,
+              integrationId,
+              status: "error",
+              errorMessage: message,
+              durationMs: Date.now() - startTime,
+              organizationId,
+            });
+            return {
+              content: [{ type: "text" as const, text: "An internal error occurred" }],
+              isError: true,
+            };
+          }
+        }
+      );
+    }
+  }
+
   // Override tools/list to filter per-user based on connections, org, and permissions
   const registeredTools = (server as unknown as { _registeredTools: Record<string, {
     enabled: boolean;
@@ -386,6 +511,9 @@ function registerTools(server: McpServer) {
       permissionsMode: extra.authInfo?.extra?.permissionsMode as string | undefined,
       integrationAccess: extra.authInfo?.extra?.integrationAccess as
         | Array<{ integrationId: string; allowedTools: string[] }>
+        | undefined,
+      integrationOrgKeys: extra.authInfo?.extra?.integrationOrgKeys as
+        | Record<string, string>
         | undefined,
     });
 
@@ -490,6 +618,18 @@ const authedHandler = withMcpAuth(
       customMcpKeys[k.server_id] = decrypt(k.api_key);
     }
 
+    // Load org-level native proxy integration keys
+    const { data: rawOrgKeys } = await supabaseAdmin
+      .from("integration_org_keys")
+      .select("integration_id, api_key")
+      .eq("organization_id", organizationId)
+      .eq("enabled", true);
+
+    const integrationOrgKeys: Record<string, string> = {};
+    for (const k of rawOrgKeys ?? []) {
+      integrationOrgKeys[k.integration_id] = decrypt(k.api_key);
+    }
+
     return {
       token: bearerToken,
       clientId: apiKey.user_id,
@@ -502,6 +642,7 @@ const authedHandler = withMcpAuth(
         permissionsMode: profile.permissions_mode,
         integrationAccess,
         customMcpKeys,
+        integrationOrgKeys,
       },
     };
   },

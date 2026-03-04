@@ -5,9 +5,23 @@ export type CatalogEntry = {
   id: string;
   name: string;
   description: string;
-  kind: "builtin" | "custom-mcp";
+  kind: "builtin" | "custom-mcp" | "native-proxy";
   toolCount: number;
   tools: { name: string; description: string }[];
+};
+
+export type ProxyIntegrationConfig = {
+  id: string;
+  name: string;
+  description: string;
+  icon: () => ReactNode;
+  serverUrl: string;
+  tools: Array<{
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+  }>;
+  toolCount: number;
 };
 
 export type IntegrationToolDef = {

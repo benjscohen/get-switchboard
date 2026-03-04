@@ -21,7 +21,7 @@ type IntegrationItem = {
   toolCount: number;
   tools: IntegrationTool[];
   connected: boolean;
-  kind: "builtin" | "custom-mcp";
+  kind: "builtin" | "custom-mcp" | "native-proxy";
 };
 
 type CustomMcpItem = IntegrationItem & {
@@ -35,9 +35,11 @@ type CustomMcpItem = IntegrationItem & {
 
 export function IntegrationList({
   integrations,
+  proxyIntegrations = [],
   customIntegrations = [],
 }: {
   integrations: IntegrationItem[];
+  proxyIntegrations?: IntegrationItem[];
   customIntegrations?: CustomMcpItem[];
 }) {
   return (
@@ -49,6 +51,18 @@ export function IntegrationList({
         {integrations.map((integration) => (
           <IntegrationRow key={integration.id} integration={integration} />
         ))}
+        {proxyIntegrations.length > 0 && (
+          <>
+            <div className="border-t border-border pt-3 mt-3">
+              <h3 className="text-xs font-medium text-text-secondary mb-3">
+                Native Integrations
+              </h3>
+            </div>
+            {proxyIntegrations.map((integration) => (
+              <IntegrationRow key={integration.id} integration={integration} />
+            ))}
+          </>
+        )}
         {customIntegrations.length > 0 && (
           <>
             <div className="border-t border-border pt-3 mt-3">

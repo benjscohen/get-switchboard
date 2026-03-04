@@ -14,6 +14,7 @@ export type FilterContext = {
   organizationId?: string;
   permissionsMode?: string;
   integrationAccess?: Array<{ integrationId: string; allowedTools: string[] }>;
+  integrationOrgKeys?: Record<string, string>;
 };
 
 /**
@@ -36,8 +37,14 @@ export function filterToolsForUser(
       const meta = toolMeta.get(name);
       if (!meta) return false;
 
+      // Native proxy tools: require an org key for the integration
+      if (meta.integrationId.startsWith("proxy:")) {
+        const proxyId = meta.integrationId.replace("proxy:", "");
+        if (!ctx.integrationOrgKeys?.[proxyId]) return false;
+        // Skip connection check — proxy tools don't use per-user OAuth
+      }
       // Builtin tools: require a connection for the integration
-      if (!meta.integrationId.startsWith("custom:")) {
+      else if (!meta.integrationId.startsWith("custom:")) {
         if (!connectedIntegrationIds.has(meta.integrationId)) return false;
       }
 
