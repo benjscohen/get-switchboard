@@ -366,7 +366,7 @@ const handler = createMcpHandler(
     },
   },
   {
-    basePath: "/api/mcp",
+    streamableHttpEndpoint: "/api/mcp/http",
     disableSse: true,
     sessionIdGenerator: undefined,
   }
