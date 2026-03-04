@@ -22,10 +22,14 @@ const customToolsPromise = supabaseAdmin
   )
   .eq("enabled", true)
   .eq("custom_mcp_servers.status", "active")
-  .then((res) => res.data ?? []);
+  .then((res) => {
+    if (res.error) console.error("[MCP] custom_mcp_tools query error:", res.error);
+    return res.data ?? [];
+  });
 
 const handler = createMcpHandler(
   async (server) => {
+    console.log("[MCP] Initializing server...");
     // Register builtin integration tools
     for (const integration of allIntegrations) {
       for (const tool of integration.tools) {
@@ -173,8 +177,10 @@ const handler = createMcpHandler(
       }
     }
 
+    console.log("[MCP] Registered builtin tools, loading custom tools...");
     // Register custom MCP proxy tools
     const customTools = await customToolsPromise;
+    console.log(`[MCP] Loaded ${customTools.length} custom tools`);
     for (const ct of customTools) {
       const srv = ct.custom_mcp_servers as {
         id: string;
@@ -344,6 +350,7 @@ const handler = createMcpHandler(
       }
     >;
 
+    console.log("[MCP] Server initialization complete, registering tools/list handler");
     server.server.setRequestHandler(ListToolsRequestSchema, (_request, extra) => {
       const tools = filterToolsForUser(registeredTools, toolMeta, {
         connections: extra.authInfo?.extra?.connections as
