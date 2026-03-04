@@ -34,6 +34,16 @@ type PerUserProxyItem = {
   userKeyInstructions: ReactNode | null;
 };
 
+type LocalItem = {
+  id: string;
+  name: string;
+  description: string;
+  icon: ReactNode;
+  toolCount: number;
+  tools: IntegrationTool[];
+  setupInstructions: ReactNode;
+};
+
 type CustomMcpItem = IntegrationItem & {
   serverId: string;
   authType: string;
@@ -46,7 +56,8 @@ type CustomMcpItem = IntegrationItem & {
 type UnifiedItem =
   | { kind: "integration"; data: IntegrationItem; connected: boolean }
   | { kind: "per-user-proxy"; data: PerUserProxyItem; connected: boolean }
-  | { kind: "custom-mcp"; data: CustomMcpItem; connected: boolean };
+  | { kind: "custom-mcp"; data: CustomMcpItem; connected: boolean }
+  | { kind: "local"; data: LocalItem; connected: boolean };
 
 function isCustomMcpConnected(item: CustomMcpItem): boolean {
   if (item.hasPersonalKey) return true;
@@ -61,12 +72,14 @@ export function IntegrationList({
   proxyIntegrations = [],
   perUserProxyIntegrations = [],
   initialCustomIntegrations = [],
+  localIntegrations = [],
   subtitle,
 }: {
   initialIntegrations: IntegrationItem[];
   proxyIntegrations?: IntegrationItem[];
   perUserProxyIntegrations?: PerUserProxyItem[];
   initialCustomIntegrations?: CustomMcpItem[];
+  localIntegrations?: LocalItem[];
   subtitle?: string;
 }) {
   const [integrations, setIntegrations] = useState(initialIntegrations);
@@ -125,6 +138,11 @@ export function IntegrationList({
       data: i,
       connected: isCustomMcpConnected(i),
     })),
+    ...localIntegrations.map((i) => ({
+      kind: "local" as const,
+      data: i,
+      connected: false,
+    })),
   ];
 
   // Sort: unconnected first, then connected
@@ -162,6 +180,14 @@ export function IntegrationList({
                   item={item.data}
                   onKeyChange={handleProxyKeyChange}
                 />
+              </div>
+            );
+          }
+
+          if (item.kind === "local") {
+            return (
+              <div key={item.data.id} className={dimClass}>
+                <LocalRow item={item.data} />
               </div>
             );
           }
@@ -242,13 +268,12 @@ function IntegrationRow({
                   {disconnecting ? "..." : "Disconnect"}
                 </Button>
               ) : (
-                <Button
-                  variant="secondary"
-                  size="sm"
+                <a
                   href={`/api/integrations/connect?integration=${integration.id}`}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-200 cursor-pointer whitespace-nowrap bg-bg-card text-text-primary border border-border hover:border-border-hover hover:bg-bg-hover px-3 py-1.5 text-sm"
                 >
                   Connect
-                </Button>
+                </a>
               )}
             </>
           )}
@@ -570,6 +595,84 @@ function CustomMcpRow({
               onAddKey?.(item.serverId);
             }}
           />
+        </div>
+      )}
+
+      {expanded && (
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="grid gap-2 max-h-64 overflow-y-auto">
+            {item.tools.map((tool) => (
+              <div key={tool.name} className="flex gap-3 text-xs">
+                <code className="shrink-0 text-accent font-mono">
+                  {tool.name}
+                </code>
+                <span className="text-text-secondary truncate">
+                  {tool.description}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LocalRow({ item }: { item: LocalItem }) {
+  const [expanded, setExpanded] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-border bg-bg p-4">
+      <div className="flex items-center gap-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-bg-card">
+          {item.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium">{item.name}</p>
+            <span className="text-xs text-text-secondary">
+              {item.toolCount} tools
+            </span>
+          </div>
+          <p className="text-xs text-text-secondary truncate">
+            {item.description}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Badge variant="default">Local</Badge>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowSetup(!showSetup)}
+          >
+            {showSetup ? "Hide Guide" : "Setup Guide"}
+          </Button>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="p-1 text-text-secondary hover:text-text-primary transition-colors"
+            aria-label={expanded ? "Collapse tools" : "Expand tools"}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`transition-transform ${expanded ? "rotate-180" : ""}`}
+            >
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {showSetup && (
+        <div className="mt-3 border-t border-border pt-3">
+          {item.setupInstructions}
         </div>
       )}
 

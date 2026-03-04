@@ -1,0 +1,96 @@
+import type { LocalIntegrationConfig } from "../types";
+
+function ChromeIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 48 48" fill="none">
+      <circle cx="24" cy="24" r="22" fill="#4285F4" />
+      <circle cx="24" cy="24" r="9" fill="white" />
+      <circle cx="24" cy="24" r="5" fill="#4285F4" />
+      <path d="M24 15h18.7a22 22 0 0 0-19-13l9.3 13z" fill="#EA4335" />
+      <path d="M14.7 33L5 15.2A22 22 0 0 0 24 46l-9.3-13z" fill="#34A853" />
+      <path d="M33.3 33H5.7a22 22 0 0 0 37 0L33.3 33z" fill="#FBBC05" />
+    </svg>
+  );
+}
+
+export const chromeMcpIntegration: LocalIntegrationConfig = {
+  id: "chrome-mcp",
+  name: "Chrome DevTools",
+  description:
+    "Control Chrome DevTools for debugging, profiling, and browser automation via a local MCP server.",
+  icon: () => <ChromeIcon />,
+  setupInstructions: (
+    <div className="space-y-3 text-sm text-text-secondary">
+      <p>
+        <strong className="text-text-primary">Chrome DevTools MCP</strong> runs
+        locally on your machine. Add it to your MCP client config:
+      </p>
+      <pre className="rounded-lg border border-border bg-bg-card p-3 text-xs font-mono overflow-x-auto">
+        {JSON.stringify(
+          {
+            mcpServers: {
+              "chrome-devtools": {
+                command: "npx",
+                args: ["chrome-devtools-mcp@latest"],
+              },
+            },
+          },
+          null,
+          2
+        )}
+      </pre>
+      <ol className="list-decimal list-inside space-y-1 text-xs">
+        <li>
+          Open Chrome with remote debugging:{" "}
+          <code className="rounded bg-bg-card px-1 py-0.5 text-accent">
+            --remote-debugging-port=9222
+          </code>
+        </li>
+        <li>Add the config above to your Claude Desktop settings</li>
+        <li>Restart Claude Desktop — the tools will appear automatically</li>
+      </ol>
+      <p className="text-xs">
+        Learn more:{" "}
+        <a
+          href="https://github.com/anthropics/anthropic-quickstarts/tree/main/mcp-chrome-devtools"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent hover:underline"
+        >
+          github.com/anthropics/anthropic-quickstarts
+        </a>
+      </p>
+    </div>
+  ),
+  tools: [
+    { name: "click", description: "Click an element on the page" },
+    { name: "drag", description: "Drag an element to another location" },
+    { name: "evaluate_script", description: "Execute JavaScript in the page context" },
+    { name: "fill", description: "Fill in a form field" },
+    { name: "get_console_logs", description: "Get console log messages" },
+    { name: "get_element_styles", description: "Get computed styles for an element" },
+    { name: "get_network_activity", description: "Get network request/response data" },
+    { name: "get_page_a11y_snapshot", description: "Get an accessibility tree snapshot of the page" },
+    { name: "get_page_content", description: "Get the HTML content of the page" },
+    { name: "get_page_metadata", description: "Get page metadata (title, URL, etc.)" },
+    { name: "highlight_elements", description: "Highlight elements on the page" },
+    { name: "hover", description: "Hover over an element" },
+    { name: "key_press", description: "Press a keyboard key" },
+    { name: "lighthouse_audit", description: "Run a Lighthouse audit on the page" },
+    { name: "navigate_page", description: "Navigate to a URL" },
+    { name: "network_intercept", description: "Intercept and modify network requests" },
+    { name: "page_find", description: "Search for text on the page" },
+    { name: "query_dom", description: "Query the DOM with a CSS selector" },
+    { name: "scroll", description: "Scroll the page or an element" },
+    { name: "select_option", description: "Select an option from a dropdown" },
+    { name: "set_device_metrics", description: "Set viewport size and device metrics" },
+    { name: "snapshot_diff", description: "Compare two page snapshots" },
+    { name: "storage_clear", description: "Clear browser storage" },
+    { name: "storage_get", description: "Get values from browser storage" },
+    { name: "storage_set", description: "Set values in browser storage" },
+    { name: "tab_list", description: "List open browser tabs" },
+    { name: "tab_manage", description: "Switch, open, or close tabs" },
+    { name: "take_screenshot", description: "Take a screenshot of the page" },
+    { name: "type_text", description: "Type text into an element" },
+  ],
+};

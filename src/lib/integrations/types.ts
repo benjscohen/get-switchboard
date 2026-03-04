@@ -64,6 +64,15 @@ export type IntegrationConfig = {
   toolCount: number;
 };
 
+export type LocalIntegrationConfig = {
+  id: string;
+  name: string;
+  description: string;
+  icon: () => ReactNode;
+  setupInstructions: ReactNode;
+  tools: { name: string; description: string }[];
+};
+
 export type McpContentBlock =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };

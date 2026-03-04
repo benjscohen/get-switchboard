@@ -40,19 +40,23 @@ export async function getCustomMcpCatalog(): Promise<CatalogEntry[]> {
   });
 }
 
-export async function getNativeProxyCatalog(): Promise<CatalogEntry[]> {
-  // Load tools from DB, falling back to config
-  const { data: dbTools } = await supabaseAdmin
+export async function loadProxyToolsByIntegration(): Promise<Map<string, Array<{ name: string; description: string }>>> {
+  const { data } = await supabaseAdmin
     .from("proxy_integration_tools")
     .select("integration_id, tool_name, description")
     .eq("enabled", true);
 
-  const toolsByIntegration = new Map<string, Array<{ name: string; description: string }>>();
-  for (const t of dbTools ?? []) {
-    const existing = toolsByIntegration.get(t.integration_id) ?? [];
+  const map = new Map<string, Array<{ name: string; description: string }>>();
+  for (const t of data ?? []) {
+    const existing = map.get(t.integration_id) ?? [];
     existing.push({ name: t.tool_name, description: t.description });
-    toolsByIntegration.set(t.integration_id, existing);
+    map.set(t.integration_id, existing);
   }
+  return map;
+}
+
+export async function getNativeProxyCatalog(): Promise<CatalogEntry[]> {
+  const toolsByIntegration = await loadProxyToolsByIntegration();
 
   return allProxyIntegrations.map((i) => {
     const tools = toolsByIntegration.get(i.id) ??

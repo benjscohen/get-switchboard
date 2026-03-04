@@ -7,6 +7,8 @@ import { ConnectCard } from "@/components/dashboard/connect-card";
 import { DashboardToasts } from "@/components/dashboard/dashboard-toasts";
 import { allIntegrations } from "@/lib/integrations/registry";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
+import { loadProxyToolsByIntegration } from "@/lib/integrations/catalog";
+import { chromeMcpIntegration } from "@/lib/integrations/chrome-mcp";
 import { headers } from "next/headers";
 
 export default async function DashboardPage() {
@@ -124,18 +126,7 @@ export default async function DashboardPage() {
   );
 
   // Load proxy tools from DB (with fallback to config)
-  const { data: proxyToolsData } = await supabaseAdmin
-    .from("proxy_integration_tools")
-    .select("integration_id, tool_name, description")
-    .eq("enabled", true);
-
-  // Group proxy tools by integration_id
-  const proxyToolsByIntegration = new Map<string, Array<{ name: string; description: string }>>();
-  for (const t of proxyToolsData ?? []) {
-    const existing = proxyToolsByIntegration.get(t.integration_id) ?? [];
-    existing.push({ name: t.tool_name, description: t.description });
-    proxyToolsByIntegration.set(t.integration_id, existing);
-  }
+  const proxyToolsByIntegration = await loadProxyToolsByIntegration();
 
   function getProxyToolsForIntegration(p: typeof allProxyIntegrations[number]) {
     const dbTools = proxyToolsByIntegration.get(p.id);
@@ -208,8 +199,9 @@ export default async function DashboardPage() {
           initialKeys={initialKeys}
           connectionStats={{
             connected: integrations.filter(i => i.connected).length
+              + proxyIntegrations.filter(i => i.connected).length
               + perUserProxyIntegrations.filter(i => i.hasPersonalKey).length,
-            total: integrations.length + oauthProxyIntegrations.length + perUserProxyIntegrations.length,
+            total: integrations.length + proxyIntegrations.length + perUserProxyIntegrations.length,
           }}
         />
         <IntegrationList
@@ -217,6 +209,17 @@ export default async function DashboardPage() {
           proxyIntegrations={proxyIntegrations}
           perUserProxyIntegrations={perUserProxyIntegrations}
           initialCustomIntegrations={customIntegrations}
+          localIntegrations={[
+            {
+              id: chromeMcpIntegration.id,
+              name: chromeMcpIntegration.name,
+              description: chromeMcpIntegration.description,
+              icon: chromeMcpIntegration.icon(),
+              toolCount: chromeMcpIntegration.tools.length,
+              tools: chromeMcpIntegration.tools,
+              setupInstructions: chromeMcpIntegration.setupInstructions,
+            },
+          ]}
           subtitle="Connect services to make their tools available through your MCP client."
         />
       </div>
