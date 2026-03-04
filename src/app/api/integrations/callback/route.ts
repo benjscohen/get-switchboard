@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { integrationRegistry } from "@/lib/integrations/registry";
 import { OAUTH_STATE_COOKIE } from "@/lib/oauth-state";
 import { encrypt } from "@/lib/encryption";
+import { getAppOrigin } from "@/lib/app-url";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
 
   if (!code || !state) {
     return NextResponse.redirect(
-      `${req.nextUrl.origin}/dashboard?error=missing_params`
+      `${getAppOrigin(req)}/dashboard?error=missing_params`
     );
   }
 
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
   const raw = cookieStore.get(OAUTH_STATE_COOKIE)?.value;
   if (!raw) {
     return NextResponse.redirect(
-      `${req.nextUrl.origin}/dashboard?error=missing_state`
+      `${getAppOrigin(req)}/dashboard?error=missing_state`
     );
   }
 
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
     stored = JSON.parse(raw);
   } catch {
     return NextResponse.redirect(
-      `${req.nextUrl.origin}/dashboard?error=invalid_state`
+      `${getAppOrigin(req)}/dashboard?error=invalid_state`
     );
   }
 
@@ -38,14 +39,14 @@ export async function GET(req: NextRequest) {
 
   if (stored.state !== state) {
     return NextResponse.redirect(
-      `${req.nextUrl.origin}/dashboard?error=state_mismatch`
+      `${getAppOrigin(req)}/dashboard?error=state_mismatch`
     );
   }
 
   const integration = integrationRegistry.get(stored.integrationId);
   if (!integration) {
     return NextResponse.redirect(
-      `${req.nextUrl.origin}/dashboard?error=unknown_integration`
+      `${getAppOrigin(req)}/dashboard?error=unknown_integration`
     );
   }
 
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest) {
 
   if (!clientId || !clientSecret) {
     return NextResponse.redirect(
-      `${req.nextUrl.origin}/dashboard?error=not_configured`
+      `${getAppOrigin(req)}/dashboard?error=not_configured`
     );
   }
 
@@ -66,7 +67,7 @@ export async function GET(req: NextRequest) {
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: `${req.nextUrl.origin}/api/integrations/callback`,
+      redirect_uri: `${getAppOrigin(req)}/api/integrations/callback`,
       client_id: clientId,
       client_secret: clientSecret,
     }),
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest) {
 
   if (!tokenRes.ok) {
     return NextResponse.redirect(
-      `${req.nextUrl.origin}/dashboard?error=token_exchange_failed`
+      `${getAppOrigin(req)}/dashboard?error=token_exchange_failed`
     );
   }
 
@@ -105,6 +106,6 @@ export async function GET(req: NextRequest) {
     );
 
   return NextResponse.redirect(
-    `${req.nextUrl.origin}/dashboard?connected=${stored.integrationId}`
+    `${getAppOrigin(req)}/dashboard?connected=${stored.integrationId}`
   );
 }

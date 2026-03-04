@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { requireAuth } from "@/lib/api-auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { OAUTH_STATE_COOKIE, OAUTH_COOKIE_OPTIONS } from "@/lib/oauth-state";
+import { getAppOrigin } from "@/lib/app-url";
 
 export async function GET(req: NextRequest) {
   const authResult = await requireAuth();
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
   // Build authorization URL
   const params = new URLSearchParams({
     client_id: clientId,
-    redirect_uri: `${req.nextUrl.origin}/api/integrations/callback`,
+    redirect_uri: `${getAppOrigin(req)}/api/integrations/callback`,
     response_type: "code",
     scope: oauth.scopes.join(" "),
     state,
