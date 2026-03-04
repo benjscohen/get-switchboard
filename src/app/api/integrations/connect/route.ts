@@ -103,11 +103,12 @@ export async function GET(req: NextRequest) {
       isProxy: true,
     }), OAUTH_COOKIE_OPTIONS);
 
+    const scopeParam = oauth.scopeParamName ?? "scope";
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
       response_type: "code",
-      scope: oauth.scopes.join(" "),
+      [scopeParam]: oauth.scopes.join(" "),
       state,
       code_challenge: codeChallenge,
       code_challenge_method: "S256",
