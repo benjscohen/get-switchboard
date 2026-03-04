@@ -92,31 +92,30 @@ export default async function DashboardPage() {
     };
   });
 
-  // Load org's enabled native proxy integrations
-  const { data: orgKeys } = orgId
-    ? await supabaseAdmin
-        .from("integration_org_keys")
-        .select("integration_id, enabled")
-        .eq("organization_id", orgId)
-        .eq("enabled", true)
-    : { data: [] };
+  // Load org's native proxy integration key status
+  let orgKeys: Array<{ integration_id: string; enabled: boolean }> = [];
+  if (orgId) {
+    const { data } = await supabaseAdmin
+      .from("integration_org_keys")
+      .select("integration_id, enabled")
+      .eq("organization_id", orgId);
+    orgKeys = data ?? [];
+  }
 
-  const enabledProxyIds = new Set(
-    (orgKeys ?? []).map((k) => k.integration_id)
+  const orgKeyMap = new Map(
+    orgKeys.map((k) => [k.integration_id, k.enabled])
   );
 
-  const proxyIntegrations = allProxyIntegrations
-    .filter((p) => enabledProxyIds.has(p.id))
-    .map((p) => ({
-      id: `proxy:${p.id}`,
-      name: p.name,
-      description: p.description,
-      icon: p.icon(),
-      toolCount: p.toolCount,
-      tools: p.tools.map((t) => ({ name: t.name, description: t.description })),
-      connected: true,
-      kind: "native-proxy" as const,
-    }));
+  const proxyIntegrations = allProxyIntegrations.map((p) => ({
+    id: `proxy:${p.id}`,
+    name: p.name,
+    description: p.description,
+    icon: p.icon(),
+    toolCount: p.toolCount,
+    tools: p.tools.map((t) => ({ name: t.name, description: t.description })),
+    connected: orgKeyMap.get(p.id) === true,
+    kind: "native-proxy" as const,
+  }));
 
   const headersList = await headers();
   const host = headersList.get("host") ?? "localhost:3000";

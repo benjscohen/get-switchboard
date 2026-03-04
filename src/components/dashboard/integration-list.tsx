@@ -116,26 +116,34 @@ function IntegrationRow({ integration }: { integration: IntegrationItem }) {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Badge variant={integration.connected ? "accent" : "default"}>
-            {integration.connected ? "Connected" : "Not connected"}
-          </Badge>
-          {integration.connected ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleDisconnect}
-              disabled={disconnecting}
-            >
-              {disconnecting ? "..." : "Disconnect"}
-            </Button>
+          {integration.kind === "native-proxy" ? (
+            <Badge variant={integration.connected ? "accent" : "default"}>
+              {integration.connected ? "Enabled" : "Not configured"}
+            </Badge>
           ) : (
-            <Button
-              variant="secondary"
-              size="sm"
-              href={`/api/integrations/connect?integration=${integration.id}`}
-            >
-              Connect
-            </Button>
+            <>
+              <Badge variant={integration.connected ? "accent" : "default"}>
+                {integration.connected ? "Connected" : "Not connected"}
+              </Badge>
+              {integration.connected ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDisconnect}
+                  disabled={disconnecting}
+                >
+                  {disconnecting ? "..." : "Disconnect"}
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  href={`/api/integrations/connect?integration=${integration.id}`}
+                >
+                  Connect
+                </Button>
+              )}
+            </>
           )}
           <button
             onClick={() => setExpanded(!expanded)}

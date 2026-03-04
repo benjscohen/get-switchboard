@@ -186,9 +186,13 @@ function IntegrationsCard() {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
 
   const fetchIntegrations = useCallback(async () => {
-    const res = await fetch("/api/org/integrations");
-    if (res.ok) {
-      setIntegrations(await res.json());
+    try {
+      const res = await fetch("/api/org/integrations");
+      if (res.ok) {
+        setIntegrations(await res.json());
+      }
+    } catch {
+      // Ignore fetch errors
     }
     setLoading(false);
   }, []);
