@@ -11,7 +11,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data: keys, error } = await supabase
     .from("api_keys")
-    .select("id, name, key_prefix, last_used_at, created_at, user_id, profiles(name, email)")
+    .select("id, name, key_prefix, last_used_at, created_at, user_id")
     .eq("organization_id", authResult.organizationId)
     .order("created_at", { ascending: false });
 
@@ -19,11 +19,21 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to fetch API keys" }, { status: 500 });
   }
 
+  // Fetch creator profiles separately to avoid FK join through RLS
+  const userIds = [...new Set((keys ?? []).map((k) => k.user_id))];
+  const profileMap = new Map<string, { name: string | null; email: string | null }>();
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, name, email")
+      .in("id", userIds);
+    for (const p of profiles ?? []) {
+      profileMap.set(p.id, { name: p.name, email: p.email });
+    }
+  }
+
   const mapped = (keys ?? []).map((k) => {
-    const profileData = k.profiles as unknown;
-    const creator = (Array.isArray(profileData) ? profileData[0] : profileData) as
-      | { name: string | null; email: string | null }
-      | null;
+    const creator = profileMap.get(k.user_id) ?? null;
     return {
       id: k.id,
       name: k.name,
