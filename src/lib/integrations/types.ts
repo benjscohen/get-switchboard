@@ -10,6 +10,13 @@ export type CatalogEntry = {
   tools: { name: string; description: string }[];
 };
 
+export type ProxyOAuthConfig = {
+  authUrl: string;
+  tokenUrl: string;
+  registrationUrl: string; // DCR endpoint
+  scopes: string[];
+};
+
 export type ProxyIntegrationConfig = {
   id: string;
   name: string;
@@ -18,6 +25,7 @@ export type ProxyIntegrationConfig = {
   serverUrl: string;
   keyMode: "org" | "per_user";
   userKeyInstructions?: ReactNode;
+  oauth?: ProxyOAuthConfig;
   // Optional fallback — used only if no DB rows exist yet
   fallbackTools?: Array<{
     name: string;

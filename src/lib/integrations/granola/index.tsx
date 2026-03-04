@@ -19,20 +19,12 @@ export const granolaIntegration: ProxyIntegrationConfig = {
   icon: GranolaIcon,
   serverUrl: "https://mcp.granola.ai/mcp",
   keyMode: "per_user",
-  userKeyInstructions: (
-    <>
-      Enter your Granola API key.{" "}
-      <a
-        href="https://granola.ai/settings/api"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="underline text-brand hover:text-brand/80"
-      >
-        Generate one here
-      </a>
-      .
-    </>
-  ),
+  oauth: {
+    authUrl: "https://mcp-auth.granola.ai/oauth2/authorize",
+    tokenUrl: "https://mcp-auth.granola.ai/oauth2/token",
+    registrationUrl: "https://mcp-auth.granola.ai/oauth2/register",
+    scopes: ["openid", "email", "profile", "offline_access"],
+  },
   fallbackTools: [
     {
       name: "list_meetings",

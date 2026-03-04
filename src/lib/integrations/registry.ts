@@ -2,6 +2,7 @@ import type { IntegrationConfig } from "./types";
 import { asanaIntegration } from "./asana";
 import { googleCalendarIntegration } from "./google-calendar";
 import { googleDocsIntegration } from "./google-docs";
+import { googleDriveIntegration } from "./google-drive";
 import { googleGmailIntegration } from "./google-gmail";
 import { googleSheetsIntegration } from "./google-sheets";
 import { googleSlidesIntegration } from "./google-slides";
@@ -10,6 +11,7 @@ const integrations: IntegrationConfig[] = [
   asanaIntegration,
   googleCalendarIntegration,
   googleDocsIntegration,
+  googleDriveIntegration,
   googleGmailIntegration,
   googleSheetsIntegration,
   googleSlidesIntegration,

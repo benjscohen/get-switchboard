@@ -43,6 +43,19 @@ type CustomMcpItem = IntegrationItem & {
   hasPersonalKey: boolean;
 };
 
+type UnifiedItem =
+  | { kind: "integration"; data: IntegrationItem; connected: boolean }
+  | { kind: "per-user-proxy"; data: PerUserProxyItem; connected: boolean }
+  | { kind: "custom-mcp"; data: CustomMcpItem; connected: boolean };
+
+function isCustomMcpConnected(item: CustomMcpItem): boolean {
+  if (item.hasPersonalKey) return true;
+  if (item.keyMode === "per_user") return false;
+  if (item.hasSharedKey) return true;
+  if (item.authType === "bearer") return false;
+  return true; // "none" auth = no key needed
+}
+
 export function IntegrationList({
   initialIntegrations,
   proxyIntegrations = [],
@@ -56,13 +69,9 @@ export function IntegrationList({
   initialCustomIntegrations?: CustomMcpItem[];
   subtitle?: string;
 }) {
-  const [integrations, setIntegrations] = useState(
-    [...initialIntegrations].sort((a, b) => Number(a.connected) - Number(b.connected))
-  );
+  const [integrations, setIntegrations] = useState(initialIntegrations);
   const [customIntegrations, setCustomIntegrations] = useState(initialCustomIntegrations);
-  const [perUserProxies, setPerUserProxies] = useState(
-    [...perUserProxyIntegrations].sort((a, b) => Number(a.hasPersonalKey) - Number(b.hasPersonalKey))
-  );
+  const [perUserProxies, setPerUserProxies] = useState(perUserProxyIntegrations);
 
   const handleDisconnect = (id: string) => {
     setIntegrations((prev) =>
@@ -94,6 +103,33 @@ export function IntegrationList({
     );
   };
 
+  // Build unified list
+  const unified: UnifiedItem[] = [
+    ...integrations.map((i) => ({
+      kind: "integration" as const,
+      data: i,
+      connected: i.connected,
+    })),
+    ...proxyIntegrations.map((i) => ({
+      kind: "integration" as const,
+      data: i,
+      connected: i.connected,
+    })),
+    ...perUserProxies.map((i) => ({
+      kind: "per-user-proxy" as const,
+      data: i,
+      connected: i.hasPersonalKey,
+    })),
+    ...customIntegrations.map((i) => ({
+      kind: "custom-mcp" as const,
+      data: i,
+      connected: isCustomMcpConnected(i),
+    })),
+  ];
+
+  // Sort: unconnected first, then connected
+  unified.sort((a, b) => Number(a.connected) - Number(b.connected));
+
   return (
     <Card hover={false}>
       <h2 className={`text-sm font-medium text-text-secondary ${subtitle ? "mb-1" : "mb-4"}`}>
@@ -103,58 +139,44 @@ export function IntegrationList({
         <p className="mb-4 text-xs text-text-tertiary">{subtitle}</p>
       )}
       <div className="space-y-3">
-        {integrations.map((integration) => (
-          <IntegrationRow
-            key={integration.id}
-            integration={integration}
-            onDisconnect={handleDisconnect}
-          />
-        ))}
-        {proxyIntegrations.length > 0 && (
-          <>
-            <div className="border-t border-border pt-3 mt-3">
-              <h3 className="text-xs font-medium text-text-secondary mb-3">
-                Native Integrations
-              </h3>
-            </div>
-            {proxyIntegrations.map((integration) => (
-              <IntegrationRow key={integration.id} integration={integration} />
-            ))}
-          </>
-        )}
-        {perUserProxies.length > 0 && (
-          <>
-            <div className="border-t border-border pt-3 mt-3">
-              <h3 className="text-xs font-medium text-text-secondary mb-3">
-                Personal API Key Integrations
-              </h3>
-            </div>
-            {perUserProxies.map((item) => (
-              <PerUserProxyRow
-                key={item.integrationId}
-                item={item}
-                onKeyChange={handleProxyKeyChange}
-              />
-            ))}
-          </>
-        )}
-        {customIntegrations.length > 0 && (
-          <>
-            <div className="border-t border-border pt-3 mt-3">
-              <h3 className="text-xs font-medium text-text-secondary mb-3">
-                Custom MCP Servers
-              </h3>
-            </div>
-            {customIntegrations.map((item) => (
+        {unified.map((item) => {
+          const dimClass = item.connected
+            ? "opacity-50 hover:opacity-100 transition-opacity"
+            : "";
+
+          if (item.kind === "integration") {
+            return (
+              <div key={item.data.id} className={dimClass}>
+                <IntegrationRow
+                  integration={item.data}
+                  onDisconnect={handleDisconnect}
+                />
+              </div>
+            );
+          }
+
+          if (item.kind === "per-user-proxy") {
+            return (
+              <div key={item.data.integrationId} className={dimClass}>
+                <PerUserProxyRow
+                  item={item.data}
+                  onKeyChange={handleProxyKeyChange}
+                />
+              </div>
+            );
+          }
+
+          // custom-mcp
+          return (
+            <div key={item.data.id} className={dimClass}>
               <CustomMcpRow
-                key={item.id}
-                item={item}
+                item={item.data}
                 onRemoveKey={handleRemoveKey}
                 onAddKey={handleAddKey}
               />
-            ))}
-          </>
-        )}
+            </div>
+          );
+        })}
       </div>
     </Card>
   );

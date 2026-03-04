@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { integrationRegistry } from "@/lib/integrations/registry";
+import { proxyIntegrationRegistry } from "@/lib/integrations/proxy-registry";
 import { OAUTH_STATE_COOKIE } from "@/lib/oauth-state";
 import { encrypt } from "@/lib/encryption";
 import { getAppOrigin } from "@/lib/app-url";
@@ -25,7 +26,13 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  let stored: { state: string; integrationId: string; userId: string };
+  let stored: {
+    state: string;
+    integrationId: string;
+    userId: string;
+    codeVerifier?: string;
+    isProxy?: boolean;
+  };
   try {
     stored = JSON.parse(raw);
   } catch {
@@ -43,34 +50,74 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const integration = integrationRegistry.get(stored.integrationId);
-  if (!integration) {
-    return NextResponse.redirect(
-      `${getAppOrigin(req)}/dashboard?error=unknown_integration`
-    );
-  }
+  const redirectUri = `${getAppOrigin(req)}/api/integrations/callback`;
+  let tokenUrl: string;
+  let tokenBody: Record<string, string>;
 
-  const { oauth } = integration;
-  const clientId = process.env[oauth.clientIdEnvVar];
-  const clientSecret = process.env[oauth.clientSecretEnvVar];
+  if (stored.isProxy) {
+    // Proxy OAuth integration — get client credentials from DB
+    const proxyIntegration = proxyIntegrationRegistry.get(stored.integrationId);
+    if (!proxyIntegration?.oauth) {
+      return NextResponse.redirect(
+        `${getAppOrigin(req)}/dashboard?error=unknown_integration`
+      );
+    }
 
-  if (!clientId || !clientSecret) {
-    return NextResponse.redirect(
-      `${getAppOrigin(req)}/dashboard?error=not_configured`
-    );
+    const { data: clientRow } = await supabaseAdmin
+      .from("proxy_oauth_clients")
+      .select("client_id, client_secret")
+      .eq("integration_id", stored.integrationId)
+      .single();
+
+    if (!clientRow) {
+      return NextResponse.redirect(
+        `${getAppOrigin(req)}/dashboard?error=not_configured`
+      );
+    }
+
+    tokenUrl = proxyIntegration.oauth.tokenUrl;
+    tokenBody = {
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+      client_id: clientRow.client_id,
+      ...(clientRow.client_secret ? { client_secret: clientRow.client_secret } : {}),
+      ...(stored.codeVerifier ? { code_verifier: stored.codeVerifier } : {}),
+    };
+  } else {
+    // Builtin OAuth integration
+    const integration = integrationRegistry.get(stored.integrationId);
+    if (!integration) {
+      return NextResponse.redirect(
+        `${getAppOrigin(req)}/dashboard?error=unknown_integration`
+      );
+    }
+
+    const { oauth } = integration;
+    const clientId = process.env[oauth.clientIdEnvVar];
+    const clientSecret = process.env[oauth.clientSecretEnvVar];
+
+    if (!clientId || !clientSecret) {
+      return NextResponse.redirect(
+        `${getAppOrigin(req)}/dashboard?error=not_configured`
+      );
+    }
+
+    tokenUrl = oauth.tokenUrl;
+    tokenBody = {
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+      client_id: clientId,
+      client_secret: clientSecret,
+    };
   }
 
   // Exchange code for tokens
-  const tokenRes = await fetch(oauth.tokenUrl, {
+  const tokenRes = await fetch(tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: `${getAppOrigin(req)}/api/integrations/callback`,
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
+    body: new URLSearchParams(tokenBody),
   });
 
   if (!tokenRes.ok) {

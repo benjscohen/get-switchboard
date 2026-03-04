@@ -520,7 +520,7 @@ function registerTools(server: McpServer) {
     if (!proxy) continue;
 
     const integrationId = `proxy:${tool.integrationId}`;
-    toolMeta.set(tool.name, { integrationId, orgId: null, keyMode: proxy.keyMode });
+    toolMeta.set(tool.name, { integrationId, orgId: null, keyMode: proxy.keyMode, proxyOAuth: !!proxy.oauth });
     server.tool(
       tool.name,
       tool.description,
@@ -572,42 +572,102 @@ function registerTools(server: McpServer) {
           };
         }
 
-        // Look up API key based on keyMode
-        const apiKey = proxy.keyMode === "per_user"
-          ? (extra.authInfo?.extra?.proxyUserKeys as Record<string, string> | undefined)?.[proxy.id]
-          : (extra.authInfo?.extra?.integrationOrgKeys as Record<string, string> | undefined)?.[proxy.id];
+        // Resolve bearer token: OAuth connection or API key
+        let bearerToken: string | undefined;
 
-        if (!apiKey) {
-          const errorMessage = proxy.keyMode === "per_user"
-            ? "No personal API key configured"
-            : "No API key configured for this integration";
-          logUsage({
-            userId,
-            apiKeyId,
-            toolName: tool.name,
-            integrationId,
-            status: "error",
-            errorMessage,
-            durationMs: Date.now() - startTime,
-            organizationId,
-          });
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: proxy.keyMode === "per_user"
-                  ? `Integration "${proxy.name}" requires a personal API key. Add one in your dashboard.`
-                  : `Integration "${proxy.name}" is not configured. An org admin must add an API key in Organization Settings.`,
-              },
-            ],
-            isError: true,
-          };
+        if (proxy.oauth) {
+          // OAuth-based proxy: use connection tokens
+          const connections = extra.authInfo?.extra?.connections as
+            | Array<{
+                id: string;
+                integrationId: string;
+                accessToken: string;
+                refreshToken: string | null;
+                expiresAt: Date | null;
+              }>
+            | undefined;
+
+          const connection = connections?.find((c) => c.integrationId === proxy.id);
+          if (!connection) {
+            logUsage({
+              userId,
+              apiKeyId,
+              toolName: tool.name,
+              integrationId,
+              status: "error",
+              errorMessage: "Integration not connected",
+              durationMs: Date.now() - startTime,
+              organizationId,
+            });
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Integration "${proxy.name}" is not connected. Connect it at your dashboard.`,
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          try {
+            const tokens = await getValidTokens(connection);
+            bearerToken = tokens.accessToken;
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Token error";
+            logUsage({
+              userId,
+              apiKeyId,
+              toolName: tool.name,
+              integrationId,
+              status: "error",
+              errorMessage: message,
+              durationMs: Date.now() - startTime,
+              organizationId,
+            });
+            return {
+              content: [{ type: "text" as const, text: message }],
+              isError: true,
+            };
+          }
+        } else {
+          // Key-based proxy
+          bearerToken = proxy.keyMode === "per_user"
+            ? (extra.authInfo?.extra?.proxyUserKeys as Record<string, string> | undefined)?.[proxy.id]
+            : (extra.authInfo?.extra?.integrationOrgKeys as Record<string, string> | undefined)?.[proxy.id];
+
+          if (!bearerToken) {
+            const errorMessage = proxy.keyMode === "per_user"
+              ? "No personal API key configured"
+              : "No API key configured for this integration";
+            logUsage({
+              userId,
+              apiKeyId,
+              toolName: tool.name,
+              integrationId,
+              status: "error",
+              errorMessage,
+              durationMs: Date.now() - startTime,
+              organizationId,
+            });
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: proxy.keyMode === "per_user"
+                    ? `Integration "${proxy.name}" requires a personal API key. Add one in your dashboard.`
+                    : `Integration "${proxy.name}" is not configured. An org admin must add an API key in Organization Settings.`,
+                },
+              ],
+              isError: true,
+            };
+          }
         }
 
         try {
           const result = await proxyToolCall(
             proxy.serverUrl,
-            apiKey,
+            bearerToken,
             tool.name,
             args as Record<string, unknown>
           );

@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { encrypt } from "@/lib/encryption";
 import { integrationRegistry } from "./registry";
+import { proxyIntegrationRegistry } from "./proxy-registry";
 
 type Connection = {
   id: string;
@@ -30,30 +31,58 @@ export async function getValidTokens(
     throw new Error("Token expired and no refresh token available");
   }
 
+  // Resolve OAuth credentials — builtin or proxy integration
+  let tokenUrl: string;
+  let clientId: string;
+  let clientSecret: string | undefined;
+
   const integration = integrationRegistry.get(connection.integrationId);
-  if (!integration) {
-    throw new Error(`Unknown integration: ${connection.integrationId}`);
+  if (integration) {
+    const { oauth } = integration;
+    const envClientId = process.env[oauth.clientIdEnvVar];
+    const envClientSecret = process.env[oauth.clientSecretEnvVar];
+    if (!envClientId || !envClientSecret) {
+      throw new Error(
+        `Missing OAuth credentials for ${connection.integrationId}`
+      );
+    }
+    tokenUrl = oauth.tokenUrl;
+    clientId = envClientId;
+    clientSecret = envClientSecret;
+  } else {
+    const proxyIntegration = proxyIntegrationRegistry.get(connection.integrationId);
+    if (!proxyIntegration?.oauth) {
+      throw new Error(`Unknown integration: ${connection.integrationId}`);
+    }
+
+    const { data: clientRow } = await supabaseAdmin
+      .from("proxy_oauth_clients")
+      .select("client_id, client_secret")
+      .eq("integration_id", connection.integrationId)
+      .single();
+
+    if (!clientRow) {
+      throw new Error(
+        `No OAuth client registered for ${connection.integrationId}`
+      );
+    }
+
+    tokenUrl = proxyIntegration.oauth.tokenUrl;
+    clientId = clientRow.client_id;
+    clientSecret = clientRow.client_secret ?? undefined;
   }
 
-  const { oauth } = integration;
-  const clientId = process.env[oauth.clientIdEnvVar];
-  const clientSecret = process.env[oauth.clientSecretEnvVar];
+  const body: Record<string, string> = {
+    grant_type: "refresh_token",
+    refresh_token: connection.refreshToken,
+    client_id: clientId,
+  };
+  if (clientSecret) body.client_secret = clientSecret;
 
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      `Missing OAuth credentials for ${connection.integrationId}`
-    );
-  }
-
-  const res = await fetch(oauth.tokenUrl, {
+  const res = await fetch(tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: connection.refreshToken,
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
+    body: new URLSearchParams(body),
   });
 
   if (!res.ok) {

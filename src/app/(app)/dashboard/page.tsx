@@ -28,7 +28,7 @@ export default async function DashboardPage() {
     (connections ?? []).map((c) => c.integration_id)
   );
 
-  const integrations = allIntegrations.map((i) => ({
+  const builtinIntegrations = allIntegrations.map((i) => ({
     id: i.id,
     name: i.name,
     description: i.description,
@@ -143,8 +143,9 @@ export default async function DashboardPage() {
     return (p.fallbackTools ?? []).map((t) => ({ name: t.name, description: t.description }));
   }
 
-  const orgProxies = allProxyIntegrations.filter((p) => p.keyMode === "org");
-  const perUserProxies = allProxyIntegrations.filter((p) => p.keyMode === "per_user");
+  const orgProxies = allProxyIntegrations.filter((p) => !p.oauth && p.keyMode === "org");
+  const perUserProxies = allProxyIntegrations.filter((p) => !p.oauth && p.keyMode === "per_user");
+  const oauthProxies = allProxyIntegrations.filter((p) => !!p.oauth);
 
   const proxyIntegrations = orgProxies.map((p) => {
     const tools = getProxyToolsForIntegration(p);
@@ -159,6 +160,24 @@ export default async function DashboardPage() {
       kind: "native-proxy" as const,
     };
   });
+
+  // OAuth proxy integrations show Connect/Disconnect like builtins
+  const oauthProxyIntegrations = oauthProxies.map((p) => {
+    const tools = getProxyToolsForIntegration(p);
+    return {
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      icon: p.icon(),
+      toolCount: tools.length,
+      tools,
+      connected: connectedIds.has(p.id),
+      kind: "builtin" as const,
+    };
+  });
+
+  // Merge builtin + OAuth proxy integrations for the UI
+  const integrations = [...builtinIntegrations, ...oauthProxyIntegrations];
 
   const perUserProxyIntegrations = perUserProxies.map((p) => {
     const tools = getProxyToolsForIntegration(p);
@@ -182,7 +201,7 @@ export default async function DashboardPage() {
   return (
     <Container className="py-10">
       <DashboardToasts />
-      <h1 className="mb-8 text-2xl font-bold">Dashboard</h1>
+      <h1 className="mb-8 text-2xl font-bold">MCP</h1>
       <div className="space-y-6">
         <ConnectCard
           origin={origin}
@@ -190,7 +209,7 @@ export default async function DashboardPage() {
           connectionStats={{
             connected: integrations.filter(i => i.connected).length
               + perUserProxyIntegrations.filter(i => i.hasPersonalKey).length,
-            total: integrations.length + perUserProxyIntegrations.length,
+            total: integrations.length + oauthProxyIntegrations.length + perUserProxyIntegrations.length,
           }}
         />
         <IntegrationList

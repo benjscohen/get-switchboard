@@ -1,6 +1,6 @@
 import { isToolAllowed } from "@/lib/permissions";
 
-export type ToolMeta = { integrationId: string; orgId: string | null; keyMode?: "org" | "per_user" };
+export type ToolMeta = { integrationId: string; orgId: string | null; keyMode?: "org" | "per_user"; proxyOAuth?: boolean };
 
 export type RegisteredTool = {
   enabled: boolean;
@@ -38,15 +38,17 @@ export function filterToolsForUser(
       const meta = toolMeta.get(name);
       if (!meta) return false;
 
-      // Native proxy tools: require the appropriate key based on keyMode
+      // Native proxy tools: require key or OAuth connection based on config
       if (meta.integrationId.startsWith("proxy:")) {
         const proxyId = meta.integrationId.replace("proxy:", "");
-        if (meta.keyMode === "per_user") {
+        if (meta.proxyOAuth) {
+          // OAuth-based proxy: require a connection (like builtin)
+          if (!connectedIntegrationIds.has(proxyId)) return false;
+        } else if (meta.keyMode === "per_user") {
           if (!ctx.proxyUserKeys?.[proxyId]) return false;
         } else {
           if (!ctx.integrationOrgKeys?.[proxyId]) return false;
         }
-        // Skip connection check — proxy tools don't use per-user OAuth
       }
       // Builtin tools: require a connection for the integration
       else if (!meta.integrationId.startsWith("custom:")) {
