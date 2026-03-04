@@ -471,4 +471,18 @@ const authedHandler = withMcpAuth(
   { required: true }
 );
 
-export { authedHandler as GET, authedHandler as POST, authedHandler as DELETE };
+async function debugHandler(req: Request) {
+  try {
+    const res = await authedHandler(req);
+    console.log("[MCP] Response status:", res.status, "content-type:", res.headers.get("content-type"));
+    return res;
+  } catch (err) {
+    console.error("[MCP] Unhandled error in handler:", err);
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
+export { debugHandler as GET, debugHandler as POST, debugHandler as DELETE };
