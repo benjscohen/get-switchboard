@@ -56,8 +56,7 @@ type CustomMcpItem = IntegrationItem & {
 type UnifiedItem =
   | { kind: "integration"; data: IntegrationItem; connected: boolean }
   | { kind: "per-user-proxy"; data: PerUserProxyItem; connected: boolean }
-  | { kind: "custom-mcp"; data: CustomMcpItem; connected: boolean }
-  | { kind: "local"; data: LocalItem; connected: boolean };
+  | { kind: "custom-mcp"; data: CustomMcpItem; connected: boolean };
 
 function isCustomMcpConnected(item: CustomMcpItem): boolean {
   if (item.hasPersonalKey) return true;
@@ -116,7 +115,7 @@ export function IntegrationList({
     );
   };
 
-  // Build unified list
+  // Build unified list (excludes local integrations — they get their own section)
   const unified: UnifiedItem[] = [
     ...integrations.map((i) => ({
       kind: "integration" as const,
@@ -138,73 +137,78 @@ export function IntegrationList({
       data: i,
       connected: isCustomMcpConnected(i),
     })),
-    ...localIntegrations.map((i) => ({
-      kind: "local" as const,
-      data: i,
-      connected: false,
-    })),
   ];
 
   // Sort: unconnected first, then connected
   unified.sort((a, b) => Number(a.connected) - Number(b.connected));
 
   return (
-    <Card hover={false}>
-      <h2 className={`text-sm font-medium text-text-secondary ${subtitle ? "mb-1" : "mb-4"}`}>
-        Integrations
-      </h2>
-      {subtitle && (
-        <p className="mb-4 text-xs text-text-tertiary">{subtitle}</p>
-      )}
-      <div className="space-y-3">
-        {unified.map((item) => {
-          const dimClass = item.connected
-            ? "opacity-50 hover:opacity-100 transition-opacity"
-            : "";
+    <>
+      <Card hover={false}>
+        <h2 className={`text-sm font-medium text-text-secondary ${subtitle ? "mb-1" : "mb-4"}`}>
+          Integrations
+        </h2>
+        {subtitle && (
+          <p className="mb-4 text-xs text-text-tertiary">{subtitle}</p>
+        )}
+        <div className="space-y-3">
+          {unified.map((item) => {
+            const dimClass = item.connected
+              ? "opacity-50 hover:opacity-100 transition-opacity"
+              : "";
 
-          if (item.kind === "integration") {
+            if (item.kind === "integration") {
+              return (
+                <div key={item.data.id} className={dimClass}>
+                  <IntegrationRow
+                    integration={item.data}
+                    onDisconnect={handleDisconnect}
+                  />
+                </div>
+              );
+            }
+
+            if (item.kind === "per-user-proxy") {
+              return (
+                <div key={item.data.integrationId} className={dimClass}>
+                  <PerUserProxyRow
+                    item={item.data}
+                    onKeyChange={handleProxyKeyChange}
+                  />
+                </div>
+              );
+            }
+
+            // custom-mcp
             return (
               <div key={item.data.id} className={dimClass}>
-                <IntegrationRow
-                  integration={item.data}
-                  onDisconnect={handleDisconnect}
-                />
-              </div>
-            );
-          }
-
-          if (item.kind === "per-user-proxy") {
-            return (
-              <div key={item.data.integrationId} className={dimClass}>
-                <PerUserProxyRow
+                <CustomMcpRow
                   item={item.data}
-                  onKeyChange={handleProxyKeyChange}
+                  onRemoveKey={handleRemoveKey}
+                  onAddKey={handleAddKey}
                 />
               </div>
             );
-          }
+          })}
+        </div>
+      </Card>
 
-          if (item.kind === "local") {
-            return (
-              <div key={item.data.id} className={dimClass}>
-                <LocalRow item={item.data} />
-              </div>
-            );
-          }
-
-          // custom-mcp
-          return (
-            <div key={item.data.id} className={dimClass}>
-              <CustomMcpRow
-                item={item.data}
-                onRemoveKey={handleRemoveKey}
-                onAddKey={handleAddKey}
-              />
-            </div>
-          );
-        })}
-      </div>
-    </Card>
+      {localIntegrations.length > 0 && (
+        <Card hover={false}>
+          <h2 className="text-sm font-medium text-text-secondary mb-1">
+            Local Integrations
+          </h2>
+          <p className="mb-4 text-xs text-text-tertiary">
+            These run on your computer and are not managed by Switchboard.
+          </p>
+          <div className="space-y-3">
+            {localIntegrations.map((item) => (
+              <LocalRow key={item.id} item={item} />
+            ))}
+          </div>
+        </Card>
+      )}
+    </>
   );
 }
 

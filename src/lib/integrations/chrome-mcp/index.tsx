@@ -22,42 +22,53 @@ export const chromeMcpIntegration: LocalIntegrationConfig = {
   setupInstructions: (
     <div className="space-y-3 text-sm text-text-secondary">
       <p>
-        <strong className="text-text-primary">Chrome DevTools MCP</strong> runs
-        locally on your machine. Add it to your MCP client config:
+        <strong className="text-text-primary">Chrome DevTools</strong> lets
+        Claude interact with your browser — clicking, reading pages, running
+        audits, and more. Follow these steps to set it up:
       </p>
-      <pre className="rounded-lg border border-border bg-bg-card p-3 text-xs font-mono overflow-x-auto">
-        {JSON.stringify(
-          {
-            mcpServers: {
-              "chrome-devtools": {
-                command: "npx",
-                args: ["chrome-devtools-mcp@latest"],
-              },
-            },
-          },
-          null,
-          2
-        )}
-      </pre>
-      <ol className="list-decimal list-inside space-y-1 text-xs">
+      <ol className="list-decimal list-inside space-y-2 text-xs">
         <li>
-          Open Chrome with remote debugging:{" "}
-          <code className="rounded bg-bg-card px-1 py-0.5 text-accent">
-            --remote-debugging-port=9222
-          </code>
+          <strong className="text-text-primary">Open Chrome with a special setting.</strong>{" "}
+          Quit Chrome completely, then reopen it from your terminal by pasting this command:
+          <pre className="mt-1 rounded-lg border border-border bg-bg-card p-2 text-xs font-mono overflow-x-auto">
+            {`# macOS\nopen -a "Google Chrome" --args --remote-debugging-port=9222\n\n# Windows\nchrome.exe --remote-debugging-port=9222`}
+          </pre>
         </li>
-        <li>Add the config above to your Claude Desktop settings</li>
-        <li>Restart Claude Desktop — the tools will appear automatically</li>
+        <li>
+          <strong className="text-text-primary">Add the integration to Claude Desktop.</strong>{" "}
+          Open Claude Desktop, go to{" "}
+          <strong>Settings → Developer → Edit Config</strong>, and paste this
+          into the file that opens:
+          <pre className="mt-1 rounded-lg border border-border bg-bg-card p-2 text-xs font-mono overflow-x-auto">
+            {JSON.stringify(
+              {
+                mcpServers: {
+                  "chrome-devtools": {
+                    command: "npx",
+                    args: ["chrome-devtools-mcp@latest"],
+                  },
+                },
+              },
+              null,
+              2
+            )}
+          </pre>
+        </li>
+        <li>
+          <strong className="text-text-primary">Restart Claude Desktop.</strong>{" "}
+          Close and reopen it — the Chrome DevTools tools will appear
+          automatically.
+        </li>
       </ol>
       <p className="text-xs">
-        Learn more:{" "}
+        Need help?{" "}
         <a
           href="https://github.com/anthropics/anthropic-quickstarts/tree/main/mcp-chrome-devtools"
           target="_blank"
           rel="noopener noreferrer"
           className="text-accent hover:underline"
         >
-          github.com/anthropics/anthropic-quickstarts
+          View the full setup guide
         </a>
       </p>
     </div>
