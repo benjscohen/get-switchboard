@@ -17,7 +17,9 @@ export async function GET() {
     (orgKeys ?? []).map((k) => [k.integration_id, k.enabled])
   );
 
-  const integrations = allProxyIntegrations.map((i) => ({
+  const orgOnlyIntegrations = allProxyIntegrations.filter((i) => i.keyMode === "org");
+
+  const integrations = orgOnlyIntegrations.map((i) => ({
     id: i.id,
     name: i.name,
     description: i.description,
@@ -47,8 +49,8 @@ export async function PUT(request: Request) {
     );
   }
 
-  // Validate integration exists
-  const valid = allProxyIntegrations.some((i) => i.id === integrationId);
+  // Validate integration exists and is org-level
+  const valid = allProxyIntegrations.some((i) => i.id === integrationId && i.keyMode === "org");
   if (!valid) {
     return NextResponse.json(
       { error: "Unknown integration" },

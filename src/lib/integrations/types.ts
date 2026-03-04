@@ -16,6 +16,8 @@ export type ProxyIntegrationConfig = {
   description: string;
   icon: () => ReactNode;
   serverUrl: string;
+  keyMode: "org" | "per_user";
+  userKeyInstructions?: string;
   tools: Array<{
     name: string;
     description: string;

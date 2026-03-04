@@ -16,18 +16,13 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
+  // Phase 1: profile + connections in parallel (no orgId dependency)
+  const [{ data: profile }, { data: connections }] = await Promise.all([
+    supabase.from("profiles").select("organization_id").eq("id", user.id).single(),
+    supabase.from("connections").select("integration_id").eq("user_id", user.id),
+  ]);
 
   const orgId = profile?.organization_id;
-
-  const { data: connections } = await supabase
-    .from("connections")
-    .select("integration_id")
-    .eq("user_id", user.id);
 
   const connectedIds = new Set(
     (connections ?? []).map((c) => c.integration_id)
@@ -58,12 +53,57 @@ export default async function DashboardPage() {
     customServersQuery = customServersQuery.is("organization_id", null);
   }
 
-  const { data: customServers } = await customServersQuery;
+  // Phase 2: orgId-dependent queries in parallel
+  const [
+    { data: customServers },
+    { data: userKeys },
+    { data: orgKeysData },
+    { data: apiKeys },
+    { data: proxyUserKeysData },
+  ] = await Promise.all([
+    customServersQuery,
+    supabaseAdmin.from("custom_mcp_user_keys").select("server_id").eq("user_id", user.id),
+    orgId
+      ? supabaseAdmin.from("integration_org_keys").select("integration_id, enabled").eq("organization_id", orgId)
+      : Promise.resolve({ data: [] as Array<{ integration_id: string; enabled: boolean }> }),
+    orgId
+      ? supabaseAdmin
+          .from("api_keys")
+          .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string; key_prefix: string; last_used_at: string | null; created_at: string; user_id: string; revoked_at: string | null }> }),
+    supabaseAdmin.from("proxy_user_keys").select("integration_id").eq("user_id", user.id),
+  ]);
 
-  const { data: userKeys } = await supabaseAdmin
-    .from("custom_mcp_user_keys")
-    .select("server_id")
-    .eq("user_id", user.id);
+  const orgKeys = orgKeysData ?? [];
+
+  // Build API key entries with creator info
+  const rawKeys = apiKeys ?? [];
+  const creatorIds = [...new Set(rawKeys.map((k) => k.user_id))];
+  const profileMap = new Map<string, { name: string | null; email: string | null }>();
+  if (creatorIds.length > 0) {
+    const { data: profiles } = await supabaseAdmin
+      .from("profiles")
+      .select("id, name, email")
+      .in("id", creatorIds);
+    for (const p of profiles ?? []) {
+      profileMap.set(p.id, { name: p.name, email: p.email });
+    }
+  }
+  const initialKeys = rawKeys.map((k) => {
+    const creator = profileMap.get(k.user_id) ?? null;
+    return {
+      id: k.id,
+      name: k.name,
+      keyPrefix: k.key_prefix,
+      lastUsedAt: k.last_used_at,
+      createdAt: k.created_at,
+      createdBy: creator?.name ?? creator?.email ?? null,
+      isOwn: k.user_id === user.id,
+      revokedAt: k.revoked_at,
+    };
+  });
 
   const userKeySet = new Set((userKeys ?? []).map((k) => k.server_id));
 
@@ -92,21 +132,18 @@ export default async function DashboardPage() {
     };
   });
 
-  // Load org's native proxy integration key status
-  let orgKeys: Array<{ integration_id: string; enabled: boolean }> = [];
-  if (orgId) {
-    const { data } = await supabaseAdmin
-      .from("integration_org_keys")
-      .select("integration_id, enabled")
-      .eq("organization_id", orgId);
-    orgKeys = data ?? [];
-  }
-
   const orgKeyMap = new Map(
     orgKeys.map((k) => [k.integration_id, k.enabled])
   );
 
-  const proxyIntegrations = allProxyIntegrations.map((p) => ({
+  const proxyUserKeySet = new Set(
+    (proxyUserKeysData ?? []).map((k) => k.integration_id)
+  );
+
+  const orgProxies = allProxyIntegrations.filter((p) => p.keyMode === "org");
+  const perUserProxies = allProxyIntegrations.filter((p) => p.keyMode === "per_user");
+
+  const proxyIntegrations = orgProxies.map((p) => ({
     id: `proxy:${p.id}`,
     name: p.name,
     description: p.description,
@@ -115,6 +152,17 @@ export default async function DashboardPage() {
     tools: p.tools.map((t) => ({ name: t.name, description: t.description })),
     connected: orgKeyMap.get(p.id) === true,
     kind: "native-proxy" as const,
+  }));
+
+  const perUserProxyIntegrations = perUserProxies.map((p) => ({
+    integrationId: p.id,
+    name: p.name,
+    description: p.description,
+    icon: p.icon(),
+    toolCount: p.toolCount,
+    tools: p.tools.map((t) => ({ name: t.name, description: t.description })),
+    hasPersonalKey: proxyUserKeySet.has(p.id),
+    userKeyInstructions: p.userKeyInstructions ?? null,
   }));
 
   const headersList = await headers();
@@ -128,11 +176,12 @@ export default async function DashboardPage() {
       <h1 className="mb-8 text-2xl font-bold">Dashboard</h1>
       <div className="space-y-6">
         <IntegrationList
-          integrations={integrations}
+          initialIntegrations={integrations}
           proxyIntegrations={proxyIntegrations}
-          customIntegrations={customIntegrations}
+          perUserProxyIntegrations={perUserProxyIntegrations}
+          initialCustomIntegrations={customIntegrations}
         />
-        <ConnectCard origin={origin} />
+        <ConnectCard origin={origin} initialKeys={initialKeys} />
       </div>
     </Container>
   );

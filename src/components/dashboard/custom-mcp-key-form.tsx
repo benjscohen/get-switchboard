@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
 interface CustomMcpKeyFormProps {
@@ -17,7 +16,6 @@ export function CustomMcpKeyForm({
 }: CustomMcpKeyFormProps) {
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
-  const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,7 +27,6 @@ export function CustomMcpKeyForm({
     });
     setSaving(false);
     setApiKey("");
-    router.refresh();
     onDone();
   }
 

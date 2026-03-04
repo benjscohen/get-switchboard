@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,24 +46,17 @@ interface ApiKeyEntry {
   revokedAt: string | null;
 }
 
-export function ConnectCard({ origin }: { origin: string }) {
-  const [keys, setKeys] = useState<ApiKeyEntry[]>([]);
+export function ConnectCard({
+  origin,
+  initialKeys,
+}: {
+  origin: string;
+  initialKeys: ApiKeyEntry[];
+}) {
+  const [keys, setKeys] = useState<ApiKeyEntry[]>(initialKeys);
   const [newKeyName, setNewKeyName] = useState("");
   const [newRawKey, setNewRawKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const fetchKeys = useCallback(async () => {
-    const res = await fetch("/api/keys");
-    if (res.ok) {
-      setKeys(await res.json());
-    } else {
-      console.error("Failed to fetch API keys:", res.status);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchKeys();
-  }, [fetchKeys]);
 
   async function generate() {
     setLoading(true);
@@ -76,7 +69,20 @@ export function ConnectCard({ origin }: { origin: string }) {
       const data = await res.json();
       setNewRawKey(data.key);
       setNewKeyName("");
-      fetchKeys();
+      // Optimistically add the new key to local state
+      setKeys((prev) => [
+        {
+          id: crypto.randomUUID(),
+          name: data.name,
+          keyPrefix: data.prefix,
+          lastUsedAt: null,
+          createdAt: new Date().toISOString(),
+          createdBy: null,
+          isOwn: true,
+          revokedAt: null,
+        },
+        ...prev,
+      ]);
     } else {
       console.error("Failed to generate API key:", res.status);
     }
@@ -84,8 +90,13 @@ export function ConnectCard({ origin }: { origin: string }) {
   }
 
   async function revoke(id: string) {
+    // Optimistically mark as revoked
+    setKeys((prev) =>
+      prev.map((k) =>
+        k.id === id ? { ...k, revokedAt: new Date().toISOString() } : k
+      )
+    );
     await revokeApiKey(id);
-    fetchKeys();
   }
 
   // State B: key was just generated — show snippets

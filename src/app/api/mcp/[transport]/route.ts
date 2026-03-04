@@ -374,7 +374,7 @@ function registerTools(server: McpServer) {
   for (const proxy of allProxyIntegrations) {
     const integrationId = `proxy:${proxy.id}`;
     for (const tool of proxy.tools) {
-      toolMeta.set(tool.name, { integrationId, orgId: null });
+      toolMeta.set(tool.name, { integrationId, orgId: null, keyMode: proxy.keyMode });
       server.tool(
         tool.name,
         tool.description,
@@ -426,20 +426,22 @@ function registerTools(server: McpServer) {
             };
           }
 
-          // Look up the org's API key for this proxy integration
-          const integrationOrgKeys = extra.authInfo?.extra?.integrationOrgKeys as
-            | Record<string, string>
-            | undefined;
-          const apiKey = integrationOrgKeys?.[proxy.id];
+          // Look up API key based on keyMode
+          const apiKey = proxy.keyMode === "per_user"
+            ? (extra.authInfo?.extra?.proxyUserKeys as Record<string, string> | undefined)?.[proxy.id]
+            : (extra.authInfo?.extra?.integrationOrgKeys as Record<string, string> | undefined)?.[proxy.id];
 
           if (!apiKey) {
+            const errorMessage = proxy.keyMode === "per_user"
+              ? "No personal API key configured"
+              : "No API key configured for this integration";
             logUsage({
               userId,
               apiKeyId,
               toolName: tool.name,
               integrationId,
               status: "error",
-              errorMessage: "No API key configured for this integration",
+              errorMessage,
               durationMs: Date.now() - startTime,
               organizationId,
             });
@@ -447,7 +449,9 @@ function registerTools(server: McpServer) {
               content: [
                 {
                   type: "text" as const,
-                  text: `Integration "${proxy.name}" is not configured. An org admin must add an API key in Organization Settings.`,
+                  text: proxy.keyMode === "per_user"
+                    ? `Integration "${proxy.name}" requires a personal API key. Add one in your dashboard.`
+                    : `Integration "${proxy.name}" is not configured. An org admin must add an API key in Organization Settings.`,
                 },
               ],
               isError: true,
@@ -513,6 +517,9 @@ function registerTools(server: McpServer) {
         | Array<{ integrationId: string; allowedTools: string[] }>
         | undefined,
       integrationOrgKeys: extra.authInfo?.extra?.integrationOrgKeys as
+        | Record<string, string>
+        | undefined,
+      proxyUserKeys: extra.authInfo?.extra?.proxyUserKeys as
         | Record<string, string>
         | undefined,
     });
@@ -630,6 +637,17 @@ const authedHandler = withMcpAuth(
       integrationOrgKeys[k.integration_id] = decrypt(k.api_key);
     }
 
+    // Load per-user native proxy integration keys
+    const { data: rawProxyUserKeys } = await supabaseAdmin
+      .from("proxy_user_keys")
+      .select("integration_id, api_key")
+      .eq("user_id", apiKey.user_id);
+
+    const proxyUserKeys: Record<string, string> = {};
+    for (const k of rawProxyUserKeys ?? []) {
+      proxyUserKeys[k.integration_id] = decrypt(k.api_key);
+    }
+
     return {
       token: bearerToken,
       clientId: apiKey.user_id,
@@ -643,6 +661,7 @@ const authedHandler = withMcpAuth(
         integrationAccess,
         customMcpKeys,
         integrationOrgKeys,
+        proxyUserKeys,
       },
     };
   },
