@@ -27,7 +27,7 @@ export function generateSnippet(
   apiKey: string,
   clientId: string
 ): string {
-  const url = `${origin}/api/mcp/sse`;
+  const url = `${origin}/api/mcp/http`;
 
   switch (clientId) {
     case "claude-desktop":

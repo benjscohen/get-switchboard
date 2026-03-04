@@ -334,6 +334,7 @@ const handler = createMcpHandler(
   },
   {
     basePath: "/api/mcp",
+    disableSse: true,
     sessionIdGenerator: undefined,
   }
 );
