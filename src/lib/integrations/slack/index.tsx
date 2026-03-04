@@ -20,10 +20,11 @@ export const slackIntegration: ProxyIntegrationConfig = {
   serverUrl: "https://mcp.slack.com/mcp",
   keyMode: "per_user",
   oauth: {
-    authUrl: "https://slack.com/oauth/v2_user/authorize",
-    tokenUrl: "https://slack.com/api/oauth.v2.user.access",
+    authUrl: "https://slack.com/oauth/v2/authorize",
+    tokenUrl: "https://slack.com/api/oauth.v2.access",
     clientIdEnvVar: "SLACK_CLIENT_ID",
     clientSecretEnvVar: "SLACK_CLIENT_SECRET",
+    scopeParamName: "user_scope",
     scopeSeparator: ",",
     scopes: [
       "search:read.public",
