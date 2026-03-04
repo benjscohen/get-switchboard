@@ -2,18 +2,8 @@ import type { ProxyIntegrationConfig } from "../types";
 
 function ShortcutIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 64 64" className="shrink-0">
-      <rect width="64" height="64" rx="14" fill="#58B1E4" />
-      <path
-        d="M20 24c0-2.2 1.8-4 4-4h6c6.6 0 12 5.4 12 12s-5.4 12-12 12h-6c-2.2 0-4-1.8-4-4s1.8-4 4-4h6c2.2 0 4-1.8 4-4s-1.8-4-4-4h-6c-2.2 0-4-1.8-4-4z"
-        fill="white"
-      />
-      <path
-        d="M44 40c0 2.2-1.8 4-4 4h-6c-6.6 0-12-5.4-12-12s5.4-12 12-12h6c2.2 0 4 1.8 4 4s-1.8 4-4 4h-6c-2.2 0-4 1.8-4 4s1.8 4 4 4h6c2.2 0 4 1.8 4 4z"
-        fill="white"
-        opacity="0.5"
-      />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/integrations/shortcut.svg" alt="" width={18} height={18} className="shrink-0" />
   );
 }
 
