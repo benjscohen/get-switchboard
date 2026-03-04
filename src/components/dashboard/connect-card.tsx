@@ -8,6 +8,7 @@ import { CodeBlock } from "@/components/ui/code-block";
 import { Tabs, TabList, TabTrigger, TabPanel } from "@/components/ui/tabs";
 import { MCP_CLIENTS, generateSnippet, generatePrompt } from "@/lib/mcp-snippets";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
+import { revokeApiKey } from "@/lib/api";
 
 function CopyButton({
   text,
@@ -83,7 +84,7 @@ export function ConnectCard({ origin }: { origin: string }) {
   }
 
   async function revoke(id: string) {
-    await fetch(`/api/keys?id=${id}`, { method: "DELETE" });
+    await revokeApiKey(id);
     fetchKeys();
   }
 

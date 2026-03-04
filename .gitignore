@@ -47,3 +47,4 @@ prisma/migrations/
 
 # mcp config (may contain tokens)
 .mcp.json
+.mcp*.json
