@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Tabs, TabList, TabTrigger, TabPanel } from "@/components/ui/tabs";
 import { MCP_CLIENTS, generateSnippet, generatePrompt } from "@/lib/mcp-snippets";
+import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 
 function CopyButton({
   text,
@@ -15,19 +16,20 @@ function CopyButton({
 }: {
   text: string;
   label: string;
-  variant?: "secondary" | "ghost";
+  variant?: "primary" | "secondary" | "ghost";
 }) {
-  const [copied, setCopied] = useState(false);
-
-  function copy() {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
+  const { copied, copy } = useCopyToClipboard();
 
   return (
-    <Button size="sm" variant={variant} onClick={copy}>
-      {copied ? "Copied!" : label}
+    <Button size="sm" variant={variant} onClick={() => copy(text)}>
+      {copied ? (
+        <span className="inline-flex items-center gap-1">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
+            <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Copied!
+        </span>
+      ) : label}
     </Button>
   );
 }
@@ -82,9 +84,20 @@ export function ConnectCard({ origin }: { origin: string }) {
   if (newRawKey) {
     return (
       <Card hover={false}>
-        <h2 className="mb-4 text-sm font-medium text-text-secondary">
-          Connect your MCP client
-        </h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-medium text-text-secondary">
+            Connect your MCP client
+          </h2>
+          <button
+            onClick={() => setNewRawKey(null)}
+            className="inline-flex items-center gap-1 text-sm text-text-tertiary transition-colors hover:text-text-primary cursor-pointer"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
+              <path d="M10 4L6 8L10 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Back to keys
+          </button>
+        </div>
 
         <div className="mb-4 rounded-lg border border-accent/30 bg-accent/5 p-3">
           <p className="text-xs font-medium text-accent">
@@ -104,30 +117,21 @@ export function ConnectCard({ origin }: { origin: string }) {
             <TabPanel key={c.id} id={c.id}>
               <p className="mb-2 text-xs text-text-tertiary">{c.hint}</p>
               <CodeBlock code={generateSnippet(origin, newRawKey, c.id)} hideCopy />
-              <div className="mt-2 flex gap-2">
+              <div className="mt-3 flex items-center gap-2">
                 <CopyButton
                   text={generatePrompt(origin, newRawKey, c.id)}
-                  label="Copy with prompt"
-                  variant="secondary"
+                  label="Copy with instructions"
+                  variant="primary"
                 />
                 <CopyButton
                   text={generateSnippet(origin, newRawKey, c.id)}
-                  label="Copy"
+                  label="Copy config only"
                   variant="ghost"
                 />
               </div>
             </TabPanel>
           ))}
         </Tabs>
-
-        <Button
-          size="sm"
-          variant="secondary"
-          className="mt-4"
-          onClick={() => setNewRawKey(null)}
-        >
-          Done
-        </Button>
       </Card>
     );
   }

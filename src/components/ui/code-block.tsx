@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 
 interface CodeBlockProps {
   code: string;
@@ -11,13 +11,7 @@ interface CodeBlockProps {
 }
 
 export function CodeBlock({ code, className, hideCopy }: CodeBlockProps) {
-  const [copied, setCopied] = useState(false);
-
-  function copy() {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
+  const { copied, copy } = useCopyToClipboard();
 
   return (
     <div className={cn("group relative", className)}>
@@ -29,7 +23,7 @@ export function CodeBlock({ code, className, hideCopy }: CodeBlockProps) {
           size="sm"
           variant="secondary"
           className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100"
-          onClick={copy}
+          onClick={() => copy(code)}
         >
           {copied ? "Copied!" : "Copy"}
         </Button>
