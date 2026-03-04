@@ -144,9 +144,11 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { role, permissionsMode } = body as {
+  const { role, permissionsMode, orgRole, removeFromOrg } = body as {
     role?: string;
     permissionsMode?: string;
+    orgRole?: string;
+    removeFromOrg?: boolean;
   };
 
   // Cannot demote self
@@ -165,6 +167,34 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
+  // Handle remove from org
+  if (removeFromOrg) {
+    if (id === authResult.userId) {
+      return NextResponse.json(
+        { error: "Cannot remove yourself from your organization" },
+        { status: 400 }
+      );
+    }
+
+    const slug = `personal-removed-${id.slice(0, 8)}-${Date.now()}`;
+    const { data: newOrg } = await supabaseAdmin
+      .from("organizations")
+      .insert({ name: "Personal", slug, is_personal: true })
+      .select("id")
+      .single();
+
+    if (!newOrg) {
+      return NextResponse.json({ error: "Failed to create personal org" }, { status: 500 });
+    }
+
+    await supabaseAdmin
+      .from("profiles")
+      .update({ organization_id: newOrg.id, org_role: "owner" })
+      .eq("id", id);
+
+    return NextResponse.json({ success: true });
+  }
+
   const data: Record<string, string> = {};
   if (role && (role === "user" || role === "admin")) {
     data.role = role;
@@ -175,6 +205,9 @@ export async function PATCH(req: NextRequest) {
   ) {
     data.permissions_mode = permissionsMode;
   }
+  if (orgRole && ["owner", "admin", "member"].includes(orgRole)) {
+    data.org_role = orgRole;
+  }
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
@@ -184,7 +217,7 @@ export async function PATCH(req: NextRequest) {
     .from("profiles")
     .update(data)
     .eq("id", id)
-    .select("id, email, name, role, status, permissions_mode")
+    .select("id, email, name, role, status, permissions_mode, org_role")
     .single();
 
   if (error || !updated) {
@@ -202,5 +235,6 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({
     ...updated,
     permissionsMode: updated.permissions_mode,
+    orgRole: updated.org_role,
   });
 }

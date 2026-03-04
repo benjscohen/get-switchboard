@@ -16,6 +16,9 @@ interface UserDetail {
   role: string;
   status: string;
   permissionsMode: string;
+  organizationId: string | null;
+  orgRole: string | null;
+  orgName: string | null;
 }
 
 export default function AdminUserDetailPage({
@@ -32,6 +35,11 @@ export default function AdminUserDetailPage({
   const [role, setRole] = useState("");
   const [roleSaving, setRoleSaving] = useState(false);
   const [roleMsg, setRoleMsg] = useState("");
+  const [orgRole, setOrgRole] = useState("");
+  const [orgRoleSaving, setOrgRoleSaving] = useState(false);
+  const [orgRoleMsg, setOrgRoleMsg] = useState("");
+  const [removingFromOrg, setRemovingFromOrg] = useState(false);
+  const [confirmRemoveFromOrg, setConfirmRemoveFromOrg] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
 
@@ -51,6 +59,7 @@ export default function AdminUserDetailPage({
       if (found) {
         setUser(found);
         setRole(found.role);
+        setOrgRole(found.orgRole ?? "");
       }
     }
     setLoading(false);
@@ -80,6 +89,48 @@ export default function AdminUserDetailPage({
       setRoleMsg(d.error || "Failed to update role");
     }
     setRoleSaving(false);
+  }
+
+  async function handleOrgRoleSave() {
+    if (!user) return;
+    setOrgRoleSaving(true);
+    setOrgRoleMsg("");
+
+    const res = await fetch(`/api/admin/users?id=${user.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orgRole }),
+    });
+
+    if (res.ok) {
+      setOrgRoleMsg("Org role updated");
+      setTimeout(() => setOrgRoleMsg(""), 3000);
+      fetchUser();
+    } else {
+      const d = await res.json();
+      setOrgRoleMsg(d.error || "Failed to update org role");
+    }
+    setOrgRoleSaving(false);
+  }
+
+  async function handleRemoveFromOrg() {
+    if (!user) return;
+    setRemovingFromOrg(true);
+
+    const res = await fetch(`/api/admin/users?id=${user.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ removeFromOrg: true }),
+    });
+
+    if (res.ok) {
+      setConfirmRemoveFromOrg(false);
+      fetchUser();
+    } else {
+      const d = await res.json();
+      alert(d.error || "Failed to remove from organization");
+    }
+    setRemovingFromOrg(false);
   }
 
   async function handleRemove() {
@@ -172,6 +223,84 @@ export default function AdminUserDetailPage({
             </span>
           )}
         </div>
+      </Card>
+
+      {/* Organization */}
+      <Card hover={false}>
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-text-secondary">
+          Organization
+        </h3>
+        {user.orgName ? (
+          <div className="space-y-4">
+            <p className="text-sm">
+              <span className="font-medium">{user.orgName}</span>
+            </p>
+            <div className="flex items-center gap-3">
+              <Select
+                value={orgRole}
+                onChange={(e) => setOrgRole(e.target.value)}
+                options={[
+                  { value: "owner", label: "Owner" },
+                  { value: "admin", label: "Admin" },
+                  { value: "member", label: "Member" },
+                ]}
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleOrgRoleSave}
+                disabled={orgRoleSaving || orgRole === user.orgRole}
+              >
+                {orgRoleSaving ? "Saving..." : "Save"}
+              </Button>
+              {orgRoleMsg && (
+                <span
+                  className={`text-sm ${orgRoleMsg.includes("updated") ? "text-green-500" : "text-red-500"}`}
+                >
+                  {orgRoleMsg}
+                </span>
+              )}
+            </div>
+            {!isSelf && (
+              <div className="border-t border-border pt-4">
+                {!confirmRemoveFromOrg ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="border-red-500/30 text-red-500 hover:bg-red-500/10"
+                    onClick={() => setConfirmRemoveFromOrg(true)}
+                  >
+                    Remove from organization
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm text-text-secondary">
+                      This will move the user to a personal organization. Are you sure?
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="border-red-500/30 text-red-500 hover:bg-red-500/10"
+                      onClick={handleRemoveFromOrg}
+                      disabled={removingFromOrg}
+                    >
+                      {removingFromOrg ? "Removing..." : "Yes, remove"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setConfirmRemoveFromOrg(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-text-tertiary">No organization</p>
+        )}
       </Card>
 
       {/* Access Permissions */}

@@ -13,6 +13,9 @@ interface UserRow {
   role: string;
   status: string;
   permissionsMode: string;
+  organizationId: string | null;
+  orgRole: string | null;
+  orgName: string | null;
   apiKeyCount: number;
   connectionCount: number;
   requestCount: number;
@@ -83,6 +86,7 @@ export default function AdminUsersPage() {
                 <tr className="border-b border-border text-left text-text-secondary">
                   <th className="pb-2 pr-4 font-medium">User</th>
                   <th className="pb-2 pr-4 font-medium">Role</th>
+                  <th className="pb-2 pr-4 font-medium">Organization</th>
                   <th className="pb-2 pr-4 font-medium">Status</th>
                   <th className="pb-2 pr-4 font-medium">Access</th>
                   <th className="pb-2 pr-4 font-medium">Last Active</th>
@@ -121,6 +125,18 @@ export default function AdminUsersPage() {
                       </Badge>
                     </td>
                     <td className="py-3 pr-4">
+                      {user.orgName ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm">{user.orgName}</span>
+                          {user.orgRole && (
+                            <Badge variant="default">{user.orgRole}</Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-text-tertiary">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 pr-4">
                       <Badge
                         variant={user.status === "active" ? "accent" : "default"}
                       >
@@ -148,7 +164,7 @@ export default function AdminUsersPage() {
                 {filtered.length === 0 && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="py-8 text-center text-text-tertiary"
                     >
                       {search ? "No users match your search" : "No users yet"}

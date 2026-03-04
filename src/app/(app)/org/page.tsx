@@ -20,20 +20,8 @@ interface OrgInfo {
   }>;
 }
 
-interface OrgMember {
-  id: string;
-  name: string | null;
-  email: string;
-  image: string | null;
-  orgRole: string;
-  apiKeyCount: number;
-  connectionCount: number;
-  usageCount: number;
-}
-
 export default function OrgSettingsPage() {
   const [org, setOrg] = useState<OrgInfo | null>(null);
-  const [members, setMembers] = useState<OrgMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [newDomain, setNewDomain] = useState("");
   const [orgName, setOrgName] = useState("");
@@ -48,14 +36,9 @@ export default function OrgSettingsPage() {
     }
   }, []);
 
-  const fetchMembers = useCallback(async () => {
-    const res = await fetch("/api/org/members");
-    if (res.ok) setMembers(await res.json());
-  }, []);
-
   useEffect(() => {
-    Promise.all([fetchOrg(), fetchMembers()]).then(() => setLoading(false));
-  }, [fetchOrg, fetchMembers]);
+    fetchOrg().then(() => setLoading(false));
+  }, [fetchOrg]);
 
   async function updateName() {
     if (!orgName.trim() || orgName === org?.name) return;
@@ -87,21 +70,6 @@ export default function OrgSettingsPage() {
     fetchOrg();
   }
 
-  async function changeRole(userId: string, orgRole: string) {
-    await fetch("/api/org/members", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, orgRole }),
-    });
-    fetchMembers();
-  }
-
-  async function removeMember(userId: string) {
-    if (!confirm("Remove this member from the organization?")) return;
-    await fetch(`/api/org/members?userId=${userId}`, { method: "DELETE" });
-    fetchMembers();
-  }
-
   if (loading) {
     return (
       <Container className="py-10">
@@ -117,8 +85,6 @@ export default function OrgSettingsPage() {
       </Container>
     );
   }
-
-  const isOwner = org.currentUserRole === "owner";
 
   return (
     <Container className="py-10">
@@ -196,73 +162,6 @@ export default function OrgSettingsPage() {
           )}
         </Card>
 
-        {/* Members */}
-        <Card hover={false}>
-          <h2 className="mb-4 text-sm font-medium text-text-secondary">
-            Members ({members.length})
-          </h2>
-          <div className="space-y-2">
-            {members.map((m) => (
-              <div
-                key={m.id}
-                className="flex items-center justify-between rounded-lg bg-bg px-3 py-3"
-              >
-                <div className="flex items-center gap-3">
-                  {m.image ? (
-                    <img
-                      src={m.image}
-                      alt=""
-                      className="h-8 w-8 rounded-full"
-                    />
-                  ) : (
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent/10 text-xs font-medium text-accent">
-                      {(m.name?.[0] ?? m.email[0]).toUpperCase()}
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-sm font-medium">
-                      {m.name ?? m.email}
-                    </p>
-                    {m.name && (
-                      <p className="text-xs text-text-tertiary">{m.email}</p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="hidden text-xs text-text-tertiary sm:flex sm:gap-3">
-                    <span>{m.apiKeyCount} keys</span>
-                    <span>{m.connectionCount} integrations</span>
-                    <span>{m.usageCount} requests</span>
-                  </div>
-                  {isOwner ? (
-                    <select
-                      value={m.orgRole}
-                      onChange={(e) => changeRole(m.id, e.target.value)}
-                      className="rounded border border-border bg-bg px-2 py-1 text-xs"
-                    >
-                      <option value="owner">Owner</option>
-                      <option value="admin">Admin</option>
-                      <option value="member">Member</option>
-                    </select>
-                  ) : (
-                    <span className="rounded bg-bg-hover px-2 py-0.5 text-xs capitalize text-text-secondary">
-                      {m.orgRole}
-                    </span>
-                  )}
-                  {isOwner && m.orgRole !== "owner" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => removeMember(m.id)}
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
       </div>
     </Container>
   );
