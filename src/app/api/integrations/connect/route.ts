@@ -10,8 +10,8 @@ export async function GET(req: NextRequest) {
   const authResult = await requireAuth();
   if (!authResult.authenticated) return authResult.response;
 
-  // Rate limit: 5 req/min per userId
-  const rl = checkRateLimit(`connect:${authResult.userId}`, 5, 60_000);
+  // Rate limit: 50 req/min per userId
+  const rl = checkRateLimit(`connect:${authResult.userId}`, 50, 60_000);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: "Too many requests" },
