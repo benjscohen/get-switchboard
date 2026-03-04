@@ -10,6 +10,7 @@ interface ApiKey {
   lastUsedAt: string | null;
   createdAt: string;
   revokedAt: string | null;
+  expiresAt: string | null;
 }
 
 export function ApiKeysCard({ userId }: { userId: string }) {
@@ -55,7 +56,7 @@ export function ApiKeysCard({ userId }: { userId: string }) {
       {keys.map((k) => (
         <div
           key={k.id}
-          className={`flex items-center justify-between rounded-lg bg-bg px-3 py-2${k.revokedAt ? " opacity-50" : ""}`}
+          className={`flex items-center justify-between rounded-lg bg-bg px-3 py-2${k.revokedAt || (k.expiresAt && new Date(k.expiresAt) <= new Date()) ? " opacity-50" : ""}`}
         >
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">
@@ -63,6 +64,11 @@ export function ApiKeysCard({ userId }: { userId: string }) {
               {k.revokedAt && (
                 <span className="ml-2 text-xs font-normal text-red-400">
                   Revoked
+                </span>
+              )}
+              {!k.revokedAt && k.expiresAt && new Date(k.expiresAt) <= new Date() && (
+                <span className="ml-2 text-xs font-normal text-red-400">
+                  Expired
                 </span>
               )}
             </p>
@@ -76,8 +82,15 @@ export function ApiKeysCard({ userId }: { userId: string }) {
               {k.lastUsedAt && (
                 <div>Last used {new Date(k.lastUsedAt).toLocaleDateString()}</div>
               )}
+              {k.expiresAt && !k.revokedAt && (
+                <div className={new Date(k.expiresAt) <= new Date() ? "text-red-400" : ""}>
+                  {new Date(k.expiresAt) <= new Date()
+                    ? "Expired"
+                    : `Expires ${new Date(k.expiresAt).toLocaleDateString()}`}
+                </div>
+              )}
             </div>
-            {!k.revokedAt && (
+            {!k.revokedAt && !(k.expiresAt && new Date(k.expiresAt) <= new Date()) && (
               <Button
                 size="sm"
                 variant="ghost"

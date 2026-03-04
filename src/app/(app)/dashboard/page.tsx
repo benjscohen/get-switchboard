@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { Container } from "@/components/ui/container";
-import { IntegrationList } from "@/components/dashboard/integration-list";
+import { IntegrationList, type UserKeyItem } from "@/components/dashboard/integration-list";
 import { ConnectCard } from "@/components/dashboard/connect-card";
 import { DashboardToasts } from "@/components/dashboard/dashboard-toasts";
 import { allIntegrations } from "@/lib/integrations/registry";
@@ -71,11 +71,11 @@ export default async function DashboardPage() {
     orgId
       ? supabaseAdmin
           .from("api_keys")
-          .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope")
+          .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope, expires_at")
           .eq("organization_id", orgId)
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
-      : Promise.resolve({ data: [] as Array<{ id: string; name: string; key_prefix: string; last_used_at: string | null; created_at: string; user_id: string; revoked_at: string | null; scope: string }> }),
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string; key_prefix: string; last_used_at: string | null; created_at: string; user_id: string; revoked_at: string | null; scope: string; expires_at: string }> }),
     supabaseAdmin.from("proxy_user_keys").select("integration_id").eq("user_id", user.id),
   ]);
 
@@ -89,16 +89,18 @@ export default async function DashboardPage() {
     createdAt: k.created_at,
     revokedAt: k.revoked_at,
     scope: (k as { scope?: string }).scope ?? "full",
+    expiresAt: (k as { expires_at?: string }).expires_at ?? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
   }));
 
   const userKeySet = new Set((userKeys ?? []).map((k) => k.server_id));
 
-  const customIntegrations = (customServers ?? []).map((s) => {
+  const customMcpUserKeys: UserKeyItem[] = (customServers ?? []).map((s) => {
     const enabledTools = (s.custom_mcp_tools ?? []).filter(
       (t: { enabled: boolean }) => t.enabled
     );
     return {
-      id: `custom:${s.id}`,
+      type: "custom-mcp" as const,
+      targetId: s.id,
       name: s.name,
       description: s.description,
       icon: null,
@@ -107,14 +109,11 @@ export default async function DashboardPage() {
         name: `${s.slug}__${t.tool_name}`,
         description: t.description,
       })),
-      connected: true,
-      kind: "custom-mcp" as const,
-      serverId: s.id,
-      authType: s.auth_type,
-      keyMode: (s.key_mode as "shared" | "per_user") ?? "shared",
-      userKeyInstructions: (s.user_key_instructions as string | null) ?? null,
-      hasSharedKey: !!s.shared_api_key,
       hasPersonalKey: userKeySet.has(s.id),
+      userKeyInstructions: (s.user_key_instructions as string | null) ?? null,
+      keyMode: (s.key_mode as "shared" | "per_user") ?? "shared",
+      hasSharedKey: !!s.shared_api_key,
+      authType: s.auth_type,
     };
   });
 
@@ -171,10 +170,11 @@ export default async function DashboardPage() {
   // Merge builtin + OAuth proxy integrations for the UI
   const integrations = [...builtinIntegrations, ...oauthProxyIntegrations];
 
-  const perUserProxyIntegrations = perUserProxies.map((p) => {
+  const proxyUserKeys: UserKeyItem[] = perUserProxies.map((p) => {
     const tools = getProxyToolsForIntegration(p);
     return {
-      integrationId: p.id,
+      type: "proxy" as const,
+      targetId: p.id,
       name: p.name,
       description: p.description,
       icon: p.icon(),
@@ -184,6 +184,8 @@ export default async function DashboardPage() {
       userKeyInstructions: p.userKeyInstructions ?? null,
     };
   });
+
+  const userKeyIntegrations = [...proxyUserKeys, ...customMcpUserKeys];
 
   const headersList = await headers();
   const host = headersList.get("host") ?? "localhost:3000";
@@ -201,15 +203,14 @@ export default async function DashboardPage() {
           connectionStats={{
             connected: integrations.filter(i => i.connected).length
               + proxyIntegrations.filter(i => i.connected).length
-              + perUserProxyIntegrations.filter(i => i.hasPersonalKey).length,
-            total: integrations.length + proxyIntegrations.length + perUserProxyIntegrations.length,
+              + userKeyIntegrations.filter(i => i.hasPersonalKey).length,
+            total: integrations.length + proxyIntegrations.length + userKeyIntegrations.length,
           }}
         />
         <IntegrationList
           initialIntegrations={integrations}
           proxyIntegrations={proxyIntegrations}
-          perUserProxyIntegrations={perUserProxyIntegrations}
-          initialCustomIntegrations={customIntegrations}
+          userKeyIntegrations={userKeyIntegrations}
           localIntegrations={[
             {
               id: chromeMcpIntegration.id,

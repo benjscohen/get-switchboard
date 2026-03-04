@@ -131,6 +131,21 @@ export async function DELETE(req: NextRequest) {
     .update({ status: "deactivated" })
     .eq("id", id);
 
+  const now = new Date().toISOString();
+
+  // Revoke all active API keys
+  await supabaseAdmin
+    .from("api_keys")
+    .update({ revoked_at: now })
+    .eq("user_id", id)
+    .is("revoked_at", null);
+
+  // Remove all OAuth connections
+  await supabaseAdmin
+    .from("connections")
+    .delete()
+    .eq("user_id", id);
+
   return NextResponse.json({ success: true });
 }
 

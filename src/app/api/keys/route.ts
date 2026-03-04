@@ -11,7 +11,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data: keys, error } = await supabase
     .from("api_keys")
-    .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope")
+    .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope, expires_at")
     .eq("organization_id", authResult.organizationId)
     .eq("user_id", authResult.userId)
     .order("created_at", { ascending: false });
@@ -28,6 +28,7 @@ export async function GET() {
     createdAt: k.created_at,
     revokedAt: k.revoked_at,
     scope: k.scope ?? "full",
+    expiresAt: k.expires_at,
   }));
 
   return NextResponse.json(mapped);
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
     key_hash: hash,
     key_prefix: prefix,
     scope,
+    expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
   });
 
   if (error) {

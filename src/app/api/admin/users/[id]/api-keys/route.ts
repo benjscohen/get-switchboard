@@ -13,7 +13,7 @@ export async function GET(
 
   const { data: keys, error } = await supabaseAdmin
     .from("api_keys")
-    .select("id, name, key_prefix, last_used_at, created_at, revoked_at")
+    .select("id, name, key_prefix, last_used_at, created_at, revoked_at, expires_at")
     .eq("user_id", id)
     .order("created_at", { ascending: false });
 
@@ -29,6 +29,7 @@ export async function GET(
       lastUsedAt: k.last_used_at,
       createdAt: k.created_at,
       revokedAt: k.revoked_at,
+      expiresAt: k.expires_at,
     }))
   );
 }

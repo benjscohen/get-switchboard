@@ -23,6 +23,12 @@ import {
   interpolateSkillContent,
   type SkillRecord,
 } from "@/lib/mcp/skill-filtering";
+import {
+  createSkill,
+  updateSkill,
+  deleteSkill as deleteSkillService,
+  type SkillAuth,
+} from "@/lib/skills/service";
 import { z } from "zod";
 
 // Per-user rate limits by risk level
@@ -39,6 +45,18 @@ function checkToolRateLimit(userId: string, toolName: string) {
     RISK_RATE_LIMITS[risk],
     60_000
   );
+}
+
+// Check if the API key is expired and return a helpful MCP error
+function checkKeyExpired(extra: { authInfo?: { extra?: Record<string, unknown> } }) {
+  if (extra.authInfo?.extra?.keyExpired) {
+    const dashboardUrl = process.env.APP_URL || "your dashboard";
+    return {
+      content: [{ type: "text" as const, text: `Your API key has expired. Generate a new one at ${dashboardUrl}/dashboard` }],
+      isError: true,
+    };
+  }
+  return null;
 }
 
 // Metadata map for filtering tools/list per-user
@@ -87,6 +105,15 @@ let resolvedSkills: SkillRecord[] | null = null;
 skillsPromise.then((skills) => {
   resolvedSkills = skills;
 });
+
+function mcpSkillAuth(extra: { authInfo?: { extra?: Record<string, unknown> } }): SkillAuth | null {
+  const userId = extra.authInfo?.extra?.userId as string | undefined;
+  const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
+  const orgRole = extra.authInfo?.extra?.orgRole as string | undefined;
+  const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
+  if (!userId || !organizationId) return null;
+  return { userId, organizationId, orgRole: orgRole ?? "member", teamIds };
+}
 
 function registerSkills(server: McpServer) {
   const skills = resolvedSkills ?? [];
@@ -165,6 +192,99 @@ function registerSkills(server: McpServer) {
     }
   );
 
+  // Register create_skill tool
+  server.tool(
+    "create_skill",
+    "Create a new skill (prompt template). Note: newly created skills will be available as MCP prompts after server restart.",
+    {
+      scope: z.enum(["user", "organization", "team"]).describe("Skill visibility scope"),
+      name: z.string().describe("Skill name"),
+      slug: z.string().optional().describe("URL-friendly slug (auto-generated from name if omitted)"),
+      description: z.string().optional().describe("Short description of the skill"),
+      content: z.string().describe("Skill prompt content (supports {{arg}} interpolation)"),
+      arguments: z.array(z.object({
+        name: z.string(),
+        description: z.string(),
+        required: z.boolean(),
+      })).optional().describe("Skill arguments for interpolation"),
+      team_id: z.string().optional().describe("Team ID (required when scope is 'team')"),
+    },
+    async (args, extra) => {
+      const auth = mcpSkillAuth(extra);
+      if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+
+      const result = await createSkill(auth, {
+        scope: args.scope,
+        teamId: args.team_id,
+        name: args.name,
+        slug: args.slug,
+        description: args.description,
+        content: args.content,
+        arguments: args.arguments,
+      });
+
+      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) + "\n\nNote: This skill will be available as an MCP prompt after server restart." }],
+      };
+    }
+  );
+
+  // Register update_skill tool
+  server.tool(
+    "update_skill",
+    "Update an existing skill's name, description, content, arguments, or enabled status. Note: changes to MCP prompts take effect after server restart.",
+    {
+      id: z.string().describe("Skill ID to update"),
+      name: z.string().optional().describe("New skill name"),
+      description: z.string().optional().describe("New description"),
+      content: z.string().optional().describe("New prompt content"),
+      arguments: z.array(z.object({
+        name: z.string(),
+        description: z.string(),
+        required: z.boolean(),
+      })).optional().describe("New skill arguments"),
+      enabled: z.boolean().optional().describe("Enable or disable the skill"),
+    },
+    async (args, extra) => {
+      const auth = mcpSkillAuth(extra);
+      if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+
+      const result = await updateSkill(auth, args.id, {
+        name: args.name,
+        description: args.description,
+        content: args.content,
+        arguments: args.arguments,
+        enabled: args.enabled,
+      });
+
+      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) + "\n\nNote: MCP prompt changes take effect after server restart." }],
+      };
+    }
+  );
+
+  // Register delete_skill tool
+  server.tool(
+    "delete_skill",
+    "Permanently delete a skill. This cannot be undone.",
+    {
+      id: z.string().describe("Skill ID to delete"),
+    },
+    async (args, extra) => {
+      const auth = mcpSkillAuth(extra);
+      if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+
+      const result = await deleteSkillService(auth, args.id);
+
+      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
+      return {
+        content: [{ type: "text" as const, text: "Skill deleted successfully." }],
+      };
+    }
+  );
+
   // Override prompts/list to filter per-user
   const registeredPrompts = (server as unknown as { _registeredPrompts: Record<string, {
     description?: string;
@@ -207,6 +327,9 @@ function registerTools(server: McpServer) {
         tool.description,
         tool.schema.shape,
         async (args, extra) => {
+          const expiredResult = checkKeyExpired(extra);
+          if (expiredResult) return expiredResult;
+
           const startTime = Date.now();
           const userId = extra.authInfo?.extra?.userId as string | undefined;
           const apiKeyId = extra.authInfo?.extra?.apiKeyId as string | undefined;
@@ -440,6 +563,9 @@ function registerTools(server: McpServer) {
       `[${srv.name}] ${ct.description}`,
       ct.input_schema as Record<string, unknown>,
       async (args, extra) => {
+        const expiredResult = checkKeyExpired(extra);
+        if (expiredResult) return expiredResult;
+
         const startTime = Date.now();
         const userId = extra.authInfo?.extra?.userId as string | undefined;
         const apiKeyId = extra.authInfo?.extra?.apiKeyId as string | undefined;
@@ -636,6 +762,9 @@ function registerTools(server: McpServer) {
       tool.description,
       tool.inputSchema,
       async (args, extra) => {
+        const expiredResult = checkKeyExpired(extra);
+        if (expiredResult) return expiredResult;
+
         const startTime = Date.now();
         const userId = extra.authInfo?.extra?.userId as string | undefined;
         const apiKeyId = extra.authInfo?.extra?.apiKeyId as string | undefined;
@@ -917,6 +1046,7 @@ async function mcpHandler(req: Request): Promise<Response> {
   });
   const server = new McpServer(
     { name: "switchboard", version: "1.0.0" },
+    { capabilities: { prompts: {} } },
   );
   registerTools(server);
   registerSkills(server);
@@ -937,12 +1067,17 @@ const authedHandler = withMcpAuth(
     const keyHash = hashApiKey(bearerToken);
     const { data: apiKey } = await supabaseAdmin
       .from("api_keys")
-      .select("user_id, id, organization_id, scope")
+      .select("user_id, id, organization_id, scope, expires_at")
       .eq("key_hash", keyHash)
       .is("revoked_at", null)
       .single();
 
     if (!apiKey) return undefined;
+
+    // Check if key is expired — still return auth but flag it
+    const keyExpired = apiKey.expires_at
+      ? new Date(apiKey.expires_at) < new Date()
+      : false;
 
     // Load user status and permissions
     const { data: profile } = await supabaseAdmin
@@ -1049,7 +1184,9 @@ const authedHandler = withMcpAuth(
         integrationOrgKeys,
         proxyUserKeys,
         teamIds,
+        orgRole: profile.org_role ?? "member",
         apiKeyScope: apiKey.scope ?? "full",
+        keyExpired,
       },
     };
   },

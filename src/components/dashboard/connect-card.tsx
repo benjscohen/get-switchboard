@@ -43,6 +43,17 @@ interface ApiKeyEntry {
   createdAt: string;
   revokedAt: string | null;
   scope?: string;
+  expiresAt: string;
+}
+
+function getExpiryInfo(expiresAt: string): { label: string; className: string } {
+  const now = Date.now();
+  const expires = new Date(expiresAt).getTime();
+  const daysLeft = Math.ceil((expires - now) / (1000 * 60 * 60 * 24));
+
+  if (daysLeft <= 0) return { label: "Expired", className: "text-red-400" };
+  if (daysLeft <= 14) return { label: `Expires in ${daysLeft}d`, className: "text-amber-500" };
+  return { label: `Expires ${new Date(expiresAt).toLocaleDateString()}`, className: "text-text-tertiary" };
 }
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -67,7 +78,7 @@ export function ConnectCard({
   const [loading, setLoading] = useState(false);
   const [manageExpanded, setManageExpanded] = useState(false);
 
-  const activeKeys = keys.filter((k) => !k.revokedAt);
+  const activeKeys = keys.filter((k) => !k.revokedAt && new Date(k.expiresAt) > new Date());
   const hasActiveKeys = activeKeys.length > 0;
 
   async function generate() {
@@ -91,6 +102,7 @@ export function ConnectCard({
           createdAt: new Date().toISOString(),
           revokedAt: null,
           scope: data.scope ?? "full",
+          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
         },
         ...prev,
       ]);
@@ -247,6 +259,15 @@ export function ConnectCard({
           <span className="text-text-tertiary">
             {activeKeys.length} active key{activeKeys.length !== 1 && "s"}
           </span>
+          {activeKeys.some((k) => {
+            const daysLeft = Math.ceil((new Date(k.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            return daysLeft > 0 && daysLeft <= 14;
+          }) && (
+            <>
+              <span className="text-text-tertiary">·</span>
+              <span className="text-amber-500">key expiring soon</span>
+            </>
+          )}
           {connectionStats && connectionStats.connected < connectionStats.total && (
             <>
               <span className="text-text-tertiary">·</span>
@@ -301,45 +322,62 @@ export function ConnectCard({
           </div>
 
           <div className="space-y-2">
-            {keys.map((k) => (
-              <div
-                key={k.id}
-                className={`flex items-center justify-between rounded-lg bg-bg px-3 py-2${k.revokedAt ? " opacity-50" : ""}`}
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">
-                    {k.name}
+            {keys.map((k) => {
+              const expired = !k.revokedAt && new Date(k.expiresAt) <= new Date();
+              const inactive = !!k.revokedAt || expired;
+              const expiry = getExpiryInfo(k.expiresAt);
+              return (
+                <div
+                  key={k.id}
+                  className={`flex items-center justify-between rounded-lg bg-bg px-3 py-2${inactive ? " opacity-50" : ""}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">
+                      {k.name}
+                      {k.revokedAt && (
+                        <span className="ml-2 text-xs font-normal text-red-400">
+                          Revoked
+                        </span>
+                      )}
+                      {expired && !k.revokedAt && (
+                        <span className="ml-2 text-xs font-normal text-red-400">
+                          Expired
+                        </span>
+                      )}
+                    </p>
+                    <p className="font-mono text-xs text-text-tertiary">
+                      {k.keyPrefix}...
+                      {k.scope && k.scope !== "full" && (
+                        <span className="ml-2 font-sans text-amber-500">
+                          {SCOPE_LABELS[k.scope] ?? k.scope}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {!k.revokedAt && (
+                      <span className={`text-xs ${expiry.className}`}>
+                        {expiry.label}
+                      </span>
+                    )}
                     {k.revokedAt && (
-                      <span className="ml-2 text-xs font-normal text-red-400">
-                        Revoked
+                      <span className="text-xs text-text-tertiary">
+                        {new Date(k.createdAt).toLocaleDateString()}
                       </span>
                     )}
-                  </p>
-                  <p className="font-mono text-xs text-text-tertiary">
-                    {k.keyPrefix}...
-                    {k.scope && k.scope !== "full" && (
-                      <span className="ml-2 font-sans text-amber-500">
-                        {SCOPE_LABELS[k.scope] ?? k.scope}
-                      </span>
+                    {!inactive && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => revoke(k.id)}
+                      >
+                        Revoke
+                      </Button>
                     )}
-                  </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-text-tertiary">
-                    {new Date(k.createdAt).toLocaleDateString()}
-                  </span>
-                  {!k.revokedAt && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => revoke(k.id)}
-                    >
-                      Revoke
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

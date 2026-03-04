@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CustomMcpKeyForm } from "./custom-mcp-key-form";
+import { UserKeyForm } from "./user-key-form";
 import type { ReactNode } from "react";
 
 type IntegrationTool = {
@@ -23,8 +23,9 @@ type IntegrationItem = {
   kind: "builtin" | "custom-mcp" | "native-proxy";
 };
 
-type PerUserProxyItem = {
-  integrationId: string;
+export type UserKeyItem = {
+  type: "custom-mcp" | "proxy";
+  targetId: string;
   name: string;
   description: string;
   icon: ReactNode;
@@ -32,6 +33,10 @@ type PerUserProxyItem = {
   tools: IntegrationTool[];
   hasPersonalKey: boolean;
   userKeyInstructions: ReactNode | null;
+  /** custom-mcp only */
+  keyMode?: "shared" | "per_user";
+  hasSharedKey?: boolean;
+  authType?: string;
 };
 
 type LocalItem = {
@@ -44,22 +49,14 @@ type LocalItem = {
   setupInstructions: ReactNode;
 };
 
-type CustomMcpItem = IntegrationItem & {
-  serverId: string;
-  authType: string;
-  keyMode: "shared" | "per_user";
-  userKeyInstructions: ReactNode | null;
-  hasSharedKey: boolean;
-  hasPersonalKey: boolean;
-};
-
 type UnifiedItem =
   | { kind: "integration"; data: IntegrationItem; connected: boolean }
-  | { kind: "per-user-proxy"; data: PerUserProxyItem; connected: boolean }
-  | { kind: "custom-mcp"; data: CustomMcpItem; connected: boolean };
+  | { kind: "user-key"; data: UserKeyItem; connected: boolean };
 
-function isCustomMcpConnected(item: CustomMcpItem): boolean {
+function isUserKeyConnected(item: UserKeyItem): boolean {
   if (item.hasPersonalKey) return true;
+  if (item.type === "proxy") return false;
+  // custom-mcp: check shared key / auth type
   if (item.keyMode === "per_user") return false;
   if (item.hasSharedKey) return true;
   if (item.authType === "bearer") return false;
@@ -69,21 +66,18 @@ function isCustomMcpConnected(item: CustomMcpItem): boolean {
 export function IntegrationList({
   initialIntegrations,
   proxyIntegrations = [],
-  perUserProxyIntegrations = [],
-  initialCustomIntegrations = [],
+  userKeyIntegrations = [],
   localIntegrations = [],
   subtitle,
 }: {
   initialIntegrations: IntegrationItem[];
   proxyIntegrations?: IntegrationItem[];
-  perUserProxyIntegrations?: PerUserProxyItem[];
-  initialCustomIntegrations?: CustomMcpItem[];
+  userKeyIntegrations?: UserKeyItem[];
   localIntegrations?: LocalItem[];
   subtitle?: string;
 }) {
   const [integrations, setIntegrations] = useState(initialIntegrations);
-  const [customIntegrations, setCustomIntegrations] = useState(initialCustomIntegrations);
-  const [perUserProxies, setPerUserProxies] = useState(perUserProxyIntegrations);
+  const [userKeys, setUserKeys] = useState(userKeyIntegrations);
 
   const handleDisconnect = (id: string) => {
     setIntegrations((prev) =>
@@ -91,26 +85,16 @@ export function IntegrationList({
     );
   };
 
-  const handleRemoveKey = (serverId: string) => {
-    setCustomIntegrations((prev) =>
+  const handleUserKeyChange = (
+    type: "custom-mcp" | "proxy",
+    targetId: string,
+    hasKey: boolean
+  ) => {
+    setUserKeys((prev) =>
       prev.map((i) =>
-        i.serverId === serverId ? { ...i, hasPersonalKey: false } : i
-      )
-    );
-  };
-
-  const handleAddKey = (serverId: string) => {
-    setCustomIntegrations((prev) =>
-      prev.map((i) =>
-        i.serverId === serverId ? { ...i, hasPersonalKey: true } : i
-      )
-    );
-  };
-
-  const handleProxyKeyChange = (integrationId: string, hasKey: boolean) => {
-    setPerUserProxies((prev) =>
-      prev.map((i) =>
-        i.integrationId === integrationId ? { ...i, hasPersonalKey: hasKey } : i
+        i.type === type && i.targetId === targetId
+          ? { ...i, hasPersonalKey: hasKey }
+          : i
       )
     );
   };
@@ -127,15 +111,10 @@ export function IntegrationList({
       data: i,
       connected: i.connected,
     })),
-    ...perUserProxies.map((i) => ({
-      kind: "per-user-proxy" as const,
+    ...userKeys.map((i) => ({
+      kind: "user-key" as const,
       data: i,
-      connected: i.hasPersonalKey,
-    })),
-    ...customIntegrations.map((i) => ({
-      kind: "custom-mcp" as const,
-      data: i,
-      connected: isCustomMcpConnected(i),
+      connected: isUserKeyConnected(i),
     })),
   ];
 
@@ -168,24 +147,11 @@ export function IntegrationList({
               );
             }
 
-            if (item.kind === "per-user-proxy") {
-              return (
-                <div key={item.data.integrationId} className={dimClass}>
-                  <PerUserProxyRow
-                    item={item.data}
-                    onKeyChange={handleProxyKeyChange}
-                  />
-                </div>
-              );
-            }
-
-            // custom-mcp
             return (
-              <div key={item.data.id} className={dimClass}>
-                <CustomMcpRow
+              <div key={`${item.data.type}:${item.data.targetId}`} className={dimClass}>
+                <UserKeyRow
                   item={item.data}
-                  onRemoveKey={handleRemoveKey}
-                  onAddKey={handleAddKey}
+                  onKeyChange={handleUserKeyChange}
                 />
               </div>
             );
@@ -211,6 +177,59 @@ export function IntegrationList({
     </>
   );
 }
+
+/* ── Shared expand/collapse tool list ── */
+
+function ToolGrid({ tools }: { tools: IntegrationTool[] }) {
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <div className="grid gap-2 max-h-64 overflow-y-auto">
+        {tools.map((tool) => (
+          <div key={tool.name} className="flex gap-3 text-xs">
+            <code className="shrink-0 text-accent font-mono">
+              {tool.name}
+            </code>
+            <span className="text-text-secondary truncate">
+              {tool.description}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ExpandButton({
+  expanded,
+  onToggle,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="p-1 text-text-secondary hover:text-text-primary transition-colors"
+      aria-label={expanded ? "Collapse tools" : "Expand tools"}
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={`transition-transform ${expanded ? "rotate-180" : ""}`}
+      >
+        <path d="M4 6l4 4 4-4" />
+      </svg>
+    </button>
+  );
+}
+
+/* ── Integration Row (OAuth / org-key proxies) ── */
 
 function IntegrationRow({
   integration,
@@ -281,202 +300,23 @@ function IntegrationRow({
               )}
             </>
           )}
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="p-1 text-text-secondary hover:text-text-primary transition-colors"
-            aria-label={expanded ? "Collapse tools" : "Expand tools"}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`transition-transform ${expanded ? "rotate-180" : ""}`}
-            >
-              <path d="M4 6l4 4 4-4" />
-            </svg>
-          </button>
+          <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
         </div>
       </div>
 
-      {expanded && (
-        <div className="mt-3 border-t border-border pt-3">
-          <div className="grid gap-2 max-h-64 overflow-y-auto">
-            {integration.tools.map((tool) => (
-              <div key={tool.name} className="flex gap-3 text-xs">
-                <code className="shrink-0 text-accent font-mono">
-                  {tool.name}
-                </code>
-                <span className="text-text-secondary truncate">
-                  {tool.description}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {expanded && <ToolGrid tools={integration.tools} />}
     </div>
   );
 }
 
-function PerUserProxyRow({
+/* ── Unified User-Key Row (per-user proxy + custom MCP) ── */
+
+function UserKeyRow({
   item,
   onKeyChange,
 }: {
-  item: PerUserProxyItem;
-  onKeyChange: (integrationId: string, hasKey: boolean) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [showKeyForm, setShowKeyForm] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [apiKey, setApiKey] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  async function handleRemoveKey() {
-    setRemoving(true);
-    onKeyChange(item.integrationId, false);
-    await fetch(`/api/proxy-keys?integrationId=${item.integrationId}`, {
-      method: "DELETE",
-    });
-    setRemoving(false);
-  }
-
-  async function handleSaveKey(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    await fetch("/api/proxy-keys", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ integrationId: item.integrationId, apiKey }),
-    });
-    setSaving(false);
-    setApiKey("");
-    setShowKeyForm(false);
-    onKeyChange(item.integrationId, true);
-  }
-
-  return (
-    <div className="rounded-lg border border-border bg-bg p-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-bg-card">
-          {item.icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-medium">{item.name}</p>
-            <span className="text-xs text-text-secondary">
-              {item.toolCount} tools
-            </span>
-          </div>
-          <p className="text-xs text-text-secondary truncate">
-            {item.description}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {item.hasPersonalKey ? (
-            <>
-              <Badge variant="accent">Key Configured</Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRemoveKey}
-                disabled={removing}
-              >
-                {removing ? "..." : "Remove Key"}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Badge variant="default">Key Required</Badge>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowKeyForm(true)}
-              >
-                Add Key
-              </Button>
-            </>
-          )}
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="p-1 text-text-secondary hover:text-text-primary transition-colors"
-            aria-label={expanded ? "Collapse tools" : "Expand tools"}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`transition-transform ${expanded ? "rotate-180" : ""}`}
-            >
-              <path d="M4 6l4 4 4-4" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {showKeyForm && (
-        <div className="mt-3 border-t border-border pt-3">
-          {item.userKeyInstructions && (
-            <p className="text-sm text-text-secondary mb-3 whitespace-pre-line">
-              {item.userKeyInstructions}
-            </p>
-          )}
-          <form onSubmit={handleSaveKey} className="flex items-center gap-2">
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              required
-              placeholder={`API key for ${item.name}`}
-              className="flex-1 rounded-lg border border-border bg-bg px-3 py-1.5 text-xs focus:border-accent focus:outline-none"
-            />
-            <Button size="sm" type="submit" disabled={saving || !apiKey}>
-              {saving ? "..." : "Save"}
-            </Button>
-            <Button size="sm" variant="ghost" type="button" onClick={() => setShowKeyForm(false)}>
-              Cancel
-            </Button>
-          </form>
-        </div>
-      )}
-
-      {expanded && (
-        <div className="mt-3 border-t border-border pt-3">
-          <div className="grid gap-2 max-h-64 overflow-y-auto">
-            {item.tools.map((tool) => (
-              <div key={tool.name} className="flex gap-3 text-xs">
-                <code className="shrink-0 text-accent font-mono">
-                  {tool.name}
-                </code>
-                <span className="text-text-secondary truncate">
-                  {tool.description}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CustomMcpRow({
-  item,
-  onRemoveKey,
-  onAddKey,
-}: {
-  item: CustomMcpItem;
-  onRemoveKey?: (serverId: string) => void;
-  onAddKey?: (serverId: string) => void;
+  item: UserKeyItem;
+  onKeyChange: (type: "custom-mcp" | "proxy", targetId: string, hasKey: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [showKeyForm, setShowKeyForm] = useState(false);
@@ -484,31 +324,39 @@ function CustomMcpRow({
 
   async function handleRemoveKey() {
     setRemoving(true);
-    onRemoveKey?.(item.serverId);
-    await fetch(`/api/mcp-keys?serverId=${item.serverId}`, {
-      method: "DELETE",
-    });
+    onKeyChange(item.type, item.targetId, false);
+    await fetch(
+      `/api/user-keys?type=${item.type}&targetId=${item.targetId}`,
+      { method: "DELETE" }
+    );
     setRemoving(false);
   }
 
+  // Compute key status
   const keyStatus = item.hasPersonalKey
     ? "personal"
-    : item.keyMode === "per_user"
+    : item.type === "proxy"
       ? "required"
-      : item.hasSharedKey
-        ? "shared"
-        : item.authType === "bearer"
-          ? "required"
-          : "none";
+      : item.keyMode === "per_user"
+        ? "required"
+        : item.hasSharedKey
+          ? "shared"
+          : item.authType === "bearer"
+            ? "required"
+            : "none";
+
+  const defaultIcon = (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="2" y="3" width="12" height="10" rx="2" />
+      <path d="M5 7h6M5 9.5h4" />
+    </svg>
+  );
 
   return (
     <div className="rounded-lg border border-border bg-bg p-4">
       <div className="flex items-center gap-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-bg-card text-text-secondary">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <rect x="2" y="3" width="12" height="10" rx="2" />
-            <path d="M5 7h6M5 9.5h4" />
-          </svg>
+          {item.icon ?? defaultIcon}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -525,6 +373,13 @@ function CustomMcpRow({
           {keyStatus === "personal" && (
             <>
               <Badge variant="accent">Key Configured</Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowKeyForm(true)}
+              >
+                Edit Key
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -562,65 +417,31 @@ function CustomMcpRow({
           {keyStatus === "none" && (
             <Badge variant="accent">No Auth</Badge>
           )}
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="p-1 text-text-secondary hover:text-text-primary transition-colors"
-            aria-label={expanded ? "Collapse tools" : "Expand tools"}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`transition-transform ${expanded ? "rotate-180" : ""}`}
-            >
-              <path d="M4 6l4 4 4-4" />
-            </svg>
-          </button>
+          <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
         </div>
       </div>
 
       {showKeyForm && (
-        <div className="mt-3 border-t border-border pt-3">
-          {item.userKeyInstructions && (
-            <p className="text-sm text-text-secondary mb-3 whitespace-pre-line">
-              {item.userKeyInstructions}
-            </p>
-          )}
-          <CustomMcpKeyForm
-            serverId={item.serverId}
-            serverName={item.name}
-            onDone={() => {
-              setShowKeyForm(false);
-              onAddKey?.(item.serverId);
-            }}
-          />
-        </div>
+        <UserKeyForm
+          type={item.type}
+          targetId={item.targetId}
+          targetName={item.name}
+          hasExistingKey={item.hasPersonalKey}
+          instructions={item.userKeyInstructions}
+          onSaved={() => {
+            setShowKeyForm(false);
+            onKeyChange(item.type, item.targetId, true);
+          }}
+          onCancel={() => setShowKeyForm(false)}
+        />
       )}
 
-      {expanded && (
-        <div className="mt-3 border-t border-border pt-3">
-          <div className="grid gap-2 max-h-64 overflow-y-auto">
-            {item.tools.map((tool) => (
-              <div key={tool.name} className="flex gap-3 text-xs">
-                <code className="shrink-0 text-accent font-mono">
-                  {tool.name}
-                </code>
-                <span className="text-text-secondary truncate">
-                  {tool.description}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {expanded && <ToolGrid tools={item.tools} />}
     </div>
   );
 }
+
+/* ── Local Row ── */
 
 function LocalRow({ item }: { item: LocalItem }) {
   const [expanded, setExpanded] = useState(false);
@@ -652,25 +473,7 @@ function LocalRow({ item }: { item: LocalItem }) {
           >
             {showSetup ? "Hide Guide" : "Setup Guide"}
           </Button>
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="p-1 text-text-secondary hover:text-text-primary transition-colors"
-            aria-label={expanded ? "Collapse tools" : "Expand tools"}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`transition-transform ${expanded ? "rotate-180" : ""}`}
-            >
-              <path d="M4 6l4 4 4-4" />
-            </svg>
-          </button>
+          <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
         </div>
       </div>
 
@@ -680,22 +483,7 @@ function LocalRow({ item }: { item: LocalItem }) {
         </div>
       )}
 
-      {expanded && (
-        <div className="mt-3 border-t border-border pt-3">
-          <div className="grid gap-2 max-h-64 overflow-y-auto">
-            {item.tools.map((tool) => (
-              <div key={tool.name} className="flex gap-3 text-xs">
-                <code className="shrink-0 text-accent font-mono">
-                  {tool.name}
-                </code>
-                <span className="text-text-secondary truncate">
-                  {tool.description}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {expanded && <ToolGrid tools={item.tools} />}
     </div>
   );
 }

@@ -149,9 +149,12 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   asana_manage_attachments: "write",
   asana_manage_templates: "write",
 
-  // ── Skill tools (always safe) ──
+  // ── Skill tools ──
   list_skills: "read",
   get_skill: "read",
+  create_skill: "write",
+  update_skill: "write",
+  delete_skill: "destructive",
 };
 
 // Pattern-based heuristic for tools not in the static map.
