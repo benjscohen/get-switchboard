@@ -74,6 +74,8 @@ export async function GET(req: NextRequest) {
   });
 
   if (!tokenRes.ok) {
+    const errorBody = await tokenRes.text();
+    console.error("Token exchange failed:", tokenRes.status, errorBody);
     return NextResponse.redirect(
       `${getAppOrigin(req)}/dashboard?error=token_exchange_failed`
     );
