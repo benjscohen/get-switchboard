@@ -134,10 +134,24 @@ describe("event schemas", () => {
   });
 
   describe("createEventSchema", () => {
-    it("accepts minimal input with defaults", () => {
-      const result = createEventSchema.parse({});
+    it("requires start and end", () => {
+      expect(() => createEventSchema.parse({})).toThrow();
+      expect(() =>
+        createEventSchema.parse({ start: { dateTime: "2024-06-01T09:00:00Z" } })
+      ).toThrow();
+      expect(() =>
+        createEventSchema.parse({ end: { dateTime: "2024-06-01T09:30:00Z" } })
+      ).toThrow();
+    });
+
+    it("accepts minimal valid input with start and end", () => {
+      const result = createEventSchema.parse({
+        start: { dateTime: "2024-06-01T09:00:00Z" },
+        end: { dateTime: "2024-06-01T09:30:00Z" },
+      });
       expect(result.calendarId).toBe("primary");
       expect(result.sendUpdates).toBe("none");
+      expect(result.start.dateTime).toBe("2024-06-01T09:00:00Z");
     });
 
     it("accepts full event body", () => {
@@ -152,9 +166,22 @@ describe("event schemas", () => {
       expect(result.summary).toBe("Team standup");
     });
 
+    it("accepts all-day events with date instead of dateTime", () => {
+      const result = createEventSchema.parse({
+        summary: "All day event",
+        start: { date: "2024-06-01" },
+        end: { date: "2024-06-02" },
+      });
+      expect(result.start.date).toBe("2024-06-01");
+    });
+
     it("rejects invalid visibility enum", () => {
       expect(() =>
-        createEventSchema.parse({ visibility: "secret" })
+        createEventSchema.parse({
+          start: { dateTime: "2024-06-01T09:00:00Z" },
+          end: { dateTime: "2024-06-01T09:30:00Z" },
+          visibility: "secret",
+        })
       ).toThrow();
     });
   });
@@ -599,7 +626,6 @@ describe("other schemas", () => {
 describe("schemas with all-optional/defaulted fields accept empty object", () => {
   it.each([
     ["listEventsSchema", listEventsSchema],
-    ["createEventSchema", createEventSchema],
     ["getCalendarSchema", getCalendarSchema],
     ["deleteCalendarSchema", deleteCalendarSchema],
     ["clearCalendarSchema", clearCalendarSchema],
@@ -620,6 +646,7 @@ describe("schemas with all-optional/defaulted fields accept empty object", () =>
 
 describe("schemas with required fields reject empty object", () => {
   it.each([
+    ["createEventSchema", createEventSchema],
     ["getEventSchema", getEventSchema],
     ["updateEventSchema", updateEventSchema],
     ["patchEventSchema", patchEventSchema],

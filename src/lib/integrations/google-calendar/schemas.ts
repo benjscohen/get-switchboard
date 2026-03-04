@@ -82,7 +82,7 @@ export const eventBody = {
       overrides: z.array(reminder).optional(),
     })
     .optional(),
-  colorId: z.string().optional().describe("Color ID (1-11)"),
+  colorId: z.string().optional().describe("Event color ID (1-11). Use get_colors to see available colors."),
   visibility: z
     .enum(["default", "public", "private", "confidential"])
     .optional(),
@@ -99,7 +99,7 @@ export const listEventsSchema = z.object({
   ...timeRange,
   maxResults,
   pageToken,
-  q: z.string().optional().describe("Free-text search query"),
+  q: z.string().optional().describe("Free-text search filter (matches title, description, location — not exact match)"),
   singleEvents: z
     .boolean()
     .default(true)
@@ -125,6 +125,21 @@ export const createEventSchema = z.object({
     .optional()
     .describe("Set to 1 to enable conference (Meet) creation"),
   ...eventBody,
+  // Override start/end to be required for create (they're optional in eventBody for patch/update)
+  start: z
+    .object({
+      dateTime: z.string().optional().describe("Start datetime (RFC3339)"),
+      date: z.string().optional().describe("Start date (YYYY-MM-DD) for all-day events"),
+      timeZone: z.string().optional().describe("Timezone (e.g. America/New_York)"),
+    })
+    .describe("Start time (required). Use dateTime for timed events, date for all-day."),
+  end: z
+    .object({
+      dateTime: z.string().optional().describe("End datetime (RFC3339)"),
+      date: z.string().optional().describe("End date (YYYY-MM-DD) for all-day events"),
+      timeZone: z.string().optional().describe("Timezone (e.g. America/New_York)"),
+    })
+    .describe("End time (required). Use dateTime for timed events, date for all-day."),
 });
 
 export const updateEventSchema = z.object({
@@ -159,7 +174,7 @@ export const quickAddSchema = z.object({
   text: z
     .string()
     .describe(
-      'Quick-add text (e.g. "Meeting with Bob tomorrow at 3pm for 1 hour")'
+      'Natural language event text (e.g. "Meeting with Bob tomorrow at 3pm for 1 hour"). Avoid brackets — they may be parsed as syntax.'
     ),
   sendUpdates,
 });
@@ -186,7 +201,7 @@ export const rsvpSchema = z.object({
 
 export const searchEventsSchema = z.object({
   calendarId,
-  q: z.string().describe("Search query"),
+  q: z.string().describe("Free-text search (matches title, description, location, attendees — not exact match)"),
   ...timeRange,
   maxResults,
   pageToken,

@@ -29,8 +29,12 @@ describe("allIntegrations", () => {
     expect(allIntegrations.some((i) => i.id === "google-calendar")).toBe(true);
   });
 
-  it("has length 4", () => {
-    expect(allIntegrations).toHaveLength(4);
+  it("has length 6", () => {
+    expect(allIntegrations).toHaveLength(6);
+  });
+
+  it("is an array containing asana", () => {
+    expect(allIntegrations.some((i) => i.id === "asana")).toBe(true);
   });
 
   it("is an array containing google-docs", () => {
@@ -43,5 +47,9 @@ describe("allIntegrations", () => {
 
   it("is an array containing google-sheets", () => {
     expect(allIntegrations.some((i) => i.id === "google-sheets")).toBe(true);
+  });
+
+  it("is an array containing google-slides", () => {
+    expect(allIntegrations.some((i) => i.id === "google-slides")).toBe(true);
   });
 });

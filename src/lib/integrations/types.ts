@@ -39,3 +39,11 @@ export type IntegrationConfig = {
   tools: IntegrationToolDef[];
   toolCount: number;
 };
+
+export type McpContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
+
+export type McpToolResult = {
+  _mcpContent: McpContentBlock[];
+};

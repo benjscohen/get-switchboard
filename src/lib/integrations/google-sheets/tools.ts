@@ -50,15 +50,11 @@ function parseSortSpecs(
   }>;
 }
 
-/** Hex color → Google Color object */
+import { hexToRgb } from "../shared/color";
+
+/** Hex color → Google Sheets Color object (includes alpha) */
 function hexToColor(hex: string): sheets_v4.Schema$Color {
-  const h = hex.replace("#", "");
-  return {
-    red: parseInt(h.substring(0, 2), 16) / 255,
-    green: parseInt(h.substring(2, 4), 16) / 255,
-    blue: parseInt(h.substring(4, 6), 16) / 255,
-    alpha: 1,
-  };
+  return { ...hexToRgb(hex), alpha: 1 };
 }
 
 /** Column index → letter(s): 0→A, 25→Z, 26→AA */

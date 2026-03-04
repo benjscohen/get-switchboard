@@ -521,9 +521,6 @@ Before declaring the integration complete, verify every item:
 - [ ] Full suite passes: `npx vitest run` (no regressions)
 
 ### Quality
-- [ ] Competitive benchmark: compared tool list against ProtonIQ / other MCP servers
-- [ ] LLM-friendliness: hex colors, convenience params, descriptive errors
-- [ ] End-to-end: tested each tool via MCP `tools/call` (not just schema tests)
 - [ ] No fake tools: every tool does what its description claims
 - [ ] Multi-action tools have ≤ 8 operations each
 - [ ] All multi-action tools use `operation` (not `action`)
@@ -549,40 +546,6 @@ Before declaring the integration complete, verify every item:
 | Too many operations in one tool (>8) | Split into logical groupings (e.g. structural + formatting) |
 | Generic "An internal error occurred" | Surface API error messages — they help LLMs diagnose and retry |
 | Faking unsupported API operations | Omit the tool entirely — fake results are worse than no results |
-| No end-to-end MCP testing | Schema tests aren't enough — test via actual `tools/call` after deploy |
-
----
-
-## Step 7: Quality Review & Testing
-
-After the integration passes all schema tests and is registered, perform a quality review before declaring it complete.
-
-### Competitive Benchmarking
-
-- Compare your tool list against ProtonIQ's equivalent (or other MCP servers for that API)
-- Check for missing convenience params, unintuitive input formats, missing tools
-- Document findings — even if your coverage is broader, the comparison may reveal UX gaps
-
-### LLM-Friendliness Review
-
-- **Colors**: use hex strings (`"#FF0000"`), not RGB objects (`{ red: 255, green: 0, blue: 0 }`)
-- **Positions**: add convenience params like `position: "start"/"end"` alongside raw index params
-- **Creation tools**: should accept optional initial content (e.g. `create_document` with `initialText`)
-- **Multi-action tools**: should have ≤ 8 operations; split if larger (e.g. structural + formatting)
-- **Error messages**: surface underlying API error messages, don't swallow them into generic errors
-
-### End-to-End MCP Testing
-
-- After schema tests pass, deploy and test each tool via actual MCP `tools/call`
-- Verify `tools/list` returns correct schemas
-- Test error paths: invalid IDs, expired tokens, missing permissions
-- Confirm error messages are descriptive (not "An internal error occurred")
-
-### No Fake Tools
-
-- If the underlying API doesn't support an operation, don't fake it with a workaround that produces misleading results
-- Better to omit a tool than to ship one that lies about what it does
-- Example: don't insert plain text and call it "insert smart chip"
 
 ---
 
@@ -655,3 +618,9 @@ Use these as reference when building new ones:
 | `google-gmail/` | Shared composition fields (`compositionFields`), many tool variations |
 | `google-calendar/` | Comprehensive coverage, default values, clean returns |
 | `google-docs/` | Gold standard after quality review — hex colors, `operation`, convenience params, format_table split |
+
+---
+
+## Next Step: Test the Integration
+
+After building, run the **test-integration** skill (`/test-integration`) for end-to-end MCP validation, competitive benchmarking, and LLM-friendliness review.

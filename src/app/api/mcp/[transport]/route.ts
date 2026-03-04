@@ -8,6 +8,7 @@ import { decrypt } from "@/lib/encryption";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { allIntegrations } from "@/lib/integrations/registry";
 import { getValidTokens } from "@/lib/integrations/token-refresh";
+import type { McpToolResult } from "@/lib/integrations/types";
 import { logUsage } from "@/lib/usage-log";
 import { isToolAllowed } from "@/lib/permissions";
 import { proxyToolCall } from "@/lib/mcp/proxy-client";
@@ -144,6 +145,15 @@ function registerTools(server: McpServer) {
               durationMs: Date.now() - startTime,
               organizationId,
             });
+            if (
+              result &&
+              typeof result === "object" &&
+              "_mcpContent" in (result as Record<string, unknown>)
+            ) {
+              return {
+                content: (result as McpToolResult)._mcpContent,
+              };
+            }
             return {
               content: [
                 {

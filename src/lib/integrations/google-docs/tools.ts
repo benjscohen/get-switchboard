@@ -21,19 +21,8 @@ function pt(value: number): docs_v1.Schema$Dimension {
   return { magnitude: value, unit: "PT" };
 }
 
-function hexToRgb(hex: string): { red: number; green: number; blue: number } {
-  const h = hex.replace("#", "");
-  return {
-    red: parseInt(h.substring(0, 2), 16) / 255,
-    green: parseInt(h.substring(2, 4), 16) / 255,
-    blue: parseInt(h.substring(4, 6), 16) / 255,
-  };
-}
+import { hexToRgb, optColor } from "../shared/color";
 
-function optColor(hex: string | undefined) {
-  if (!hex) return undefined;
-  return { color: { rgbColor: hexToRgb(hex) } };
-}
 
 function buildLocation(
   index: number,
