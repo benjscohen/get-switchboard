@@ -86,11 +86,25 @@ export default async function AppLayout({
               </span>
             )}
             <Link
+              href="/dashboard"
+              className="text-sm text-text-secondary transition-colors hover:text-text-primary"
+            >
+              MCP
+            </Link>
+            <Link
               href="/skills"
               className="text-sm text-text-secondary transition-colors hover:text-text-primary"
             >
               Skills
             </Link>
+            {(showOrgSettings || role === "admin") && (
+              <Link
+                href="/settings"
+                className="text-sm text-text-secondary transition-colors hover:text-text-primary"
+              >
+                Settings
+              </Link>
+            )}
           </div>
           <UserMenu
             displayName={displayName}

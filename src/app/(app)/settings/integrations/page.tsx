@@ -1,5 +1,5 @@
-import { IntegrationsCard } from "@/components/app/integrations-card";
+import { redirect } from "next/navigation";
 
 export default function SettingsIntegrationsPage() {
-  return <IntegrationsCard />;
+  redirect("/settings/organization");
 }

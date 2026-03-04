@@ -29,18 +29,19 @@ export default async function SettingsLayout({
 
   const tabs: { href: string; label: string }[] = [];
 
-  if (isOrgAdmin) {
+  // Org admin/owner OR platform admin sees Organization + Teams
+  if (isOrgAdmin || isSuperAdmin) {
     tabs.push(
-      { href: "/settings/general", label: "General" },
-      { href: "/settings/integrations", label: "Integrations" },
+      { href: "/settings/organization", label: "Organization" },
+      { href: "/settings/teams", label: "Teams" },
     );
   }
 
+  // Platform admin only
   if (isSuperAdmin) {
     tabs.push(
-      { href: "/settings/overview", label: "Overview" },
       { href: "/settings/users", label: "Users" },
-      { href: "/settings/usage", label: "Usage Logs" },
+      { href: "/settings/dashboard", label: "Dashboard" },
       { href: "/settings/mcp-servers", label: "MCP Servers" },
     );
   }

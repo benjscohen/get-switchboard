@@ -1,9 +1,11 @@
 import type { ProxyIntegrationConfig } from "./types";
 import { firecrawlIntegration } from "./firecrawl";
+import { granolaIntegration } from "./granola";
 import { shortcutIntegration } from "./shortcut";
 
 const proxyIntegrations: ProxyIntegrationConfig[] = [
   firecrawlIntegration,
+  granolaIntegration,
   shortcutIntegration,
 ];
 

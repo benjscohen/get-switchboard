@@ -13,10 +13,9 @@ export function SettingsNav({ tabs }: SettingsNavProps) {
   return (
     <nav className="flex gap-1">
       {tabs.map(({ href, label }, i) => {
-        const isActive =
-          i === 0
-            ? pathname === href
-            : pathname.startsWith(href);
+        const isActive = href === "/settings/users"
+          ? pathname.startsWith(href)
+          : pathname === href;
 
         return (
           <Link
