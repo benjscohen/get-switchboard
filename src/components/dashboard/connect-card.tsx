@@ -41,8 +41,6 @@ interface ApiKeyEntry {
   keyPrefix: string;
   lastUsedAt: string | null;
   createdAt: string;
-  createdBy: string | null;
-  isOwn: boolean;
   revokedAt: string | null;
 }
 
@@ -77,8 +75,6 @@ export function ConnectCard({
           keyPrefix: data.prefix,
           lastUsedAt: null,
           createdAt: new Date().toISOString(),
-          createdBy: null,
-          isOwn: true,
           revokedAt: null,
         },
         ...prev,
@@ -159,7 +155,7 @@ export function ConnectCard({
   return (
     <Card hover={false}>
       <h2 className="mb-4 text-sm font-medium text-text-secondary">
-        Organization API Keys
+        Your API Keys
       </h2>
 
       <div className="mb-4 flex gap-2">
@@ -199,11 +195,7 @@ export function ConnectCard({
                     <p className="font-mono text-xs text-text-tertiary">
                       {k.keyPrefix}...
                     </p>
-                    {k.createdBy && !k.isOwn && (
-                      <span className="text-xs text-text-tertiary">
-                        by {k.createdBy}
-                      </span>
-                    )}
+
                   </div>
                 </div>
                 <div className="flex items-center gap-3">

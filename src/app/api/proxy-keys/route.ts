@@ -12,19 +12,30 @@ export async function GET() {
     (i) => i.keyMode === "per_user"
   );
 
-  const { data: userKeys } = await supabaseAdmin
-    .from("proxy_user_keys")
-    .select("integration_id")
-    .eq("user_id", auth.userId);
+  const [{ data: userKeys }, { data: dbTools }] = await Promise.all([
+    supabaseAdmin
+      .from("proxy_user_keys")
+      .select("integration_id")
+      .eq("user_id", auth.userId),
+    supabaseAdmin
+      .from("proxy_integration_tools")
+      .select("integration_id")
+      .eq("enabled", true),
+  ]);
 
   const keySet = new Set((userKeys ?? []).map((k) => k.integration_id));
+
+  const dbToolCounts = new Map<string, number>();
+  for (const t of dbTools ?? []) {
+    dbToolCounts.set(t.integration_id, (dbToolCounts.get(t.integration_id) ?? 0) + 1);
+  }
 
   return NextResponse.json(
     perUserIntegrations.map((i) => ({
       id: i.id,
       name: i.name,
       description: i.description,
-      toolCount: i.toolCount,
+      toolCount: dbToolCounts.get(i.id) ?? (i.fallbackTools?.length ?? 0),
       hasPersonalKey: keySet.has(i.id),
     }))
   );

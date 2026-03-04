@@ -40,22 +40,39 @@ export async function getCustomMcpCatalog(): Promise<CatalogEntry[]> {
   });
 }
 
-export function getNativeProxyCatalog(): CatalogEntry[] {
-  return allProxyIntegrations.map((i) => ({
-    id: i.id,
-    name: i.name,
-    description: i.description,
-    kind: "native-proxy",
-    toolCount: i.toolCount,
-    tools: i.tools.map((t) => ({ name: t.name, description: t.description })),
-  }));
+export async function getNativeProxyCatalog(): Promise<CatalogEntry[]> {
+  // Load tools from DB, falling back to config
+  const { data: dbTools } = await supabaseAdmin
+    .from("proxy_integration_tools")
+    .select("integration_id, tool_name, description")
+    .eq("enabled", true);
+
+  const toolsByIntegration = new Map<string, Array<{ name: string; description: string }>>();
+  for (const t of dbTools ?? []) {
+    const existing = toolsByIntegration.get(t.integration_id) ?? [];
+    existing.push({ name: t.tool_name, description: t.description });
+    toolsByIntegration.set(t.integration_id, existing);
+  }
+
+  return allProxyIntegrations.map((i) => {
+    const tools = toolsByIntegration.get(i.id) ??
+      (i.fallbackTools ?? []).map((t) => ({ name: t.name, description: t.description }));
+    return {
+      id: i.id,
+      name: i.name,
+      description: i.description,
+      kind: "native-proxy" as const,
+      toolCount: tools.length,
+      tools,
+    };
+  });
 }
 
 export async function getFullCatalog(): Promise<CatalogEntry[]> {
-  const [builtin, custom] = await Promise.all([
+  const [builtin, custom, nativeProxy] = await Promise.all([
     getBuiltinCatalog(),
     getCustomMcpCatalog(),
+    getNativeProxyCatalog(),
   ]);
-  const nativeProxy = getNativeProxyCatalog();
   return [...builtin, ...nativeProxy, ...custom];
 }

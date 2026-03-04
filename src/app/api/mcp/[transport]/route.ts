@@ -7,6 +7,8 @@ import { hashApiKey } from "@/lib/crypto";
 import { decrypt } from "@/lib/encryption";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { allIntegrations } from "@/lib/integrations/registry";
+import { proxyIntegrationRegistry } from "@/lib/integrations/proxy-registry";
+import { loadProxyTools, discoverAndCacheProxyTools, type ProxyTool } from "@/lib/integrations/proxy-tools";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 import { getValidTokens } from "@/lib/integrations/token-refresh";
 import type { McpToolResult } from "@/lib/integrations/types";
@@ -35,6 +37,16 @@ const customToolsPromise = supabaseAdmin
 let resolvedCustomTools: Awaited<typeof customToolsPromise> | null = null;
 customToolsPromise.then((tools) => {
   resolvedCustomTools = tools;
+});
+
+// Load proxy tools from DB at module init
+const proxyToolsPromise = loadProxyTools().catch((err) => {
+  console.error("[MCP] proxy tools load error:", err);
+  return { tools: [] as ProxyTool[], fromFallback: true };
+});
+let resolvedProxyTools: { tools: ProxyTool[]; fromFallback: boolean } | null = null;
+proxyToolsPromise.then((r) => {
+  resolvedProxyTools = r;
 });
 
 function registerTools(server: McpServer) {
@@ -370,132 +382,134 @@ function registerTools(server: McpServer) {
     );
   }
 
-  // Register native proxy integration tools
-  for (const proxy of allProxyIntegrations) {
-    const integrationId = `proxy:${proxy.id}`;
-    for (const tool of proxy.tools) {
-      toolMeta.set(tool.name, { integrationId, orgId: null, keyMode: proxy.keyMode });
-      server.tool(
-        tool.name,
-        tool.description,
-        tool.inputSchema,
-        async (args, extra) => {
-          const startTime = Date.now();
-          const userId = extra.authInfo?.extra?.userId as string | undefined;
-          const apiKeyId = extra.authInfo?.extra?.apiKeyId as string | undefined;
-          const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
+  // Register native proxy integration tools (from DB or fallback)
+  const proxyTools = resolvedProxyTools?.tools ?? [];
+  for (const tool of proxyTools) {
+    const proxy = proxyIntegrationRegistry.get(tool.integrationId);
+    if (!proxy) continue;
 
-          if (!userId) {
-            logUsage({
-              userId: "unknown",
-              apiKeyId,
-              toolName: tool.name,
-              integrationId,
-              status: "unauthorized",
-              organizationId,
-            });
-            return {
-              content: [{ type: "text" as const, text: "Unauthorized" }],
-              isError: true,
-            };
-          }
+    const integrationId = `proxy:${tool.integrationId}`;
+    toolMeta.set(tool.name, { integrationId, orgId: null, keyMode: proxy.keyMode });
+    server.tool(
+      tool.name,
+      tool.description,
+      tool.inputSchema,
+      async (args, extra) => {
+        const startTime = Date.now();
+        const userId = extra.authInfo?.extra?.userId as string | undefined;
+        const apiKeyId = extra.authInfo?.extra?.apiKeyId as string | undefined;
+        const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
 
-          // Check per-user tool permissions
-          const permissionsMode = extra.authInfo?.extra?.permissionsMode as string | undefined;
-          const integrationAccess = extra.authInfo?.extra?.integrationAccess as
-            | Array<{ integrationId: string; allowedTools: string[] }>
-            | undefined;
-
-          if (
-            permissionsMode &&
-            integrationAccess &&
-            !isToolAllowed(permissionsMode, integrationAccess, integrationId, tool.name)
-          ) {
-            logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId,
-              status: "unauthorized",
-              errorMessage: "Tool not available",
-              organizationId,
-            });
-            return {
-              content: [{ type: "text" as const, text: "Tool not available" }],
-              isError: true,
-            };
-          }
-
-          // Look up API key based on keyMode
-          const apiKey = proxy.keyMode === "per_user"
-            ? (extra.authInfo?.extra?.proxyUserKeys as Record<string, string> | undefined)?.[proxy.id]
-            : (extra.authInfo?.extra?.integrationOrgKeys as Record<string, string> | undefined)?.[proxy.id];
-
-          if (!apiKey) {
-            const errorMessage = proxy.keyMode === "per_user"
-              ? "No personal API key configured"
-              : "No API key configured for this integration";
-            logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId,
-              status: "error",
-              errorMessage,
-              durationMs: Date.now() - startTime,
-              organizationId,
-            });
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: proxy.keyMode === "per_user"
-                    ? `Integration "${proxy.name}" requires a personal API key. Add one in your dashboard.`
-                    : `Integration "${proxy.name}" is not configured. An org admin must add an API key in Organization Settings.`,
-                },
-              ],
-              isError: true,
-            };
-          }
-
-          try {
-            const result = await proxyToolCall(
-              proxy.serverUrl,
-              apiKey,
-              tool.name,
-              args as Record<string, unknown>
-            );
-            logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId,
-              status: result.isError ? "error" : "success",
-              durationMs: Date.now() - startTime,
-              organizationId,
-            });
-            return result;
-          } catch (err: unknown) {
-            const message =
-              err instanceof Error ? err.message : "Unknown error";
-            logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId,
-              status: "error",
-              errorMessage: message,
-              durationMs: Date.now() - startTime,
-              organizationId,
-            });
-            return {
-              content: [{ type: "text" as const, text: "An internal error occurred" }],
-              isError: true,
-            };
-          }
+        if (!userId) {
+          logUsage({
+            userId: "unknown",
+            apiKeyId,
+            toolName: tool.name,
+            integrationId,
+            status: "unauthorized",
+            organizationId,
+          });
+          return {
+            content: [{ type: "text" as const, text: "Unauthorized" }],
+            isError: true,
+          };
         }
-      );
-    }
+
+        // Check per-user tool permissions
+        const permissionsMode = extra.authInfo?.extra?.permissionsMode as string | undefined;
+        const integrationAccess = extra.authInfo?.extra?.integrationAccess as
+          | Array<{ integrationId: string; allowedTools: string[] }>
+          | undefined;
+
+        if (
+          permissionsMode &&
+          integrationAccess &&
+          !isToolAllowed(permissionsMode, integrationAccess, integrationId, tool.name)
+        ) {
+          logUsage({
+            userId,
+            apiKeyId,
+            toolName: tool.name,
+            integrationId,
+            status: "unauthorized",
+            errorMessage: "Tool not available",
+            organizationId,
+          });
+          return {
+            content: [{ type: "text" as const, text: "Tool not available" }],
+            isError: true,
+          };
+        }
+
+        // Look up API key based on keyMode
+        const apiKey = proxy.keyMode === "per_user"
+          ? (extra.authInfo?.extra?.proxyUserKeys as Record<string, string> | undefined)?.[proxy.id]
+          : (extra.authInfo?.extra?.integrationOrgKeys as Record<string, string> | undefined)?.[proxy.id];
+
+        if (!apiKey) {
+          const errorMessage = proxy.keyMode === "per_user"
+            ? "No personal API key configured"
+            : "No API key configured for this integration";
+          logUsage({
+            userId,
+            apiKeyId,
+            toolName: tool.name,
+            integrationId,
+            status: "error",
+            errorMessage,
+            durationMs: Date.now() - startTime,
+            organizationId,
+          });
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: proxy.keyMode === "per_user"
+                  ? `Integration "${proxy.name}" requires a personal API key. Add one in your dashboard.`
+                  : `Integration "${proxy.name}" is not configured. An org admin must add an API key in Organization Settings.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        try {
+          const result = await proxyToolCall(
+            proxy.serverUrl,
+            apiKey,
+            tool.name,
+            args as Record<string, unknown>
+          );
+          logUsage({
+            userId,
+            apiKeyId,
+            toolName: tool.name,
+            integrationId,
+            status: result.isError ? "error" : "success",
+            durationMs: Date.now() - startTime,
+            organizationId,
+          });
+          return result;
+        } catch (err: unknown) {
+          const message =
+            err instanceof Error ? err.message : "Unknown error";
+          logUsage({
+            userId,
+            apiKeyId,
+            toolName: tool.name,
+            integrationId,
+            status: "error",
+            errorMessage: message,
+            durationMs: Date.now() - startTime,
+            organizationId,
+          });
+          return {
+            content: [{ type: "text" as const, text: "An internal error occurred" }],
+            isError: true,
+          };
+        }
+      }
+    );
   }
 
   // Override tools/list to filter per-user based on connections, org, and permissions
@@ -529,9 +543,19 @@ function registerTools(server: McpServer) {
 }
 
 async function mcpHandler(req: Request): Promise<Response> {
-  // Ensure custom tools are loaded before first request
+  // Ensure custom tools and proxy tools are loaded before first request
   if (resolvedCustomTools === null) {
     resolvedCustomTools = await customToolsPromise;
+  }
+  if (resolvedProxyTools === null) {
+    resolvedProxyTools = await proxyToolsPromise;
+  }
+
+  // Auto-discover proxy tools if we're using fallback (DB is empty)
+  if (resolvedProxyTools.fromFallback) {
+    for (const proxy of allProxyIntegrations) {
+      discoverAndCacheProxyTools(proxy.id, proxy.serverUrl).catch(() => {});
+    }
   }
 
   const transport = new WebStandardStreamableHTTPServerTransport({

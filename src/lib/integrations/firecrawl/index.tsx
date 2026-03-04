@@ -23,8 +23,7 @@ export const firecrawlIntegration: ProxyIntegrationConfig = {
   icon: FirecrawlIcon,
   serverUrl: "https://mcp.firecrawl.dev/v2/mcp",
   keyMode: "org",
-  toolCount: 12,
-  tools: [
+  fallbackTools: [
     {
       name: "firecrawl_scrape",
       description: "Scrape content from a single URL with advanced options",

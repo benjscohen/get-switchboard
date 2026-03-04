@@ -2,10 +2,7 @@ import {
   integrationRegistry,
   getToolNamesForIntegration,
 } from "@/lib/integrations/registry";
-import {
-  proxyIntegrationRegistry,
-  getProxyToolNames,
-} from "@/lib/integrations/proxy-registry";
+import { proxyIntegrationRegistry } from "@/lib/integrations/proxy-registry";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type IntegrationAccessRow = {
@@ -80,18 +77,48 @@ export async function validatePermissionsPayload(
   }
 
   // Validate native proxy integrations
-  for (const entry of proxyEntries) {
-    const proxyId = entry.integrationId.replace("proxy:", "");
-    if (!proxyIntegrationRegistry.has(proxyId)) {
-      errors.push(`Unknown proxy integration: ${entry.integrationId}`);
-      continue;
+  if (proxyEntries.length > 0) {
+    const proxyIds = proxyEntries.map((e) => e.integrationId.replace("proxy:", ""));
+
+    // Check that integration IDs exist in registry
+    for (const entry of proxyEntries) {
+      const proxyId = entry.integrationId.replace("proxy:", "");
+      if (!proxyIntegrationRegistry.has(proxyId)) {
+        errors.push(`Unknown proxy integration: ${entry.integrationId}`);
+      }
     }
-    const validTools = getProxyToolNames(proxyId);
-    for (const tool of entry.allowedTools) {
-      if (!validTools.includes(tool)) {
-        errors.push(
-          `Unknown tool "${tool}" for proxy integration "${entry.integrationId}"`
-        );
+
+    // Load valid tool names from DB
+    const { data: dbTools } = await supabaseAdmin
+      .from("proxy_integration_tools")
+      .select("integration_id, tool_name")
+      .in("integration_id", proxyIds)
+      .eq("enabled", true);
+
+    const proxyToolMap = new Map<string, string[]>();
+    for (const t of dbTools ?? []) {
+      const existing = proxyToolMap.get(t.integration_id) ?? [];
+      existing.push(t.tool_name);
+      proxyToolMap.set(t.integration_id, existing);
+    }
+
+    // Fall back to config fallbackTools if no DB rows
+    for (const entry of proxyEntries) {
+      const proxyId = entry.integrationId.replace("proxy:", "");
+      if (!proxyIntegrationRegistry.has(proxyId)) continue;
+
+      let validTools = proxyToolMap.get(proxyId);
+      if (!validTools || validTools.length === 0) {
+        const proxy = proxyIntegrationRegistry.get(proxyId);
+        validTools = (proxy?.fallbackTools ?? []).map((t) => t.name);
+      }
+
+      for (const tool of entry.allowedTools) {
+        if (!validTools.includes(tool)) {
+          errors.push(
+            `Unknown tool "${tool}" for proxy integration "${entry.integrationId}"`
+          );
+        }
       }
     }
   }

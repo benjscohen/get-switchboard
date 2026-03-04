@@ -17,13 +17,13 @@ export type ProxyIntegrationConfig = {
   icon: () => ReactNode;
   serverUrl: string;
   keyMode: "org" | "per_user";
-  userKeyInstructions?: string;
-  tools: Array<{
+  userKeyInstructions?: ReactNode;
+  // Optional fallback — used only if no DB rows exist yet
+  fallbackTools?: Array<{
     name: string;
     description: string;
     inputSchema: Record<string, unknown>;
   }>;
-  toolCount: number;
 };
 
 export type IntegrationToolDef = {

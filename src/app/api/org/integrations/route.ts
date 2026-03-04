@@ -19,11 +19,22 @@ export async function GET() {
 
   const orgOnlyIntegrations = allProxyIntegrations.filter((i) => i.keyMode === "org");
 
+  // Load tool counts from DB
+  const { data: dbTools } = await supabaseAdmin
+    .from("proxy_integration_tools")
+    .select("integration_id")
+    .eq("enabled", true);
+
+  const dbToolCounts = new Map<string, number>();
+  for (const t of dbTools ?? []) {
+    dbToolCounts.set(t.integration_id, (dbToolCounts.get(t.integration_id) ?? 0) + 1);
+  }
+
   const integrations = orgOnlyIntegrations.map((i) => ({
     id: i.id,
     name: i.name,
     description: i.description,
-    toolCount: i.toolCount,
+    toolCount: dbToolCounts.get(i.id) ?? (i.fallbackTools?.length ?? 0),
     configured: keyMap.has(i.id),
     enabled: keyMap.get(i.id) ?? false,
   }));

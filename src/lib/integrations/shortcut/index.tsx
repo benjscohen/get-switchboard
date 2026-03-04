@@ -24,10 +24,21 @@ export const shortcutIntegration: ProxyIntegrationConfig = {
   icon: ShortcutIcon,
   serverUrl: "https://mcp.shortcut.com/mcp",
   keyMode: "per_user",
-  userKeyInstructions:
-    "Enter your Shortcut API token. Generate one from Settings > API Tokens in Shortcut.",
-  toolCount: 55,
-  tools: [
+  userKeyInstructions: (
+    <>
+      Enter your Shortcut API token.{" "}
+      <a
+        href="https://app.shortcut.com/proton/settings/account/api-tokens"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline text-brand hover:text-brand/80"
+      >
+        Generate one here
+      </a>
+      .
+    </>
+  ),
+  fallbackTools: [
     {
       name: "stories-search",
       description: "Find Shortcut stories.",

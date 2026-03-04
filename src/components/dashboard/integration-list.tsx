@@ -31,14 +31,14 @@ type PerUserProxyItem = {
   toolCount: number;
   tools: IntegrationTool[];
   hasPersonalKey: boolean;
-  userKeyInstructions: string | null;
+  userKeyInstructions: ReactNode | null;
 };
 
 type CustomMcpItem = IntegrationItem & {
   serverId: string;
   authType: string;
   keyMode: "shared" | "per_user";
-  userKeyInstructions: string | null;
+  userKeyInstructions: ReactNode | null;
   hasSharedKey: boolean;
   hasPersonalKey: boolean;
 };

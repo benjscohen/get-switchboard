@@ -12,9 +12,3 @@ export const proxyIntegrationRegistry = new Map<string, ProxyIntegrationConfig>(
 );
 
 export const allProxyIntegrations = proxyIntegrations;
-
-export function getProxyToolNames(integrationId: string): string[] {
-  const integration = proxyIntegrationRegistry.get(integrationId);
-  if (!integration) return [];
-  return integration.tools.map((t) => t.name);
-}
