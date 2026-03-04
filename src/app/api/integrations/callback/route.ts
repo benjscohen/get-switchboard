@@ -150,10 +150,29 @@ export async function GET(req: NextRequest) {
 
   const tokens = await tokenRes.json();
 
+  // Slack v2 nests user tokens under authed_user
+  const accessToken: string | undefined =
+    tokens.access_token ?? tokens.authed_user?.access_token;
+  const refreshToken: string | undefined =
+    tokens.refresh_token ?? tokens.authed_user?.refresh_token;
+  const expiresIn: number | undefined =
+    tokens.expires_in ?? tokens.authed_user?.expires_in;
+  const tokenType: string | undefined =
+    tokens.token_type ?? tokens.authed_user?.token_type;
+  const scope: string | undefined =
+    tokens.scope ?? tokens.authed_user?.scope;
+
+  if (!accessToken) {
+    console.error("No access token in response:", JSON.stringify(tokens));
+    return NextResponse.redirect(
+      `${getAppOrigin(req)}/dashboard?error=token_exchange_failed`
+    );
+  }
+
   // Encrypt tokens before storing
-  const encryptedAccessToken = encrypt(tokens.access_token);
-  const encryptedRefreshToken = tokens.refresh_token
-    ? encrypt(tokens.refresh_token)
+  const encryptedAccessToken = encrypt(accessToken);
+  const encryptedRefreshToken = refreshToken
+    ? encrypt(refreshToken)
     : null;
 
   // Upsert connection
@@ -165,11 +184,11 @@ export async function GET(req: NextRequest) {
         integration_id: stored.integrationId,
         access_token: encryptedAccessToken,
         refresh_token: encryptedRefreshToken,
-        expires_at: tokens.expires_in
-          ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+        expires_at: expiresIn
+          ? new Date(Date.now() + expiresIn * 1000).toISOString()
           : null,
-        token_type: tokens.token_type ?? "Bearer",
-        scope: tokens.scope ?? null,
+        token_type: tokenType ?? "Bearer",
+        scope: scope ?? null,
       },
       { onConflict: "user_id,integration_id" }
     );
