@@ -2,13 +2,13 @@ import type { LocalIntegrationConfig } from "../types";
 
 function ChromeIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 48 48" fill="none">
-      <circle cx="24" cy="24" r="22" fill="#4285F4" />
-      <circle cx="24" cy="24" r="9" fill="white" />
-      <circle cx="24" cy="24" r="5" fill="#4285F4" />
-      <path d="M24 15h18.7a22 22 0 0 0-19-13l9.3 13z" fill="#EA4335" />
-      <path d="M14.7 33L5 15.2A22 22 0 0 0 24 46l-9.3-13z" fill="#34A853" />
-      <path d="M33.3 33H5.7a22 22 0 0 0 37 0L33.3 33z" fill="#FBBC05" />
+    <svg width="20" height="20" viewBox="0 0 192 192" className="shrink-0">
+      <circle cx="96" cy="96" r="96" fill="#fff" />
+      <path d="M20.86 60A88 88 0 0 0 8 96h62.08A32 32 0 0 1 96 64h82.76A88 88 0 0 0 96 8a88 88 0 0 0-75.14 52z" fill="#DB4437" />
+      <path d="M96 128a32 32 0 0 1-25.95-13.24L22.82 37.2A96 96 0 0 0 96 192a96 96 0 0 0 72.44-33L131.1 99.5A32 32 0 0 1 96 128z" fill="#0F9D58" />
+      <path d="M178.76 64H96a32 32 0 0 1 31.07 24.28L163.8 155A96 96 0 0 0 192 96a96 96 0 0 0-13.24-32z" fill="#FFCD40" />
+      <circle cx="96" cy="96" r="32" fill="#F1F1F1" />
+      <circle cx="96" cy="96" r="24" fill="#4285F4" />
     </svg>
   );
 }

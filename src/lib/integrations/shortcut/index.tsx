@@ -2,15 +2,16 @@ import type { ProxyIntegrationConfig } from "../types";
 
 function ShortcutIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" className="shrink-0">
-      <circle cx="9" cy="9" r="7" fill="#58B1E4" />
+    <svg width="18" height="18" viewBox="0 0 64 64" className="shrink-0">
+      <rect width="64" height="64" rx="14" fill="#58B1E4" />
       <path
-        d="M6.5 6.5L9 9l2.5-2.5M6.5 11.5L9 9l2.5 2.5"
-        fill="none"
-        stroke="white"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        d="M20 24c0-2.2 1.8-4 4-4h6c6.6 0 12 5.4 12 12s-5.4 12-12 12h-6c-2.2 0-4-1.8-4-4s1.8-4 4-4h6c2.2 0 4-1.8 4-4s-1.8-4-4-4h-6c-2.2 0-4-1.8-4-4z"
+        fill="white"
+      />
+      <path
+        d="M44 40c0 2.2-1.8 4-4 4h-6c-6.6 0-12-5.4-12-12s5.4-12 12-12h6c2.2 0 4 1.8 4 4s-1.8 4-4 4h-6c-2.2 0-4 1.8-4 4s1.8 4 4 4h6c2.2 0 4 1.8 4 4z"
+        fill="white"
+        opacity="0.5"
       />
     </svg>
   );
