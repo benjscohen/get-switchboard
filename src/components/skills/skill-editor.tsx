@@ -15,7 +15,7 @@ interface Skill {
   id?: string;
   name: string;
   slug: string;
-  description: string;
+  description: string | null;
   content: string;
   arguments: SkillArgument[];
   scope: "organization" | "team" | "user";
