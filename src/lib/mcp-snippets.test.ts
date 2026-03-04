@@ -21,7 +21,7 @@ describe("generateSnippet", () => {
   it("claude-desktop returns valid JSON with mcpServers.switchboard.url and headers", () => {
     const snippet = generateSnippet(origin, apiKey, "claude-desktop");
     const parsed = JSON.parse(snippet);
-    expect(parsed.mcpServers.switchboard.url).toBe(`${origin}/api/mcp/sse`);
+    expect(parsed.mcpServers.switchboard.url).toBe(`${origin}/api/mcp/http`);
     expect(parsed.mcpServers.switchboard.headers.Authorization).toBe(
       `Bearer ${apiKey}`
     );
@@ -36,7 +36,7 @@ describe("generateSnippet", () => {
   it("cursor returns valid JSON with the same shape as claude-desktop", () => {
     const snippet = generateSnippet(origin, apiKey, "cursor");
     const parsed = JSON.parse(snippet);
-    expect(parsed.mcpServers.switchboard.url).toBe(`${origin}/api/mcp/sse`);
+    expect(parsed.mcpServers.switchboard.url).toBe(`${origin}/api/mcp/http`);
     expect(parsed.mcpServers.switchboard.headers.Authorization).toBe(
       `Bearer ${apiKey}`
     );
@@ -46,11 +46,11 @@ describe("generateSnippet", () => {
     expect(generateSnippet(origin, apiKey, "unknown")).toBe("");
   });
 
-  it("URL contains origin + /api/mcp/sse", () => {
+  it("URL contains origin + /api/mcp/http", () => {
     const snippet = generateSnippet(origin, apiKey, "claude-desktop");
     const parsed = JSON.parse(snippet);
     expect(parsed.mcpServers.switchboard.url).toBe(
-      "https://example.com/api/mcp/sse"
+      "https://example.com/api/mcp/http"
     );
   });
 
