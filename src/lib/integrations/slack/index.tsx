@@ -25,6 +25,7 @@ export const slackIntegration: ProxyIntegrationConfig = {
     clientIdEnvVar: "SLACK_CLIENT_ID",
     clientSecretEnvVar: "SLACK_CLIENT_SECRET",
     scopeParamName: "user_scope",
+    scopeSeparator: ",",
     scopes: [
       "search:read.public",
       "search:read.private",

@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
       client_id: clientId,
       redirect_uri: redirectUri,
       response_type: "code",
-      [scopeParam]: oauth.scopes.join(" "),
+      [scopeParam]: oauth.scopes.join(oauth.scopeSeparator ?? " "),
       state,
       code_challenge: codeChallenge,
       code_challenge_method: "S256",

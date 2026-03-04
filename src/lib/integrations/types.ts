@@ -18,6 +18,7 @@ export type ProxyOAuthConfig = {
   clientSecretEnvVar?: string; // Env var for client secret (static OAuth)
   scopes: string[];
   scopeParamName?: string; // Override "scope" param name (e.g. "user_scope" for Slack)
+  scopeSeparator?: string; // Override scope separator (default " ", Slack uses ",")
 };
 
 export type ProxyIntegrationConfig = {
