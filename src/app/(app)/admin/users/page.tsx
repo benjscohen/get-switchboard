@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { AddUserForm } from "@/components/admin/add-user-form";
@@ -152,12 +153,12 @@ export default function AdminUsersPage() {
                         : "Never"}
                     </td>
                     <td className="py-3">
-                      <a
+                      <Link
                         href={`/admin/users/${user.id}`}
                         className="text-sm text-accent hover:underline"
                       >
                         Manage
-                      </a>
+                      </Link>
                     </td>
                   </tr>
                 ))}

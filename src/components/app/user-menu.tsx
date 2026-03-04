@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -66,20 +67,20 @@ export function UserMenu({
       {open && (
         <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border bg-bg py-1 shadow-lg">
           {showOrgSettings && (
-            <a
+            <Link
               href="/org"
               className="block px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-card hover:text-text-primary"
             >
               Org Settings
-            </a>
+            </Link>
           )}
           {showAdmin && (
-            <a
+            <Link
               href="/admin"
               className="block px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-card hover:text-text-primary"
             >
               Admin
-            </a>
+            </Link>
           )}
           {(showOrgSettings || showAdmin) && (
             <div className="my-1 border-t border-border" />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { navItems, siteConfig } from "@/lib/constants";
 import { Container } from "@/components/ui/container";
@@ -26,7 +27,7 @@ export function Navbar() {
       )}
     >
       <Container className="flex h-16 items-center justify-between">
-        <a href="/" className="flex items-center gap-2 text-lg font-bold">
+        <Link href="/" className="flex items-center gap-2 text-lg font-bold">
           <svg
             width="24"
             height="24"
@@ -40,7 +41,7 @@ export function Navbar() {
             <rect x="14" y="14" width="7" height="7" rx="1.5" fill="currentColor" opacity="0.4" />
           </svg>
           {siteConfig.name}
-        </a>
+        </Link>
 
         {/* Desktop nav */}
         <div className="hidden items-center gap-8 md:flex">

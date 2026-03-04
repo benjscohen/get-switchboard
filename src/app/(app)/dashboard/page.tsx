@@ -4,26 +4,11 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { Container } from "@/components/ui/container";
 import { IntegrationList } from "@/components/dashboard/integration-list";
 import { ConnectCard } from "@/components/dashboard/connect-card";
+import { DashboardToasts } from "@/components/dashboard/dashboard-toasts";
 import { allIntegrations } from "@/lib/integrations/registry";
 import { headers } from "next/headers";
 
-const ERROR_MESSAGES: Record<string, string> = {
-  token_exchange_failed: "Failed to connect — Google rejected the request. Please try again.",
-  save_failed: "Connected to Google but failed to save. Please try again.",
-  missing_params: "OAuth callback was missing required parameters.",
-  missing_state: "Session expired. Please try connecting again.",
-  invalid_state: "Invalid session state. Please try connecting again.",
-  state_mismatch: "Security check failed. Please try connecting again.",
-  unknown_integration: "Unknown integration.",
-  not_configured: "This integration is not configured yet.",
-};
-
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ connected?: string; error?: string }>;
-}) {
-  const { connected, error: errorCode } = await searchParams;
+export default async function DashboardPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -113,16 +98,7 @@ export default async function DashboardPage({
 
   return (
     <Container className="py-10">
-      {errorCode && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {ERROR_MESSAGES[errorCode] ?? "Something went wrong. Please try again."}
-        </div>
-      )}
-      {connected && !errorCode && (
-        <div className="mb-6 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-          Successfully connected {connected.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}!
-        </div>
-      )}
+      <DashboardToasts />
       <h1 className="mb-8 text-2xl font-bold">Dashboard</h1>
       <div className="space-y-6">
         <IntegrationList

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, use } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -163,12 +164,12 @@ export default function AdminUserDetailPage({
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <a
+        <Link
           href="/admin/users"
           className="mb-4 inline-block text-sm text-text-secondary hover:text-text-primary"
         >
           &larr; Back to users
-        </a>
+        </Link>
         <div className="flex items-center gap-4">
           {user.image ? (
             <img src={user.image} alt="" className="h-12 w-12 rounded-full" />

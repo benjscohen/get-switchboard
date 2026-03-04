@@ -6,7 +6,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Tabs, TabList, TabTrigger, TabPanel } from "@/components/ui/tabs";
-import { MCP_CLIENTS, generateSnippet } from "@/lib/mcp-snippets";
+import { MCP_CLIENTS, generateSnippet, generatePrompt } from "@/lib/mcp-snippets";
+
+function CopyButton({
+  text,
+  label,
+  variant = "secondary",
+}: {
+  text: string;
+  label: string;
+  variant?: "secondary" | "ghost";
+}) {
+  const [copied, setCopied] = useState(false);
+
+  function copy() {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <Button size="sm" variant={variant} onClick={copy}>
+      {copied ? "Copied!" : label}
+    </Button>
+  );
+}
 
 interface ApiKeyEntry {
   id: string;
@@ -79,7 +103,19 @@ export function ConnectCard({ origin }: { origin: string }) {
           {MCP_CLIENTS.map((c) => (
             <TabPanel key={c.id} id={c.id}>
               <p className="mb-2 text-xs text-text-tertiary">{c.hint}</p>
-              <CodeBlock code={generateSnippet(origin, newRawKey, c.id)} />
+              <CodeBlock code={generateSnippet(origin, newRawKey, c.id)} hideCopy />
+              <div className="mt-2 flex gap-2">
+                <CopyButton
+                  text={generatePrompt(origin, newRawKey, c.id)}
+                  label="Copy with prompt"
+                  variant="secondary"
+                />
+                <CopyButton
+                  text={generateSnippet(origin, newRawKey, c.id)}
+                  label="Copy"
+                  variant="ghost"
+                />
+              </div>
             </TabPanel>
           ))}
         </Tabs>

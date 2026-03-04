@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Container } from "@/components/ui/container";
@@ -33,7 +34,7 @@ export default async function AppLayout({
       <header className="border-b border-border bg-bg/80 backdrop-blur-xl">
         <Container className="flex h-14 items-center justify-between">
           <div className="flex items-center gap-4">
-            <a href="/dashboard" className="flex items-center gap-2 text-lg font-bold">
+            <Link href="/dashboard" className="flex items-center gap-2 text-lg font-bold">
               <svg
                 width="20"
                 height="20"
@@ -78,7 +79,7 @@ export default async function AppLayout({
                 />
               </svg>
               Switchboard
-            </a>
+            </Link>
             {org && !org.is_personal && (
               <span className="rounded-md bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
                 {org.name}

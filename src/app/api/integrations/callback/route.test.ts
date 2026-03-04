@@ -175,6 +175,7 @@ describe("GET /api/integrations/callback", () => {
       ok: false,
       status: 400,
       json: () => Promise.resolve({ error: "invalid_grant" }),
+      text: () => Promise.resolve('{"error":"invalid_grant"}'),
     } as Response);
 
     const res = await GET(

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Container } from "@/components/ui/container";
 import { footerLinks, siteConfig } from "@/lib/constants";
 
@@ -10,7 +11,7 @@ export function Footer() {
         <div className="flex flex-col items-center gap-8 md:flex-row md:justify-between">
           {/* Brand */}
           <div className="flex flex-col items-center md:items-start">
-            <a href="/" className="flex items-center gap-2 text-lg font-bold">
+            <Link href="/" className="flex items-center gap-2 text-lg font-bold">
               <svg
                 width="20"
                 height="20"
@@ -24,7 +25,7 @@ export function Footer() {
                 <rect x="14" y="14" width="7" height="7" rx="1.5" fill="currentColor" opacity="0.4" />
               </svg>
               {siteConfig.name}
-            </a>
+            </Link>
             <p className="mt-2 text-sm text-text-tertiary">
               One URL. Every tool.
             </p>
