@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { PermissionsEditor } from "@/components/admin/permissions-editor";
+import { ApiKeysCard } from "@/components/admin/api-keys-card";
 
 interface UserDetail {
   id: string;
@@ -310,6 +311,14 @@ export default function AdminUserDetailPage({
           Access Permissions
         </h3>
         <PermissionsEditor userId={id} isSelf={isSelf} />
+      </Card>
+
+      {/* API Keys */}
+      <Card hover={false}>
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-text-secondary">
+          API Keys
+        </h3>
+        <ApiKeysCard userId={id} />
       </Card>
 
       {/* Danger Zone */}

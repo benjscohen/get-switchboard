@@ -9,11 +9,15 @@ export async function GET() {
   if (!authResult.authenticated) return authResult.response;
 
   const supabase = await createClient();
-  const { data: keys } = await supabase
+  const { data: keys, error } = await supabase
     .from("api_keys")
     .select("id, name, key_prefix, last_used_at, created_at, user_id, profiles(name, email)")
     .eq("organization_id", authResult.organizationId)
     .order("created_at", { ascending: false });
+
+  if (error) {
+    return NextResponse.json({ error: "Failed to fetch API keys" }, { status: 500 });
+  }
 
   const mapped = (keys ?? []).map((k) => {
     const profileData = k.profiles as unknown;
@@ -52,13 +56,17 @@ export async function POST(request: Request) {
   const { raw, hash, prefix } = generateApiKey();
 
   const supabase = await createClient();
-  await supabase.from("api_keys").insert({
+  const { error } = await supabase.from("api_keys").insert({
     user_id: authResult.userId,
     organization_id: authResult.organizationId,
     name,
     key_hash: hash,
     key_prefix: prefix,
   });
+
+  if (error) {
+    return NextResponse.json({ error: "Failed to create API key" }, { status: 500 });
+  }
 
   return NextResponse.json({ key: raw, prefix, name });
 }

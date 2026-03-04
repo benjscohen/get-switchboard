@@ -52,7 +52,11 @@ export function ConnectCard({ origin }: { origin: string }) {
 
   const fetchKeys = useCallback(async () => {
     const res = await fetch("/api/keys");
-    if (res.ok) setKeys(await res.json());
+    if (res.ok) {
+      setKeys(await res.json());
+    } else {
+      console.error("Failed to fetch API keys:", res.status);
+    }
   }, []);
 
   useEffect(() => {
@@ -71,6 +75,8 @@ export function ConnectCard({ origin }: { origin: string }) {
       setNewRawKey(data.key);
       setNewKeyName("");
       fetchKeys();
+    } else {
+      console.error("Failed to generate API key:", res.status);
     }
     setLoading(false);
   }
