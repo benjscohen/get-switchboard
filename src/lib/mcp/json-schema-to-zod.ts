@@ -69,11 +69,11 @@ function jsonSchemaToZod(
 
   switch (type) {
     case "string":
-      return z.string();
+      return z.coerce.string();
 
     case "number":
     case "integer":
-      return z.number();
+      return z.coerce.number();
 
     case "boolean":
       return z.boolean();
