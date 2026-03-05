@@ -16,6 +16,7 @@ import { logUsage } from "@/lib/usage-log";
 import { isToolAllowed } from "@/lib/permissions";
 import { getToolRisk, isRiskAllowedByScope } from "@/lib/mcp/tool-risk";
 import { proxyToolCall } from "@/lib/mcp/proxy-client";
+import { jsonSchemaToZodToolSchema } from "@/lib/mcp/json-schema-to-zod";
 import { filterToolsForUser, type ToolMeta } from "@/lib/mcp/tool-filtering";
 import {
   filterSkillsForUser,
@@ -759,15 +760,12 @@ function registerTools(server: McpServer) {
 
     const integrationId = `proxy:${tool.integrationId}`;
     toolMeta.set(tool.name, { integrationId, orgId: null, keyMode: proxy.keyMode, proxyOAuth: !!proxy.oauth });
-    server.registerTool(
+    const zodSchema = jsonSchemaToZodToolSchema(tool.inputSchema);
+    server.tool(
       tool.name,
-      {
-        description: tool.description,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        inputSchema: tool.inputSchema as any,
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (args: Record<string, unknown>, extra: any) => {
+      tool.description,
+      zodSchema.shape,
+      async (args, extra) => {
         const expiredResult = checkKeyExpired(extra);
         if (expiredResult) return expiredResult;
 
