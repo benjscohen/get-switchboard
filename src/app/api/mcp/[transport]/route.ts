@@ -25,6 +25,7 @@ import {
   interpolateSkillContent,
   type SkillRecord,
 } from "@/lib/mcp/skill-filtering";
+import { registerAdminTools } from "@/lib/mcp/admin-tools";
 import {
   createSkill,
   updateSkill,
@@ -752,6 +753,8 @@ function registerTools(server: McpServer) {
         | Record<string, string>
         | undefined,
       apiKeyScope: extra.authInfo?.extra?.apiKeyScope as string | undefined,
+      role: extra.authInfo?.extra?.role as string | undefined,
+      orgRole: extra.authInfo?.extra?.orgRole as string | undefined,
     });
 
     return { tools };
@@ -801,6 +804,7 @@ async function mcpHandler(req: Request): Promise<Response> {
   );
   registerTools(server);
   registerSkills(server);
+  registerAdminTools(server, toolMeta);
   await server.connect(transport);
 
   const authInfo = (req as Request & { auth?: unknown }).auth as
@@ -853,7 +857,7 @@ const authedHandler = withMcpAuth(
       { data: rawProxyUserKeys },
       { data: teamMemberships },
     ] = await Promise.all([
-      supabaseAdmin.from("profiles").select("status, permissions_mode, organization_id, org_role").eq("id", apiKey.user_id).single(),
+      supabaseAdmin.from("profiles").select("status, permissions_mode, organization_id, org_role, role").eq("id", apiKey.user_id).single(),
       supabaseAdmin.from("user_integration_access").select("integration_id, allowed_tools").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("connections").select("id, integration_id, access_token, refresh_token, expires_at, sender_name").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("custom_mcp_user_keys").select("server_id, api_key").eq("user_id", apiKey.user_id),
@@ -912,6 +916,7 @@ const authedHandler = withMcpAuth(
         proxyUserKeys,
         teamIds,
         orgRole: profile.org_role ?? "member",
+        role: profile.role ?? "user",
         apiKeyScope: apiKey.scope ?? "full",
         keyExpired,
       },

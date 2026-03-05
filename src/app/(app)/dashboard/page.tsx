@@ -20,7 +20,7 @@ export default async function DashboardPage() {
 
   // Phase 1: profile + connections in parallel (no orgId dependency)
   const [{ data: profile }, { data: connections }] = await Promise.all([
-    supabase.from("profiles").select("organization_id").eq("id", user.id).single(),
+    supabase.from("profiles").select("organization_id, role, org_role").eq("id", user.id).single(),
     supabase.from("connections").select("integration_id").eq("user_id", user.id),
   ]);
 
@@ -167,8 +167,54 @@ export default async function DashboardPage() {
     };
   });
 
+  // Build Switchboard platform integration
+  const platformTools: Array<{ name: string; description: string }> = [
+    { name: "submit_feedback", description: "Submit feedback to the Switchboard team" },
+    { name: "list_skills", description: "List available skills" },
+    { name: "get_skill", description: "Get a skill's content" },
+    { name: "create_skill", description: "Create a new skill" },
+    { name: "update_skill", description: "Update an existing skill" },
+    { name: "delete_skill", description: "Delete a skill" },
+  ];
+
+  const isOrgAdmin = profile?.org_role === "owner" || profile?.org_role === "admin";
+  const isSuperAdmin = profile?.role === "admin";
+
+  const orgAdminTools: Array<{ name: string; description: string }> = [
+    { name: "admin_teams", description: "Manage teams" },
+    { name: "admin_team_members", description: "Manage team membership" },
+    { name: "admin_org", description: "View/update organization" },
+    { name: "admin_org_members", description: "List org members" },
+    { name: "admin_org_domains", description: "Manage org domains" },
+    { name: "admin_org_integrations", description: "Manage org integrations" },
+  ];
+
+  const superAdminTools: Array<{ name: string; description: string }> = [
+    { name: "admin_users", description: "Manage platform users" },
+    { name: "admin_user_permissions", description: "View/set user permissions" },
+    { name: "admin_usage", description: "View usage stats and logs" },
+    { name: "admin_mcp_servers", description: "Manage global MCP servers" },
+  ];
+
+  const switchboardTools = [
+    ...platformTools,
+    ...(isOrgAdmin ? orgAdminTools : []),
+    ...(isSuperAdmin ? superAdminTools : []),
+  ];
+
+  const switchboardIntegration = {
+    id: "platform",
+    name: "Switchboard",
+    description: "Platform tools, skills, and admin management",
+    icon: null as React.ReactNode,
+    toolCount: switchboardTools.length,
+    tools: switchboardTools,
+    connected: true,
+    kind: "builtin" as const,
+  };
+
   // Merge builtin + OAuth proxy integrations for the UI
-  const integrations = [...builtinIntegrations, ...oauthProxyIntegrations];
+  const integrations = [switchboardIntegration, ...builtinIntegrations, ...oauthProxyIntegrations];
 
   const proxyUserKeys: UserKeyItem[] = perUserProxies.map((p) => {
     const tools = getProxyToolsForIntegration(p);

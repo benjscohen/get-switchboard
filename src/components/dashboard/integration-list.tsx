@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -179,16 +179,16 @@ export function IntegrationList({
 function ToolGrid({ tools }: { tools: IntegrationTool[] }) {
   return (
     <div className="mt-3 border-t border-border pt-3">
-      <div className="grid gap-2 max-h-64 overflow-y-auto">
+      <div className="grid grid-cols-[minmax(0,auto)_1fr] gap-x-3 gap-y-2 max-h-64 overflow-y-auto text-xs">
         {tools.map((tool) => (
-          <div key={tool.name} className="flex gap-3 text-xs">
-            <code className="shrink-0 text-accent font-mono">
+          <Fragment key={tool.name}>
+            <code className="text-accent font-mono whitespace-nowrap">
               {tool.name}
             </code>
-            <span className="text-text-secondary break-words min-w-0">
+            <span className="text-text-secondary">
               {tool.description}
             </span>
-          </div>
+          </Fragment>
         ))}
       </div>
     </div>

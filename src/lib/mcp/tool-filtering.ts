@@ -18,6 +18,8 @@ export type FilterContext = {
   integrationOrgKeys?: Record<string, string>;
   proxyUserKeys?: Record<string, string>;
   apiKeyScope?: string;
+  role?: string;
+  orgRole?: string;
 };
 
 /**
@@ -42,6 +44,14 @@ export function filterToolsForUser(
 
       // Platform tools are always visible (no connection required)
       if (meta.integrationId === "platform") return true;
+
+      // Admin tools: role-gated
+      if (meta.integrationId === "admin:org") {
+        return ctx.orgRole === "owner" || ctx.orgRole === "admin";
+      }
+      if (meta.integrationId === "admin:super") {
+        return ctx.role === "admin";
+      }
 
       // Native proxy tools: require key or OAuth connection based on config
       if (meta.integrationId.startsWith("proxy:")) {
