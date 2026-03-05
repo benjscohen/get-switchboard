@@ -185,7 +185,7 @@ function ToolGrid({ tools }: { tools: IntegrationTool[] }) {
             <code className="shrink-0 text-accent font-mono">
               {tool.name}
             </code>
-            <span className="text-text-secondary truncate">
+            <span className="text-text-secondary break-words min-w-0">
               {tool.description}
             </span>
           </div>
