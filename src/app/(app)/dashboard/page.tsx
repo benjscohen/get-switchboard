@@ -175,6 +175,11 @@ export default async function DashboardPage() {
     { name: "create_skill", description: "Create a new skill" },
     { name: "update_skill", description: "Update an existing skill" },
     { name: "delete_skill", description: "Delete a skill" },
+    { name: "vault_list_secrets", description: "List vault secrets" },
+    { name: "vault_get_secret", description: "Get a secret with decrypted values" },
+    { name: "vault_set_secret", description: "Create or update a secret" },
+    { name: "vault_delete_secret", description: "Delete a secret" },
+    { name: "vault_search_secrets", description: "Search secrets" },
   ];
 
   const isOrgAdmin = profile?.org_role === "owner" || profile?.org_role === "admin";

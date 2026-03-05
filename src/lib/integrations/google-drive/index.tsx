@@ -1,4 +1,4 @@
-import { google, drive_v3 } from "googleapis";
+import { auth, drive, drive_v3 } from "@googleapis/drive";
 import type { IntegrationConfig, IntegrationToolDef } from "../types";
 import { DRIVE_TOOLS } from "./tools";
 
@@ -32,7 +32,7 @@ export const googleDriveIntegration: IntegrationConfig = {
     extraAuthParams: { access_type: "offline", prompt: "consent" },
   },
   createClient(tokens) {
-    const oauth2 = new google.auth.OAuth2(
+    const oauth2 = new auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
     );
@@ -40,7 +40,7 @@ export const googleDriveIntegration: IntegrationConfig = {
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
     });
-    return google.drive({ version: "v3", auth: oauth2 });
+    return drive({ version: "v3", auth: oauth2 });
   },
   tools,
   toolCount: tools.length,

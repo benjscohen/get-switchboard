@@ -2,6 +2,15 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  serverExternalPackages: [
+    "@googleapis/calendar",
+    "@googleapis/drive",
+    "@googleapis/sheets",
+    "@googleapis/gmail",
+    "@googleapis/docs",
+    "@googleapis/slides",
+    "@modelcontextprotocol/sdk",
+  ],
   async headers() {
     return [
       {

@@ -1,4 +1,4 @@
-import type { calendar_v3 } from "googleapis";
+import type { calendar_v3 } from "@googleapis/calendar";
 import type { IntegrationToolDef } from "../types";
 import * as s from "./schemas";
 

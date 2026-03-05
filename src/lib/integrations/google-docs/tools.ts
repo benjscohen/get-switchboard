@@ -1,4 +1,4 @@
-import { docs_v1 } from "googleapis";
+import { docs_v1 } from "@googleapis/docs";
 import type { IntegrationToolDef } from "../types";
 import * as s from "./schemas";
 

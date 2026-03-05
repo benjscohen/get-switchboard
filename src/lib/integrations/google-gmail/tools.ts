@@ -1,4 +1,4 @@
-import { gmail_v1 } from "googleapis";
+import { gmail_v1 } from "@googleapis/gmail";
 import type { IntegrationToolDef } from "../types";
 import * as s from "./schemas";
 

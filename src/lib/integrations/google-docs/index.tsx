@@ -1,4 +1,4 @@
-import { google, docs_v1 } from "googleapis";
+import { auth, docs, docs_v1 } from "@googleapis/docs";
 import type { IntegrationConfig, IntegrationToolDef } from "../types";
 import { DOCS_TOOLS } from "./tools";
 
@@ -41,7 +41,7 @@ export const googleDocsIntegration: IntegrationConfig = {
     extraAuthParams: { access_type: "offline", prompt: "consent" },
   },
   createClient(tokens) {
-    const oauth2 = new google.auth.OAuth2(
+    const oauth2 = new auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
     );
@@ -49,7 +49,7 @@ export const googleDocsIntegration: IntegrationConfig = {
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
     });
-    return google.docs({ version: "v1", auth: oauth2 });
+    return docs({ version: "v1", auth: oauth2 });
   },
   tools,
   toolCount: tools.length,

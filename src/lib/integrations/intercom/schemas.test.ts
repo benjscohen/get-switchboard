@@ -337,25 +337,51 @@ describe("manageTicketsSchema", () => {
 // ── Search Contacts ──
 
 describe("searchContactsSchema", () => {
-  it("requires query", () => {
-    expect(() => searchContactsSchema.parse({})).toThrow();
+  it("accepts friendly fields", () => {
+    const result = searchContactsSchema.parse({
+      email: "test@test.com",
+      name: "Joe",
+      email_domain: "example.com",
+      phone: "+1234567890",
+      role: "user",
+      contact_ids: "id1,id2",
+      custom_attributes: '{"plan":"pro"}',
+    });
+    expect(result.email).toBe("test@test.com");
+    expect(result.name).toBe("Joe");
+    expect(result.email_domain).toBe("example.com");
+    expect(result.phone).toBe("+1234567890");
+    expect(result.role).toBe("user");
+    expect(result.contact_ids).toBe("id1,id2");
+    expect(result.custom_attributes).toBe('{"plan":"pro"}');
   });
 
-  it("accepts valid query", () => {
+  it("accepts raw query passthrough", () => {
     const result = searchContactsSchema.parse({
       query: '{"field":"email","operator":"=","value":"test@test.com"}',
     });
     expect(result.query).toContain("email");
   });
 
-  it("accepts pagination", () => {
+  it("accepts empty object (validation happens in execute)", () => {
+    const result = searchContactsSchema.parse({});
+    expect(result).toBeDefined();
+  });
+
+  it("accepts pagination with friendly fields", () => {
     const result = searchContactsSchema.parse({
-      query: '{"field":"email","operator":"=","value":"test@test.com"}',
+      email: "test@test.com",
       per_page: 25,
       starting_after: "abc",
     });
     expect(result.per_page).toBe(25);
     expect(result.starting_after).toBe("abc");
+  });
+
+  it("rejects invalid role", () => {
+    expect(() =>
+      searchContactsSchema.parse({ role: "invalid" })
+    ).toThrow();
   });
 });
 
@@ -621,7 +647,6 @@ describe("all schemas with required fields reject empty object", () => {
     ["manageTagsSchema", manageTagsSchema],
     ["applyTagsSchema", applyTagsSchema],
     ["manageTicketsSchema", manageTicketsSchema],
-    ["searchContactsSchema", searchContactsSchema],
     ["manageSegmentsSchema", manageSegmentsSchema],
     ["manageEventsSchema", manageEventsSchema],
     ["manageNotesSchema", manageNotesSchema],

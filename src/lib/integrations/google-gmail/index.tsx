@@ -1,4 +1,4 @@
-import { google, gmail_v1 } from "googleapis";
+import { auth, gmail, gmail_v1 } from "@googleapis/gmail";
 import type { IntegrationConfig, IntegrationToolDef } from "../types";
 import { GMAIL_TOOLS } from "./tools";
 
@@ -32,7 +32,7 @@ export const googleGmailIntegration: IntegrationConfig = {
     extraAuthParams: { access_type: "offline", prompt: "consent" },
   },
   createClient(tokens) {
-    const oauth2 = new google.auth.OAuth2(
+    const oauth2 = new auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
     );
@@ -40,7 +40,7 @@ export const googleGmailIntegration: IntegrationConfig = {
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
     });
-    return google.gmail({ version: "v1", auth: oauth2 });
+    return gmail({ version: "v1", auth: oauth2 });
   },
   tools,
   toolCount: tools.length,

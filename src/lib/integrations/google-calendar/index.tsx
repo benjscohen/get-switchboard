@@ -1,4 +1,4 @@
-import { google, calendar_v3 } from "googleapis";
+import { auth, calendar, calendar_v3 } from "@googleapis/calendar";
 import type { IntegrationConfig, IntegrationToolDef } from "../types";
 import { CALENDAR_TOOLS } from "./tools";
 
@@ -50,7 +50,7 @@ export const googleCalendarIntegration: IntegrationConfig = {
     extraAuthParams: { access_type: "offline", prompt: "consent" },
   },
   createClient(tokens) {
-    const oauth2 = new google.auth.OAuth2(
+    const oauth2 = new auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
     );
@@ -58,7 +58,7 @@ export const googleCalendarIntegration: IntegrationConfig = {
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
     });
-    return google.calendar({ version: "v3", auth: oauth2 });
+    return calendar({ version: "v3", auth: oauth2 });
   },
   tools,
   toolCount: tools.length,

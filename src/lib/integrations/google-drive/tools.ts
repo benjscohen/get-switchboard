@@ -1,4 +1,4 @@
-import { drive_v3 } from "googleapis";
+import { drive_v3 } from "@googleapis/drive";
 import type { IntegrationToolDef } from "../types";
 import * as s from "./schemas";
 import { Readable } from "stream";

@@ -90,6 +90,12 @@ export default async function AppLayout({
             >
               Skills
             </Link>
+            <Link
+              href="/vault"
+              className="text-sm text-text-secondary transition-colors hover:text-text-primary"
+            >
+              Vault
+            </Link>
             {(showOrgSettings || role === "admin") && (
               <Link
                 href="/settings"

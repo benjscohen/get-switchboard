@@ -400,13 +400,71 @@ export const INTERCOM_TOOLS: IntercomToolDef[] = [
   {
     name: "intercom_search_contacts",
     description:
-      "Advanced contact search using Intercom's query DSL with field/operator/value filters",
+      "Search contacts by email, name, phone, domain, role, or raw Intercom query DSL",
     schema: s.searchContactsSchema,
     execute: async (a, c) => {
-      const query = parseJson(a.query as string);
+      let query: unknown;
+
+      if (a.query) {
+        // Raw query passthrough
+        query = parseJson(a.query as string);
+      } else {
+        // Build query from friendly fields
+        const filters: Array<{
+          field: string;
+          operator: string;
+          value: unknown;
+        }> = [];
+
+        if (a.email)
+          filters.push({ field: "email", operator: "=", value: a.email });
+        if (a.email_domain) {
+          const domain = (a.email_domain as string).replace(/^@/, "");
+          filters.push({ field: "email", operator: "~", value: `@${domain}` });
+        }
+        if (a.name)
+          filters.push({ field: "name", operator: "~", value: a.name });
+        if (a.phone)
+          filters.push({ field: "phone", operator: "=", value: a.phone });
+        if (a.role)
+          filters.push({ field: "role", operator: "=", value: a.role });
+        if (a.contact_ids) {
+          const ids = (a.contact_ids as string).split(",").map((s) => s.trim());
+          filters.push({ field: "id", operator: "IN", value: ids });
+        }
+        if (a.custom_attributes) {
+          const attrs = parseJson(a.custom_attributes as string) as Record<
+            string,
+            unknown
+          >;
+          for (const [key, val] of Object.entries(attrs)) {
+            filters.push({
+              field: `custom_attributes.${key}`,
+              operator: "=",
+              value: val,
+            });
+          }
+        }
+
+        if (filters.length === 0) {
+          throw new Error("At least one search parameter must be provided");
+        }
+
+        query =
+          filters.length === 1
+            ? filters[0]
+            : { operator: "AND", value: filters };
+      }
+
       return api(c, "/contacts/search", {
         method: "POST",
-        body: JSON.stringify({ query, pagination: { per_page: a.per_page, starting_after: a.starting_after } }),
+        body: JSON.stringify({
+          query,
+          pagination: {
+            per_page: a.per_page,
+            starting_after: a.starting_after,
+          },
+        }),
       });
     },
   },

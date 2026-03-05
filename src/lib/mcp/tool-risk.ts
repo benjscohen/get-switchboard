@@ -156,6 +156,13 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   update_skill: "write",
   delete_skill: "destructive",
 
+  // ── Vault tools ──
+  vault_list_secrets: "read",
+  vault_get_secret: "read",
+  vault_set_secret: "write",
+  vault_delete_secret: "destructive",
+  vault_search_secrets: "read",
+
   // ── Platform tools ──
   submit_feedback: "write",
 };

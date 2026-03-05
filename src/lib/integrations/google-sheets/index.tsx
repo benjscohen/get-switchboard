@@ -1,4 +1,4 @@
-import { google, sheets_v4 } from "googleapis";
+import { auth, sheets, sheets_v4 } from "@googleapis/sheets";
 import type { IntegrationConfig, IntegrationToolDef } from "../types";
 import { SHEETS_TOOLS } from "./tools";
 
@@ -40,7 +40,7 @@ export const googleSheetsIntegration: IntegrationConfig = {
     extraAuthParams: { access_type: "offline", prompt: "consent" },
   },
   createClient(tokens) {
-    const oauth2 = new google.auth.OAuth2(
+    const oauth2 = new auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
     );
@@ -48,7 +48,7 @@ export const googleSheetsIntegration: IntegrationConfig = {
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
     });
-    return google.sheets({ version: "v4", auth: oauth2 });
+    return sheets({ version: "v4", auth: oauth2 });
   },
   tools,
   toolCount: tools.length,

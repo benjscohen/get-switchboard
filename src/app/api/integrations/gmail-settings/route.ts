@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { createClient } from "@/lib/supabase/server";
-import { google } from "googleapis";
+import { auth as googleAuth, gmail } from "@googleapis/gmail";
 import { decrypt } from "@/lib/encryption";
 import { getValidTokens } from "@/lib/integrations/token-refresh";
 
@@ -38,7 +38,7 @@ export async function GET() {
         : null,
     });
 
-    const oauth2 = new google.auth.OAuth2(
+    const oauth2 = new googleAuth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
     );
@@ -46,9 +46,9 @@ export async function GET() {
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
     });
-    const gmail = google.gmail({ version: "v1", auth: oauth2 });
+    const gmailClient = gmail({ version: "v1", auth: oauth2 });
 
-    const res = await gmail.users.settings.sendAs.list({ userId: "me" });
+    const res = await gmailClient.users.settings.sendAs.list({ userId: "me" });
     const primary = (res.data.sendAs ?? []).find((s) => s.isPrimary);
 
     const signatureHtml = primary?.signature || "";

@@ -26,6 +26,7 @@ import {
   type SkillRecord,
 } from "@/lib/mcp/skill-filtering";
 import { registerAdminTools } from "@/lib/mcp/admin-tools";
+import { registerVaultTools } from "@/lib/mcp/vault-tools";
 import {
   createSkill,
   updateSkill,
@@ -805,6 +806,7 @@ async function mcpHandler(req: Request): Promise<Response> {
   registerTools(server);
   registerSkills(server);
   registerAdminTools(server, toolMeta);
+  registerVaultTools(server, toolMeta);
   await server.connect(transport);
 
   const authInfo = (req as Request & { auth?: unknown }).auth as

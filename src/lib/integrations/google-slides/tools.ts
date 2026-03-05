@@ -1,4 +1,4 @@
-import { slides_v1 } from "googleapis";
+import { slides_v1 } from "@googleapis/slides";
 import type { IntegrationToolDef } from "../types";
 import type { McpToolResult } from "../types";
 import { hexToRgb } from "../shared/color";

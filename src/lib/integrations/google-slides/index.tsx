@@ -1,4 +1,4 @@
-import { google, slides_v1 } from "googleapis";
+import { auth, slides, slides_v1 } from "@googleapis/slides";
 import type { IntegrationConfig, IntegrationToolDef } from "../types";
 import { SLIDES_TOOLS } from "./tools";
 
@@ -38,7 +38,7 @@ export const googleSlidesIntegration: IntegrationConfig = {
     extraAuthParams: { access_type: "offline", prompt: "consent" },
   },
   createClient(tokens) {
-    const oauth2 = new google.auth.OAuth2(
+    const oauth2 = new auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
     );
@@ -46,7 +46,7 @@ export const googleSlidesIntegration: IntegrationConfig = {
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
     });
-    return google.slides({ version: "v1", auth: oauth2 });
+    return slides({ version: "v1", auth: oauth2 });
   },
   tools,
   toolCount: tools.length,

@@ -219,10 +219,38 @@ export const manageTicketsSchema = z.object({
 // ── 7. Search Contacts (dedicated advanced search) ──
 
 export const searchContactsSchema = z.object({
+  // Friendly fields (auto-translated to Intercom query DSL)
+  email: z.string().optional().describe("Search by exact email address"),
+  email_domain: z
+    .string()
+    .optional()
+    .describe("Search by email domain (e.g. 'example.com')"),
+  name: z
+    .string()
+    .optional()
+    .describe("Search by contact name (contains match)"),
+  phone: z.string().optional().describe("Search by phone number"),
+  role: z
+    .enum(["user", "lead"])
+    .optional()
+    .describe("Filter by contact role"),
+  contact_ids: z
+    .string()
+    .optional()
+    .describe("Comma-separated list of contact IDs to look up"),
+  custom_attributes: z
+    .string()
+    .optional()
+    .describe(
+      "JSON string of custom attribute filters, e.g. '{\"plan\": \"pro\"}'"
+    ),
+  // Raw fallback for advanced queries
   query: z
     .string()
+    .optional()
     .describe(
-      "JSON string of Intercom search query with field/operator/value objects"
+      "Raw Intercom search query JSON (advanced). If provided, friendly fields above are ignored. " +
+        'Format: {"field":"email","operator":"=","value":"x@y.com"}'
     ),
   ...paginationFields,
 });
