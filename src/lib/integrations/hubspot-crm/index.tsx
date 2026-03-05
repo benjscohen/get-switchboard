@@ -25,7 +25,7 @@ export const hubspotCrmIntegration: IntegrationConfig = {
   id: "hubspot-crm",
   name: "HubSpot CRM",
   description:
-    "Manage contacts, companies, deals, tickets, pipelines, properties, and more in HubSpot CRM",
+    "Manage contacts, companies, deals, tickets, pipelines, properties, campaigns, sequences, and more in HubSpot CRM",
   icon: HubSpotCrmIcon,
   oauth: {
     authUrl: "https://app.hubspot.com/oauth/authorize",
@@ -126,6 +126,13 @@ export const hubspotCrmIntegration: IntegrationConfig = {
       "crm.pipelines.orders.read",
       "crm.pipelines.orders.write",
       "crm.extensions_calling_transcripts.read",
+      "marketing.campaigns.read",
+      "marketing.campaigns.revenue.read",
+      "marketing.campaigns.write",
+      "automation.sequences.enrollments.write",
+      "automation.sequences.read",
+      "crm.objects.tickets.read",
+      "crm.objects.tickets.write",
     ],
     extraAuthParams: {},
   },
@@ -185,6 +192,10 @@ export const hubspotCrmIntegration: IntegrationConfig = {
         "hubspot_crm_manage_feedback_submissions",
         "hubspot_crm_manage_forecasts",
       ],
+    },
+    marketing_automation: {
+      description: "Marketing campaigns and automation sequences",
+      tools: ["hubspot_crm_manage_campaigns", "hubspot_crm_manage_sequences"],
     },
   },
 };

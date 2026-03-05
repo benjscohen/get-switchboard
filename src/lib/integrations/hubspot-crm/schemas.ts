@@ -367,3 +367,31 @@ export const manageForecastsSchema = z.object({
     .optional()
     .describe("User ID to filter forecast by"),
 });
+
+// ── Marketing & Automation (2) ──
+
+export const manageCampaignsSchema = z.object({
+  operation: z.enum(["list", "get", "get_revenue"]),
+  campaign_id: z
+    .string()
+    .optional()
+    .describe("Campaign ID (for get/get_revenue)"),
+  ...paginationFields,
+});
+
+export const manageSequencesSchema = z.object({
+  operation: z.enum(["list", "get", "enroll"]),
+  sequence_id: z
+    .string()
+    .optional()
+    .describe("Sequence ID (for get/enroll)"),
+  contact_id: z
+    .string()
+    .optional()
+    .describe("Contact ID to enroll in the sequence (for enroll)"),
+  sender_email: z
+    .string()
+    .optional()
+    .describe("Sender email address for enrollment (for enroll, optional)"),
+  ...paginationFields,
+});

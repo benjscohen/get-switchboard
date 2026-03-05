@@ -171,6 +171,8 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   hubspot_crm_manage_marketing_events: "write",
   hubspot_crm_manage_feedback_submissions: "read",
   hubspot_crm_manage_forecasts: "read",
+  hubspot_crm_manage_campaigns: "write",
+  hubspot_crm_manage_sequences: "write",
 
   // ── Skill tools ──
   manage_skills: "write",

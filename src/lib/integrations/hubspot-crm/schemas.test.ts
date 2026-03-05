@@ -23,6 +23,8 @@ import {
   manageMarketingEventsSchema,
   manageFeedbackSubmissionsSchema,
   manageForecastsSchema,
+  manageCampaignsSchema,
+  manageSequencesSchema,
 } from "./schemas";
 import { HUBSPOT_CRM_TOOLS } from "./tools";
 
@@ -853,11 +855,95 @@ describe("manageForecastsSchema", () => {
   });
 });
 
+// ── Manage Campaigns ──
+
+describe("manageCampaignsSchema", () => {
+  it("requires operation", () => {
+    expect(() => manageCampaignsSchema.parse({})).toThrow();
+  });
+
+  it.each(["list", "get", "get_revenue"] as const)(
+    "accepts operation '%s'",
+    (operation) => {
+      const result = manageCampaignsSchema.parse({ operation });
+      expect(result.operation).toBe(operation);
+    }
+  );
+
+  it("rejects invalid operation", () => {
+    expect(() =>
+      manageCampaignsSchema.parse({ operation: "create" })
+    ).toThrow();
+  });
+
+  it("accepts get with campaign_id", () => {
+    const result = manageCampaignsSchema.parse({
+      operation: "get",
+      campaign_id: "c1",
+    });
+    expect(result.campaign_id).toBe("c1");
+  });
+
+  it("accepts pagination fields", () => {
+    const result = manageCampaignsSchema.parse({
+      operation: "list",
+      limit: 25,
+      after: "cursor1",
+    });
+    expect(result.limit).toBe(25);
+    expect(result.after).toBe("cursor1");
+  });
+});
+
+// ── Manage Sequences ──
+
+describe("manageSequencesSchema", () => {
+  it("requires operation", () => {
+    expect(() => manageSequencesSchema.parse({})).toThrow();
+  });
+
+  it.each(["list", "get", "enroll"] as const)(
+    "accepts operation '%s'",
+    (operation) => {
+      const result = manageSequencesSchema.parse({ operation });
+      expect(result.operation).toBe(operation);
+    }
+  );
+
+  it("rejects invalid operation", () => {
+    expect(() =>
+      manageSequencesSchema.parse({ operation: "create" })
+    ).toThrow();
+  });
+
+  it("accepts enroll fields", () => {
+    const result = manageSequencesSchema.parse({
+      operation: "enroll",
+      sequence_id: "seq1",
+      contact_id: "c1",
+      sender_email: "user@example.com",
+    });
+    expect(result.sequence_id).toBe("seq1");
+    expect(result.contact_id).toBe("c1");
+    expect(result.sender_email).toBe("user@example.com");
+  });
+
+  it("accepts pagination fields", () => {
+    const result = manageSequencesSchema.parse({
+      operation: "list",
+      limit: 10,
+      after: "cursor2",
+    });
+    expect(result.limit).toBe(10);
+    expect(result.after).toBe("cursor2");
+  });
+});
+
 // ── Tool count ──
 
 describe("tool count", () => {
-  it("exports exactly 21 tools", () => {
-    expect(HUBSPOT_CRM_TOOLS).toHaveLength(21);
+  it("exports exactly 23 tools", () => {
+    expect(HUBSPOT_CRM_TOOLS).toHaveLength(23);
   });
 });
 
@@ -886,6 +972,8 @@ describe("all schemas with required fields reject empty object", () => {
     ["manageMarketingEventsSchema", manageMarketingEventsSchema],
     ["manageFeedbackSubmissionsSchema", manageFeedbackSubmissionsSchema],
     ["manageForecastsSchema", manageForecastsSchema],
+    ["manageCampaignsSchema", manageCampaignsSchema],
+    ["manageSequencesSchema", manageSequencesSchema],
   ] as const)("%s rejects {}", (_name, schema) => {
     expect(() => schema.parse({})).toThrow();
   });

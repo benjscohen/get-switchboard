@@ -883,4 +883,70 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
       }
     },
   },
+
+  // ── 22. Manage Campaigns ──
+  {
+    name: "hubspot_crm_manage_campaigns",
+    description:
+      "List, get, or get revenue for marketing campaigns in HubSpot",
+    schema: s.manageCampaignsSchema,
+    execute: async (a, c) => {
+      const op = a.operation as string;
+      const campaignId = a.campaign_id as string | undefined;
+
+      switch (op) {
+        case "list":
+          return api(
+            c,
+            `/marketing/v3/campaigns${qs({
+              limit: a.limit,
+              after: a.after,
+            })}`
+          );
+        case "get":
+          return api(c, `/marketing/v3/campaigns/${campaignId}`);
+        case "get_revenue":
+          return api(c, `/marketing/v3/campaigns/${campaignId}/revenue`);
+        default:
+          throw new Error(`Unknown operation: ${op}`);
+      }
+    },
+  },
+
+  // ── 23. Manage Sequences ──
+  {
+    name: "hubspot_crm_manage_sequences",
+    description:
+      "List, get, or enroll contacts in automation sequences in HubSpot",
+    schema: s.manageSequencesSchema,
+    execute: async (a, c) => {
+      const op = a.operation as string;
+      const sequenceId = a.sequence_id as string | undefined;
+
+      switch (op) {
+        case "list":
+          return api(
+            c,
+            `/automation/v3/sequences${qs({
+              limit: a.limit,
+              after: a.after,
+            })}`
+          );
+        case "get":
+          return api(c, `/automation/v3/sequences/${sequenceId}`);
+        case "enroll": {
+          const body: Record<string, unknown> = {
+            contactId: a.contact_id,
+          };
+          if (a.sender_email) body.senderEmail = a.sender_email;
+          return api(c, `/automation/v3/sequences/${sequenceId}/enrollments`, {
+            method: "POST",
+            body: JSON.stringify(body),
+          });
+        }
+        default:
+          throw new Error(`Unknown operation: ${op}`);
+      }
+    },
+  },
 ];
