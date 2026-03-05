@@ -38,6 +38,7 @@ export const hubspotCrmIntegration: IntegrationConfig = {
       "crm.objects.companies.read",
       "crm.objects.deals.read",
       "crm.objects.owners.read",
+      "oauth",
     ],
     // Optional scopes — mark as "Optional" in HubSpot app settings
     // Sent via optional_scope param so users can connect even without access to all
@@ -131,8 +132,8 @@ export const hubspotCrmIntegration: IntegrationConfig = {
       "marketing.campaigns.write",
       "automation.sequences.enrollments.write",
       "automation.sequences.read",
-      "crm.objects.tickets.read",
-      "crm.objects.tickets.write",
+      "automation",
+      "tickets",
     ],
     extraAuthParams: {},
   },
