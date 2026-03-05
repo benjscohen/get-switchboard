@@ -44,7 +44,8 @@ export type IntegrationToolDef = {
   schema: z.ZodObject<z.ZodRawShape>;
   execute: (
     args: Record<string, unknown>,
-    client: unknown
+    client: unknown,
+    meta?: { senderName?: string | null }
   ) => Promise<unknown>;
 };
 

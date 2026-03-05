@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -304,7 +304,100 @@ function IntegrationRow({
         </div>
       </div>
 
-      {expanded && <ToolGrid tools={integration.tools} />}
+      {expanded && (
+        <>
+          {integration.id === "google-gmail" && integration.connected && (
+            <GmailSenderSettings />
+          )}
+          <ToolGrid tools={integration.tools} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ── Gmail Sender Settings ── */
+
+function GmailSenderSettings() {
+  const [senderName, setSenderName] = useState("");
+  const [email, setEmail] = useState<string | null>(null);
+  const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch("/api/integrations/gmail-settings");
+      if (res.ok) {
+        const data = await res.json();
+        setSenderName(data.senderName ?? "");
+        setEmail(data.email ?? null);
+        setSignaturePreview(data.signaturePreview ?? null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
+  async function handleSave() {
+    setSaving(true);
+    setSaved(false);
+    await fetch("/api/integrations/gmail-settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ senderName }),
+    });
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  if (loading) {
+    return (
+      <div className="mt-3 border-t border-border pt-3">
+        <p className="text-xs text-text-secondary">Loading sender settings...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 border-t border-border pt-3 space-y-3">
+      <p className="text-xs font-medium text-text-secondary">Sender Settings</p>
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <label className="block text-xs text-text-secondary mb-1">
+            Display Name {email && <span className="text-text-tertiary">({email})</span>}
+          </label>
+          <input
+            type="text"
+            value={senderName}
+            onChange={(e) => setSenderName(e.target.value)}
+            placeholder="e.g. John Smith"
+            className="w-full rounded-md border border-border bg-bg px-3 py-1.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? "Saving..." : saved ? "Saved" : "Save"}
+        </Button>
+      </div>
+      {signaturePreview && (
+        <div>
+          <p className="text-xs text-text-secondary mb-1">Gmail Signature (auto-appended)</p>
+          <pre className="text-xs text-text-tertiary bg-bg-card rounded-md p-2 whitespace-pre-wrap max-h-32 overflow-y-auto">
+            {signaturePreview}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }

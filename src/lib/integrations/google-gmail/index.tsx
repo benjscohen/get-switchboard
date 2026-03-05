@@ -13,8 +13,8 @@ const tools: IntegrationToolDef[] = GMAIL_TOOLS.map((t) => ({
   name: t.name,
   description: t.description,
   schema: t.schema,
-  execute: (args: Record<string, unknown>, client: unknown) =>
-    t.execute(args, client as gmail_v1.Gmail),
+  execute: (args: Record<string, unknown>, client: unknown, meta?: { senderName?: string | null }) =>
+    t.execute(args, client as gmail_v1.Gmail, meta),
 }));
 
 export const googleGmailIntegration: IntegrationConfig = {

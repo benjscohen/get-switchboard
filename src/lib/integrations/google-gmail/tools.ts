@@ -2,10 +2,13 @@ import { gmail_v1 } from "googleapis";
 import type { IntegrationToolDef } from "../types";
 import * as s from "./schemas";
 
+type GmailMeta = { senderName?: string | null };
+
 type GmailToolDef = Omit<IntegrationToolDef, "execute"> & {
   execute: (
     args: Record<string, unknown>,
-    gmail: gmail_v1.Gmail
+    gmail: gmail_v1.Gmail,
+    meta?: GmailMeta
   ) => Promise<unknown>;
 };
 
@@ -44,11 +47,24 @@ function buildMimeMessage(opts: {
   inReplyTo?: string;
   references?: string;
   attachments?: Attachment[];
+  from?: string;
+  signatureHtml?: string | null;
 }): string {
   const ct = opts.contentType || "text/plain";
   const hasAttachments = opts.attachments && opts.attachments.length > 0;
 
+  // Append signature to body
+  let body = opts.body;
+  if (opts.signatureHtml) {
+    if (ct === "text/html") {
+      body += `<br><div class="gmail_signature">${opts.signatureHtml}</div>`;
+    } else {
+      body += `\n--\n${stripHtmlTags(opts.signatureHtml)}`;
+    }
+  }
+
   const headerLines: string[] = [];
+  if (opts.from) headerLines.push(`From: ${opts.from}`);
   headerLines.push(`To: ${opts.to}`);
   if (opts.cc) headerLines.push(`Cc: ${opts.cc}`);
   if (opts.bcc) headerLines.push(`Bcc: ${opts.bcc}`);
@@ -61,7 +77,7 @@ function buildMimeMessage(opts: {
   if (!hasAttachments) {
     headerLines.push(`Content-Type: ${ct}; charset=utf-8`);
     headerLines.push("");
-    headerLines.push(opts.body);
+    headerLines.push(body);
     return headerLines.join("\r\n");
   }
 
@@ -76,7 +92,7 @@ function buildMimeMessage(opts: {
   parts.push(`--${boundary}`);
   parts.push(`Content-Type: ${ct}; charset=utf-8`);
   parts.push("");
-  parts.push(opts.body);
+  parts.push(body);
 
   // Attachment parts
   for (const att of opts.attachments!) {
@@ -99,6 +115,36 @@ function encodeBase64Url(mime: string): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
+}
+
+function stripHtmlTags(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function getSenderInfo(
+  gmail: gmail_v1.Gmail,
+  meta?: GmailMeta
+): Promise<{ fromHeader: string; signatureHtml: string | null; email: string }> {
+  const res = await gmail.users.settings.sendAs.list({ userId: "me" });
+  const primary = (res.data.sendAs ?? []).find((s) => s.isPrimary);
+  const email = primary?.sendAsEmail ?? "";
+  const signatureHtml = primary?.signature || null;
+
+  const displayName = meta?.senderName || primary?.displayName || "";
+  const fromHeader = displayName ? `"${displayName}" <${email}>` : email;
+
+  return { fromHeader, signatureHtml, email };
 }
 
 type GmailHeader = { name?: string | null; value?: string | null };
@@ -316,7 +362,8 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
     name: "google_gmail_send_message",
     description: "Compose and send a new email message",
     schema: s.sendMessageSchema,
-    execute: async (a, gmail) => {
+    execute: async (a, gmail, meta) => {
+      const sender = await getSenderInfo(gmail, meta);
       const mime = buildMimeMessage({
         to: a.to as string,
         subject: a.subject as string,
@@ -326,6 +373,8 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         replyTo: a.replyTo as string | undefined,
         contentType: a.contentType as string | undefined,
         attachments: a.attachments as Attachment[] | undefined,
+        from: sender.fromHeader,
+        signatureHtml: sender.signatureHtml,
       });
       const res = await gmail.users.messages.send({
         userId: "me",
@@ -341,7 +390,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
     description:
       "Reply to an existing email message with correct threading (In-Reply-To, References, threadId)",
     schema: s.replyToMessageSchema,
-    execute: async (a, gmail) => {
+    execute: async (a, gmail, meta) => {
       // Fetch the original message to get threading headers
       const orig = await gmail.users.messages.get({
         userId: "me",
@@ -371,6 +420,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         ? origSubject
         : `Re: ${origSubject}`;
 
+      const sender = await getSenderInfo(gmail, meta);
       const mime = buildMimeMessage({
         to,
         subject,
@@ -381,6 +431,8 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         inReplyTo: origMessageId,
         references: origMessageId,
         attachments: a.attachments as Attachment[] | undefined,
+        from: sender.fromHeader,
+        signatureHtml: sender.signatureHtml,
       });
 
       const res = await gmail.users.messages.send({
@@ -400,7 +452,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
     description:
       "Forward an existing email message to new recipients, optionally prepending your own text",
     schema: s.forwardMessageSchema,
-    execute: async (a, gmail) => {
+    execute: async (a, gmail, meta) => {
       // Fetch original message for content and headers
       const orig = await gmail.users.messages.get({
         userId: "me",
@@ -457,6 +509,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         allAttachments.push(...(a.attachments as Attachment[]));
       }
 
+      const sender = await getSenderInfo(gmail, meta);
       const mime = buildMimeMessage({
         to: a.to as string,
         subject,
@@ -465,6 +518,8 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         bcc: a.bcc as string | undefined,
         contentType: a.contentType as string | undefined,
         attachments: allAttachments.length > 0 ? allAttachments : undefined,
+        from: sender.fromHeader,
+        signatureHtml: sender.signatureHtml,
       });
 
       const res = await gmail.users.messages.send({
@@ -601,7 +656,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
     description:
       "Create, update, list, get, delete, or send email drafts",
     schema: s.manageDraftsSchema,
-    execute: async (a, gmail) => {
+    execute: async (a, gmail, meta) => {
       const op = a.operation as string;
 
       switch (op) {
@@ -632,6 +687,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         }
 
         case "create": {
+          const sender = await getSenderInfo(gmail, meta);
           const mime = buildMimeMessage({
             to: (a.to as string) || "",
             subject: (a.subject as string) || "",
@@ -640,6 +696,8 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
             bcc: a.bcc as string | undefined,
             contentType: a.contentType as string | undefined,
             attachments: a.attachments as Attachment[] | undefined,
+            from: sender.fromHeader,
+            signatureHtml: sender.signatureHtml,
           });
           const res = await gmail.users.drafts.create({
             userId: "me",
@@ -649,6 +707,7 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
         }
 
         case "update": {
+          const sender = await getSenderInfo(gmail, meta);
           const mime = buildMimeMessage({
             to: (a.to as string) || "",
             subject: (a.subject as string) || "",
@@ -657,6 +716,8 @@ export const GMAIL_TOOLS: GmailToolDef[] = [
             bcc: a.bcc as string | undefined,
             contentType: a.contentType as string | undefined,
             attachments: a.attachments as Attachment[] | undefined,
+            from: sender.fromHeader,
+            signatureHtml: sender.signatureHtml,
           });
           const res = await gmail.users.drafts.update({
             userId: "me",

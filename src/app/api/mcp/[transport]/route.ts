@@ -427,6 +427,7 @@ function registerTools(server: McpServer) {
                 accessToken: string;
                 refreshToken: string | null;
                 expiresAt: Date | null;
+                senderName?: string | null;
               }>
             | undefined;
 
@@ -462,7 +463,8 @@ function registerTools(server: McpServer) {
             const client = integration.createClient(tokens);
             const result = await tool.execute(
               args as Record<string, unknown>,
-              client
+              client,
+              { senderName: connection.senderName }
             );
             logUsage({
               userId,
@@ -866,6 +868,7 @@ function registerTools(server: McpServer) {
                 accessToken: string;
                 refreshToken: string | null;
                 expiresAt: Date | null;
+                senderName?: string | null;
               }>
             | undefined;
 
@@ -1111,7 +1114,7 @@ const authedHandler = withMcpAuth(
     // Load all connections for the key creator and decrypt tokens
     const { data: rawConnections } = await supabaseAdmin
       .from("connections")
-      .select("id, integration_id, access_token, refresh_token, expires_at")
+      .select("id, integration_id, access_token, refresh_token, expires_at, sender_name")
       .eq("user_id", apiKey.user_id);
 
     const connections = (rawConnections ?? []).map((c) => ({
@@ -1120,6 +1123,7 @@ const authedHandler = withMcpAuth(
       accessToken: decrypt(c.access_token),
       refreshToken: c.refresh_token ? decrypt(c.refresh_token) : null,
       expiresAt: c.expires_at ? new Date(c.expires_at) : null,
+      senderName: c.sender_name as string | null,
     }));
 
     const integrationAccess = (accessRows ?? []).map((a) => ({
