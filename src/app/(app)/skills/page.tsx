@@ -168,14 +168,6 @@ export default function SkillsPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <Container className="py-10">
-        <p className="text-text-tertiary">Loading...</p>
-      </Container>
-    );
-  }
-
   const hasSkills = allSkills.length > 0;
   const visibleTemplates = showAllTemplates || !hasSkills ? templates : templates.slice(0, 4);
 
@@ -193,14 +185,55 @@ export default function SkillsPage() {
         select from prompts.
       </p>
 
+      {/* Loading skeletons */}
+      {loading && (
+        <div className="space-y-8">
+          <div>
+            <div className="mb-3 h-4 w-24 rounded bg-bg-hover animate-pulse" />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="rounded-xl border border-border bg-bg-card p-4 animate-pulse">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-4 w-28 rounded bg-bg-hover" />
+                        <div className="h-5 w-16 rounded bg-bg-hover" />
+                      </div>
+                      <div className="h-3 w-full rounded bg-bg-hover" />
+                    </div>
+                    <div className="h-8 w-14 rounded bg-bg-hover" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-3 h-4 w-24 rounded bg-bg-hover animate-pulse" />
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="rounded-xl border border-border bg-bg-card p-4 animate-pulse">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <div className="h-4 w-32 rounded bg-bg-hover" />
+                      <div className="h-3 w-48 rounded bg-bg-hover" />
+                    </div>
+                    <div className="h-8 w-20 rounded bg-bg-hover" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Templates section */}
-      {!hasSkills && (
+      {!loading && !hasSkills && (
         <p className="mb-4 text-sm text-text-secondary">
           Get started by adding skills from our templates, or create your own.
         </p>
       )}
 
-      <div className="mb-8">
+      {!loading && <div className="mb-8">
         <h2 className="mb-3 text-sm font-semibold text-text-secondary uppercase tracking-wider">
           {hasSkills ? "Skill Templates" : "Templates"}
         </h2>
@@ -265,10 +298,10 @@ export default function SkillsPage() {
               : `Show all ${templates.length} templates`}
           </button>
         )}
-      </div>
+      </div>}
 
       {/* Skills list */}
-      {hasSkills && (
+      {!loading && hasSkills && (
         <>
           <h2 className="mb-3 text-sm font-semibold text-text-secondary uppercase tracking-wider">
             Your Skills

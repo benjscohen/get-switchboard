@@ -154,7 +154,26 @@ export default function SettingsUserDetailPage({
   }
 
   if (loading) {
-    return <div className="py-12 text-center text-text-tertiary">Loading...</div>;
+    return (
+      <div className="space-y-8">
+        <div>
+          <div className="mb-4 h-4 w-28 rounded bg-bg-hover animate-pulse" />
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 rounded-full bg-bg-hover animate-pulse" />
+            <div className="space-y-2">
+              <div className="h-6 w-40 rounded bg-bg-hover animate-pulse" />
+              <div className="h-4 w-48 rounded bg-bg-hover animate-pulse" />
+            </div>
+          </div>
+        </div>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-border bg-bg-card p-6 animate-pulse">
+            <div className="mb-3 h-4 w-24 rounded bg-bg-hover" />
+            <div className="h-9 w-48 rounded bg-bg-hover" />
+          </div>
+        ))}
+      </div>
+    );
   }
 
   if (!user) {

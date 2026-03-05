@@ -159,6 +159,76 @@ async function executeWithLogging(
   }
 }
 
+// ── Shared helpers for tool handlers ──
+
+type ConnectionInfo = {
+  id: string;
+  integrationId: string;
+  accessToken: string;
+  refreshToken: string | null;
+  expiresAt: Date | null;
+  senderName?: string | null;
+};
+
+/** Find a user's OAuth connection for a given integration, or return a standardized error. */
+function resolveConnection(
+  extra: { authInfo?: { extra?: Record<string, unknown> } },
+  integrationId: string,
+): ConnectionInfo | null {
+  const connections = extra.authInfo?.extra?.connections as ConnectionInfo[] | undefined;
+  return connections?.find((c) => c.integrationId === integrationId) ?? null;
+}
+
+function connectionNotFoundError(
+  pre: { userId: string; apiKeyId?: string; organizationId?: string; startTime: number },
+  toolName: string,
+  integrationId: string,
+  displayName: string,
+) {
+  logUsage({
+    userId: pre.userId, apiKeyId: pre.apiKeyId, toolName, integrationId,
+    status: "error", errorMessage: "Integration not connected",
+    durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
+    riskLevel: getToolRisk(toolName),
+  });
+  return {
+    content: [{ type: "text" as const, text: `Integration "${displayName}" is not connected. Connect it at your dashboard.` }],
+    isError: true,
+  };
+}
+
+/** Resolve API key with fallback chain: userKey > orgKey/sharedKey. Returns the key or a standardized error response. */
+function resolveApiKeyForProxy(
+  pre: { userId: string; apiKeyId?: string; organizationId?: string; startTime: number },
+  toolName: string,
+  integrationId: string,
+  displayName: string,
+  opts: { userKey?: string; fallbackKey?: string; keyMode?: string },
+): { key: string } | { error: ReturnType<typeof connectionNotFoundError> } {
+  const resolvedKey = opts.userKey ?? opts.fallbackKey;
+  if (resolvedKey) return { key: resolvedKey };
+
+  const isPerUser = opts.keyMode === "per_user";
+  const errorMessage = isPerUser ? "No personal API key configured" : "No API key configured";
+  logUsage({
+    userId: pre.userId, apiKeyId: pre.apiKeyId, toolName, integrationId,
+    status: "error", errorMessage,
+    durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
+    riskLevel: getToolRisk(toolName),
+  });
+  return {
+    error: {
+      content: [{
+        type: "text" as const,
+        text: isPerUser
+          ? `Integration "${displayName}" requires a personal API key. Add one in your dashboard.`
+          : `Integration "${displayName}" is not configured. An org admin must add an API key in Organization Settings.`,
+      }],
+      isError: true,
+    },
+  };
+}
+
 // Metadata map for filtering tools/list per-user
 const toolMeta = new Map<string, ToolMeta>();
 
@@ -481,30 +551,9 @@ function registerTools(server: McpServer) {
           const pre = toolPreCheck(tool.name, integrationId, extra);
           if (isPreCheckError(pre)) return pre;
 
-          // Look up the user's connection for this integration
-          const connections = extra.authInfo?.extra?.connections as
-            | Array<{
-                id: string;
-                integrationId: string;
-                accessToken: string;
-                refreshToken: string | null;
-                expiresAt: Date | null;
-                senderName?: string | null;
-              }>
-            | undefined;
-
-          const connection = connections?.find((c) => c.integrationId === integrationId);
+          const connection = resolveConnection(extra, integrationId);
           if (!connection) {
-            logUsage({
-              userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: tool.name, integrationId,
-              status: "error", errorMessage: "Integration not connected",
-              durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
-              riskLevel: getToolRisk(tool.name),
-            });
-            return {
-              content: [{ type: "text" as const, text: `Integration "${integration.name}" is not connected. Connect it at your dashboard.` }],
-              isError: true,
-            };
+            return connectionNotFoundError(pre, tool.name, integrationId, integration.name);
           }
 
           return executeWithLogging(
@@ -586,22 +635,10 @@ function registerTools(server: McpServer) {
         const resolvedKey = userKey ?? sharedKey;
 
         if (!resolvedKey && srv.auth_type === "bearer") {
-          const isPerUser = srv.key_mode === "per_user";
-          logUsage({
-            userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: namespacedName, integrationId,
-            status: "error", errorMessage: isPerUser ? "No personal API key configured" : "No API key configured",
-            durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
-            riskLevel: getToolRisk(namespacedName),
+          const result = resolveApiKeyForProxy(pre, namespacedName, integrationId, srv.name, {
+            keyMode: srv.key_mode ?? undefined,
           });
-          return {
-            content: [{
-              type: "text" as const,
-              text: isPerUser
-                ? "This server requires a personal API key. Add one in your dashboard."
-                : "No API key configured for this MCP server. Add one in your dashboard.",
-            }],
-            isError: true,
-          };
+          if ("error" in result) return result.error;
         }
 
         return executeWithLogging(
@@ -634,29 +671,9 @@ function registerTools(server: McpServer) {
         let bearerToken: string | undefined;
 
         if (proxy.oauth) {
-          const connections = extra.authInfo?.extra?.connections as
-            | Array<{
-                id: string;
-                integrationId: string;
-                accessToken: string;
-                refreshToken: string | null;
-                expiresAt: Date | null;
-                senderName?: string | null;
-              }>
-            | undefined;
-
-          const connection = connections?.find((c) => c.integrationId === proxy.id);
+          const connection = resolveConnection(extra, proxy.id);
           if (!connection) {
-            logUsage({
-              userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: tool.name, integrationId,
-              status: "error", errorMessage: "Integration not connected",
-              durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
-              riskLevel: getToolRisk(tool.name),
-            });
-            return {
-              content: [{ type: "text" as const, text: `Integration "${proxy.name}" is not connected. Connect it at your dashboard.` }],
-              isError: true,
-            };
+            return connectionNotFoundError(pre, tool.name, integrationId, proxy.name);
           }
 
           try {
@@ -673,30 +690,15 @@ function registerTools(server: McpServer) {
             return { content: [{ type: "text" as const, text: message }], isError: true };
           }
         } else {
-          bearerToken = proxy.keyMode === "per_user"
-            ? (extra.authInfo?.extra?.proxyUserKeys as Record<string, string> | undefined)?.[proxy.id]
-            : (extra.authInfo?.extra?.integrationOrgKeys as Record<string, string> | undefined)?.[proxy.id];
-
-          if (!bearerToken) {
-            const errorMessage = proxy.keyMode === "per_user"
-              ? "No personal API key configured"
-              : "No API key configured for this integration";
-            logUsage({
-              userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: tool.name, integrationId,
-              status: "error", errorMessage,
-              durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
-              riskLevel: getToolRisk(tool.name),
-            });
-            return {
-              content: [{
-                type: "text" as const,
-                text: proxy.keyMode === "per_user"
-                  ? `Integration "${proxy.name}" requires a personal API key. Add one in your dashboard.`
-                  : `Integration "${proxy.name}" is not configured. An org admin must add an API key in Organization Settings.`,
-              }],
-              isError: true,
-            };
-          }
+          const userKey = (extra.authInfo?.extra?.proxyUserKeys as Record<string, string> | undefined)?.[proxy.id];
+          const orgKey = (extra.authInfo?.extra?.integrationOrgKeys as Record<string, string> | undefined)?.[proxy.id];
+          const result = resolveApiKeyForProxy(pre, tool.name, integrationId, proxy.name, {
+            userKey: proxy.keyMode === "per_user" ? userKey : orgKey,
+            fallbackKey: proxy.keyMode === "per_user" ? undefined : userKey,
+            keyMode: proxy.keyMode,
+          });
+          if ("error" in result) return result.error;
+          bearerToken = result.key;
         }
 
         // Trigger on-demand schema discovery for integrations still using fallback schemas
@@ -828,23 +830,11 @@ const authedHandler = withMcpAuth(
       ? new Date(apiKey.expires_at) < new Date()
       : false;
 
-    // Load user status and permissions
-    const { data: profile } = await supabaseAdmin
-      .from("profiles")
-      .select("status, permissions_mode, organization_id, org_role")
-      .eq("id", apiKey.user_id)
-      .single();
-
-    // Deny deactivated users
-    if (!profile || profile.status === "deactivated") return undefined;
-
     const organizationId = apiKey.organization_id;
 
-    // Load integration access rules
-    const { data: accessRows } = await supabaseAdmin
-      .from("user_integration_access")
-      .select("integration_id, allowed_tools")
-      .eq("user_id", apiKey.user_id);
+    // Rate limit: 120 req/min per org (cheap, no DB)
+    const rl = checkRateLimit(`mcp:org:${organizationId}`, 120, 60_000);
+    if (!rl.allowed) return undefined;
 
     // Update last used time (fire-and-forget)
     supabaseAdmin
@@ -853,15 +843,27 @@ const authedHandler = withMcpAuth(
       .eq("id", apiKey.id)
       .then();
 
-    // Rate limit: 120 req/min per org
-    const rl = checkRateLimit(`mcp:org:${organizationId}`, 120, 60_000);
-    if (!rl.allowed) return undefined;
+    // Parallelize all independent DB queries (all depend only on user_id / org_id from api_keys)
+    const [
+      { data: profile },
+      { data: accessRows },
+      { data: rawConnections },
+      { data: rawUserKeys },
+      { data: rawOrgKeys },
+      { data: rawProxyUserKeys },
+      { data: teamMemberships },
+    ] = await Promise.all([
+      supabaseAdmin.from("profiles").select("status, permissions_mode, organization_id, org_role").eq("id", apiKey.user_id).single(),
+      supabaseAdmin.from("user_integration_access").select("integration_id, allowed_tools").eq("user_id", apiKey.user_id),
+      supabaseAdmin.from("connections").select("id, integration_id, access_token, refresh_token, expires_at, sender_name").eq("user_id", apiKey.user_id),
+      supabaseAdmin.from("custom_mcp_user_keys").select("server_id, api_key").eq("user_id", apiKey.user_id),
+      supabaseAdmin.from("integration_org_keys").select("integration_id, api_key").eq("organization_id", organizationId).eq("enabled", true),
+      supabaseAdmin.from("proxy_user_keys").select("integration_id, api_key").eq("user_id", apiKey.user_id),
+      supabaseAdmin.from("team_members").select("team_id").eq("user_id", apiKey.user_id),
+    ]);
 
-    // Load all connections for the key creator and decrypt tokens
-    const { data: rawConnections } = await supabaseAdmin
-      .from("connections")
-      .select("id, integration_id, access_token, refresh_token, expires_at, sender_name")
-      .eq("user_id", apiKey.user_id);
+    // Deny deactivated users (before any decryption work)
+    if (!profile || profile.status === "deactivated") return undefined;
 
     const connections = (rawConnections ?? []).map((c) => ({
       id: c.id,
@@ -877,45 +879,20 @@ const authedHandler = withMcpAuth(
       allowedTools: a.allowed_tools,
     }));
 
-    // Load custom MCP user keys
-    const { data: rawUserKeys } = await supabaseAdmin
-      .from("custom_mcp_user_keys")
-      .select("server_id, api_key")
-      .eq("user_id", apiKey.user_id);
-
     const customMcpKeys: Record<string, string> = {};
     for (const k of rawUserKeys ?? []) {
       customMcpKeys[k.server_id] = decrypt(k.api_key);
     }
-
-    // Load org-level native proxy integration keys
-    const { data: rawOrgKeys } = await supabaseAdmin
-      .from("integration_org_keys")
-      .select("integration_id, api_key")
-      .eq("organization_id", organizationId)
-      .eq("enabled", true);
 
     const integrationOrgKeys: Record<string, string> = {};
     for (const k of rawOrgKeys ?? []) {
       integrationOrgKeys[k.integration_id] = decrypt(k.api_key);
     }
 
-    // Load per-user native proxy integration keys
-    const { data: rawProxyUserKeys } = await supabaseAdmin
-      .from("proxy_user_keys")
-      .select("integration_id, api_key")
-      .eq("user_id", apiKey.user_id);
-
     const proxyUserKeys: Record<string, string> = {};
     for (const k of rawProxyUserKeys ?? []) {
       proxyUserKeys[k.integration_id] = decrypt(k.api_key);
     }
-
-    // Load team memberships for skill filtering
-    const { data: teamMemberships } = await supabaseAdmin
-      .from("team_members")
-      .select("team_id")
-      .eq("user_id", apiKey.user_id);
 
     const teamIds = (teamMemberships ?? []).map((m) => m.team_id);
 

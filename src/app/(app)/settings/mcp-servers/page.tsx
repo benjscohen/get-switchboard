@@ -80,10 +80,6 @@ export default function SettingsMcpServersPage() {
     fetchServers();
   }
 
-  if (loading) {
-    return <p className="text-text-tertiary">Loading MCP servers...</p>;
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -105,13 +101,33 @@ export default function SettingsMcpServersPage() {
         </Card>
       )}
 
-      {servers.length === 0 && !showForm && (
+      {loading && (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border bg-bg-card p-4 animate-pulse">
+              <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-32 rounded bg-bg-hover" />
+                    <div className="h-4 w-20 rounded bg-bg-hover" />
+                    <div className="h-5 w-14 rounded bg-bg-hover" />
+                  </div>
+                  <div className="h-3 w-48 rounded bg-bg-hover" />
+                </div>
+                <div className="h-4 w-16 rounded bg-bg-hover" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && servers.length === 0 && !showForm && (
         <p className="text-sm text-text-secondary">
           No custom MCP servers configured yet.
         </p>
       )}
 
-      <div className="space-y-3">
+      {!loading && <div className="space-y-3">
         {servers.map((server) => {
           const enabledCount = server.tools.filter((t) => t.enabled).length;
           const isExpanded = expanded.has(server.id);
@@ -255,7 +271,7 @@ export default function SettingsMcpServersPage() {
             </Card>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }

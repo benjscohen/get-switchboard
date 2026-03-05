@@ -100,7 +100,24 @@ export function UsageLogs() {
       </div>
 
       {loading && !data ? (
-        <div className="py-12 text-center text-text-tertiary">Loading...</div>
+        <div className="rounded-xl border border-border bg-bg-card p-4">
+          <div className="space-y-3">
+            {/* Header row */}
+            <div className="flex items-center gap-4 border-b border-border pb-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-3 flex-1 rounded bg-bg-hover animate-pulse" />
+              ))}
+            </div>
+            {/* Data rows */}
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4">
+                {Array.from({ length: 6 }).map((_, j) => (
+                  <div key={j} className="h-4 flex-1 rounded bg-bg-hover animate-pulse" />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
       ) : data ? (
         <div className="rounded-xl border border-border bg-bg-card p-4">
           <UsageTable
