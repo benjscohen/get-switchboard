@@ -27,6 +27,8 @@ import {
 } from "@/lib/mcp/skill-filtering";
 import { registerAdminTools } from "@/lib/mcp/admin-tools";
 import { registerVaultTools } from "@/lib/mcp/vault-tools";
+import { registerDiscoverTools } from "@/lib/mcp/discover-tools";
+import { buildToolIndex, ensureToolEmbeddings, type ToolIndexEntry } from "@/lib/mcp/tool-search";
 import {
   createSkill,
   updateSkill,
@@ -562,7 +564,13 @@ function registerTools(server: McpServer) {
             { ...pre, toolName: tool.name, integrationId },
             async () => {
               const tokens = await getValidTokens(connection);
-              const client = integration.createClient(tokens);
+              const orgKey = integration.orgKeyRequired
+                ? (extra.authInfo?.extra?.integrationOrgKeys as Record<string, string> | undefined)?.[integrationId]
+                : undefined;
+              if (integration.orgKeyRequired && !orgKey) {
+                return { content: [{ type: "text" as const, text: `${integration.name} requires an org-level key. Ask your org admin to configure it in Settings.` }], isError: true };
+              }
+              const client = integration.createClient(tokens, orgKey);
               const result = await tool.execute(args as Record<string, unknown>, client, { senderName: connection.senderName });
               if (result && typeof result === "object" && "_mcpContent" in (result as Record<string, unknown>)) {
                 return { content: (result as McpToolResult)._mcpContent };
@@ -729,6 +737,37 @@ function registerTools(server: McpServer) {
     );
   }
 
+  // Build search index from all registered tool sources
+  const toolEntries: Array<{ name: string; description: string; integrationId: string; integrationName: string }> = [];
+  for (const integration of allIntegrations) {
+    for (const tool of integration.tools) {
+      toolEntries.push({ name: tool.name, description: tool.description, integrationId: integration.id, integrationName: integration.name });
+    }
+  }
+  for (const tool of proxyTools) {
+    const proxy = proxyIntegrationRegistry.get(tool.integrationId);
+    toolEntries.push({ name: tool.name, description: tool.description, integrationId: tool.integrationId, integrationName: proxy?.name ?? tool.integrationId });
+  }
+  for (const ct of customTools) {
+    const srv = ct.custom_mcp_servers as { id: string; slug: string; name: string };
+    const namespacedName = `${srv.slug}__${ct.tool_name}`;
+    toolEntries.push({ name: namespacedName, description: ct.description, integrationId: `custom:${srv.id}`, integrationName: srv.name });
+  }
+  // Platform and vault tools
+  for (const [name, meta] of toolMeta.entries()) {
+    if ((meta.integrationId === "platform" || meta.integrationId === "vault") && !toolEntries.some((e) => e.name === name)) {
+      const regTool = (server as unknown as { _registeredTools: Record<string, { description?: string }> })._registeredTools[name];
+      if (regTool) {
+        const displayName = meta.integrationId === "vault" ? "Vault" : "Switchboard";
+        toolEntries.push({ name, description: regTool.description ?? "", integrationId: meta.integrationId, integrationName: displayName });
+      }
+    }
+  }
+  const searchIndex: ToolIndexEntry[] = buildToolIndex(toolEntries);
+
+  // Fire-and-forget: ensure all tools have embeddings in pgvector
+  ensureToolEmbeddings(toolEntries).catch(() => {});
+
   // Override tools/list to filter per-user based on connections, org, and permissions
   const registeredTools = (server as unknown as { _registeredTools: Record<string, {
     enabled: boolean;
@@ -736,6 +775,9 @@ function registerTools(server: McpServer) {
     inputSchema?: unknown;
     annotations?: unknown;
   }> })._registeredTools;
+
+  // Register discover_tools (needs registeredTools reference)
+  registerDiscoverTools(server, toolMeta, searchIndex, registeredTools);
 
   server.server.setRequestHandler(ListToolsRequestSchema, (_request, extra) => {
     const tools = filterToolsForUser(registeredTools, toolMeta, {
@@ -756,6 +798,7 @@ function registerTools(server: McpServer) {
       apiKeyScope: extra.authInfo?.extra?.apiKeyScope as string | undefined,
       role: extra.authInfo?.extra?.role as string | undefined,
       orgRole: extra.authInfo?.extra?.orgRole as string | undefined,
+      discoveryMode: extra.authInfo?.extra?.discoveryMode as boolean | undefined,
     });
 
     return { tools };
@@ -859,7 +902,7 @@ const authedHandler = withMcpAuth(
       { data: rawProxyUserKeys },
       { data: teamMemberships },
     ] = await Promise.all([
-      supabaseAdmin.from("profiles").select("status, permissions_mode, organization_id, org_role, role").eq("id", apiKey.user_id).single(),
+      supabaseAdmin.from("profiles").select("status, permissions_mode, organization_id, org_role, role, discovery_mode").eq("id", apiKey.user_id).single(),
       supabaseAdmin.from("user_integration_access").select("integration_id, allowed_tools").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("connections").select("id, integration_id, access_token, refresh_token, expires_at, sender_name").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("custom_mcp_user_keys").select("server_id, api_key").eq("user_id", apiKey.user_id),
@@ -920,6 +963,7 @@ const authedHandler = withMcpAuth(
         orgRole: profile.org_role ?? "member",
         role: profile.role ?? "user",
         apiKeyScope: apiKey.scope ?? "full",
+        discoveryMode: profile.discovery_mode ?? false,
         keyExpired,
       },
     };
