@@ -12,6 +12,8 @@ export interface ProxyIntegration {
   toolCount: number;
   configured: boolean;
   enabled: boolean;
+  orgKeyLabel?: string;
+  orgKeyHelpText?: string;
 }
 
 export function IntegrationsCard() {
@@ -120,23 +122,28 @@ export function IntegrationsCard() {
               </div>
             </div>
             {!i.configured && (
-              <div className="mt-3 flex gap-2">
-                <Input
-                  type="password"
-                  placeholder="API key"
-                  value={keyInputs[i.id] ?? ""}
-                  onChange={(e) =>
-                    setKeyInputs((k) => ({ ...k, [i.id]: e.target.value }))
-                  }
-                  className="max-w-xs"
-                />
-                <Button
-                  size="sm"
-                  onClick={() => saveKey(i.id)}
-                  disabled={saving[i.id] || !keyInputs[i.id]?.trim()}
-                >
-                  {saving[i.id] ? "Saving..." : "Save Key"}
-                </Button>
+              <div className="mt-3">
+                {i.orgKeyHelpText && (
+                  <p className="mb-2 text-xs text-text-tertiary">{i.orgKeyHelpText}</p>
+                )}
+                <div className="flex gap-2">
+                  <Input
+                    type="password"
+                    placeholder={i.orgKeyLabel ?? "API key"}
+                    value={keyInputs[i.id] ?? ""}
+                    onChange={(e) =>
+                      setKeyInputs((k) => ({ ...k, [i.id]: e.target.value }))
+                    }
+                    className="max-w-xs"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => saveKey(i.id)}
+                    disabled={saving[i.id] || !keyInputs[i.id]?.trim()}
+                  >
+                    {saving[i.id] ? "Saving..." : "Save Key"}
+                  </Button>
+                </div>
               </div>
             )}
           </div>

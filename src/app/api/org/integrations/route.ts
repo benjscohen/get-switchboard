@@ -3,12 +3,14 @@ import { requireOrgAdmin } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { encrypt } from "@/lib/encryption";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
+import { getOrgKeyIntegrations } from "@/lib/integrations/registry";
 
 export async function GET() {
   const auth = await requireOrgAdmin();
   if (!auth.authenticated) return auth.response;
 
   const orgOnlyIntegrations = allProxyIntegrations.filter((i) => i.keyMode === "org");
+  const builtinOrgKeyIntegrations = getOrgKeyIntegrations();
 
   const [{ data: orgKeys }, { data: dbTools }] = await Promise.all([
     supabaseAdmin
@@ -30,7 +32,7 @@ export async function GET() {
     dbToolCounts.set(t.integration_id, (dbToolCounts.get(t.integration_id) ?? 0) + 1);
   }
 
-  const integrations = orgOnlyIntegrations.map((i) => ({
+  const proxyResults = orgOnlyIntegrations.map((i) => ({
     id: i.id,
     name: i.name,
     description: i.description,
@@ -39,7 +41,18 @@ export async function GET() {
     enabled: keyMap.get(i.id) ?? false,
   }));
 
-  return NextResponse.json(integrations);
+  const builtinResults = builtinOrgKeyIntegrations.map((i) => ({
+    id: i.id,
+    name: i.name,
+    description: i.description,
+    toolCount: i.toolCount,
+    configured: keyMap.has(i.id),
+    enabled: keyMap.get(i.id) ?? false,
+    orgKeyLabel: i.orgKeyRequired!.label,
+    orgKeyHelpText: i.orgKeyRequired!.helpText,
+  }));
+
+  return NextResponse.json([...proxyResults, ...builtinResults]);
 }
 
 export async function PUT(request: Request) {
@@ -60,9 +73,10 @@ export async function PUT(request: Request) {
     );
   }
 
-  // Validate integration exists and is org-level
-  const valid = allProxyIntegrations.some((i) => i.id === integrationId && i.keyMode === "org");
-  if (!valid) {
+  // Validate integration exists and accepts org-level keys
+  const isProxyOrg = allProxyIntegrations.some((i) => i.id === integrationId && i.keyMode === "org");
+  const isBuiltinOrg = getOrgKeyIntegrations().some((i) => i.id === integrationId);
+  if (!isProxyOrg && !isBuiltinOrg) {
     return NextResponse.json(
       { error: "Unknown integration" },
       { status: 400 }

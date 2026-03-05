@@ -5,6 +5,7 @@ import { Container } from "@/components/ui/container";
 import { IntegrationList, type UserKeyItem } from "@/components/dashboard/integration-list";
 import { ConnectCard } from "@/components/dashboard/connect-card";
 import { DashboardToasts } from "@/components/dashboard/dashboard-toasts";
+import { DiscoveryModeToggle } from "@/components/dashboard/discovery-mode-toggle";
 import { allIntegrations } from "@/lib/integrations/registry";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 import { loadProxyToolsByIntegration } from "@/lib/integrations/catalog";
@@ -20,7 +21,7 @@ export default async function DashboardPage() {
 
   // Phase 1: profile + connections in parallel (no orgId dependency)
   const [{ data: profile }, { data: connections }] = await Promise.all([
-    supabase.from("profiles").select("organization_id, role, org_role").eq("id", user.id).single(),
+    supabase.from("profiles").select("organization_id, role, org_role, discovery_mode").eq("id", user.id).single(),
     supabase.from("connections").select("integration_id").eq("user_id", user.id),
   ]);
 
@@ -30,7 +31,19 @@ export default async function DashboardPage() {
     (connections ?? []).map((c) => c.integration_id)
   );
 
-  const builtinIntegrations = allIntegrations.map((i) => ({
+  // Check which org-key-required integrations have keys configured
+  const orgKeyIntegrationIds = new Set(
+    allIntegrations.filter((i) => i.orgKeyRequired).map((i) => i.id)
+  );
+  const orgKeyConfiguredIds = new Set(
+    orgKeys
+      .filter((k) => orgKeyIntegrationIds.has(k.integration_id) && k.enabled)
+      .map((k) => k.integration_id)
+  );
+
+  const builtinIntegrations = allIntegrations
+    .filter((i) => !i.orgKeyRequired || orgKeyConfiguredIds.has(i.id))
+    .map((i) => ({
     id: i.id,
     name: i.name,
     description: i.description,
@@ -265,6 +278,7 @@ export default async function DashboardPage() {
             total: integrations.length + proxyIntegrations.length + userKeyIntegrations.length,
           }}
         />
+        <DiscoveryModeToggle initialValue={profile?.discovery_mode ?? false} />
         <IntegrationList
           initialIntegrations={integrations}
           proxyIntegrations={proxyIntegrations}

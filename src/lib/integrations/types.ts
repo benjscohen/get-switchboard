@@ -58,15 +58,24 @@ export type OAuthConfig = {
   extraAuthParams?: Record<string, string>;
 };
 
+export type OrgKeyConfig = {
+  /** Label shown to org admins (e.g. "Developer Token") */
+  label: string;
+  /** Help text / instructions for the org admin */
+  helpText: string;
+};
+
 export type IntegrationConfig = {
   id: string;
   name: string;
   description: string;
   icon: () => ReactNode;
   oauth: OAuthConfig;
-  createClient: (tokens: { accessToken: string; refreshToken?: string }) => unknown;
+  createClient: (tokens: { accessToken: string; refreshToken?: string }, orgKey?: string) => unknown;
   tools: IntegrationToolDef[];
   toolCount: number;
+  /** If set, org admins must provide a key before users can connect */
+  orgKeyRequired?: OrgKeyConfig;
 };
 
 export type LocalIntegrationConfig = {

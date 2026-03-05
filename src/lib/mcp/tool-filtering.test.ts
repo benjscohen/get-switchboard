@@ -444,6 +444,96 @@ describe("filterToolsForUser", () => {
     });
   });
 
+  describe("discovery mode", () => {
+    const discoveryTools: Array<[string, Partial<RegisteredTool>]> = [
+      ...builtinTools,
+      ...customTools,
+      ["discover_tools", { description: "Discover tools" }],
+      ["submit_feedback", { description: "Submit feedback" }],
+      ["list_skills", { description: "List skills" }],
+      ["get_skill", { description: "Get skill" }],
+      ["create_skill", { description: "Create skill" }],
+      ["update_skill", { description: "Update skill" }],
+      ["delete_skill", { description: "Delete skill" }],
+    ];
+
+    const discoveryMeta: Array<[string, ToolMeta]> = [
+      ...builtinMeta,
+      ...customMeta,
+      ["discover_tools", { integrationId: "platform", orgId: null }],
+      ["submit_feedback", { integrationId: "platform", orgId: null }],
+      ["list_skills", { integrationId: "platform", orgId: null }],
+      ["get_skill", { integrationId: "platform", orgId: null }],
+      ["create_skill", { integrationId: "platform", orgId: null }],
+      ["update_skill", { integrationId: "platform", orgId: null }],
+      ["delete_skill", { integrationId: "platform", orgId: null }],
+    ];
+
+    it("returns only discovery-visible tools when discoveryMode is true", () => {
+      const ctx: FilterContext = {
+        connections: [
+          { integrationId: "google-calendar" },
+          { integrationId: "google-sheets" },
+          { integrationId: "google-docs" },
+        ],
+        organizationId: ORG_A,
+        discoveryMode: true,
+      };
+      const result = filterToolsForUser(
+        buildRegisteredTools(discoveryTools),
+        new Map(discoveryMeta),
+        ctx,
+      );
+      const names = toolNames(result);
+
+      expect(names).toEqual([
+        "create_skill",
+        "delete_skill",
+        "discover_tools",
+        "get_skill",
+        "list_skills",
+        "submit_feedback",
+        "update_skill",
+      ]);
+    });
+
+    it("excludes builtin and custom tools in discovery mode", () => {
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }],
+        organizationId: ORG_A,
+        discoveryMode: true,
+      };
+      const result = filterToolsForUser(
+        buildRegisteredTools(discoveryTools),
+        new Map(discoveryMeta),
+        ctx,
+      );
+      const names = toolNames(result);
+
+      expect(names).not.toContain("google_calendar_list_events");
+      expect(names).not.toContain("acme__search");
+      expect(names).not.toContain("globalbot__ask");
+    });
+
+    it("normal mode still works when discoveryMode is false", () => {
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }],
+        organizationId: ORG_A,
+        discoveryMode: false,
+      };
+      const result = filterToolsForUser(
+        buildRegisteredTools(discoveryTools),
+        new Map(discoveryMeta),
+        ctx,
+      );
+      const names = toolNames(result);
+
+      expect(names).toContain("google_calendar_list_events");
+      expect(names).toContain("discover_tools");
+      expect(names).toContain("submit_feedback");
+    });
+  });
+
   describe("combined filtering scenarios", () => {
     it("user with one connection in a non-matching org sees only global custom tools + connected builtin", () => {
       const ctx: FilterContext = {

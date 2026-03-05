@@ -1,5 +1,6 @@
 import type { IntegrationConfig } from "./types";
 import { asanaIntegration } from "./asana";
+import { googleAdsIntegration } from "./google-ads";
 import { googleCalendarIntegration } from "./google-calendar";
 import { googleDocsIntegration } from "./google-docs";
 import { googleDriveIntegration } from "./google-drive";
@@ -10,6 +11,7 @@ import { intercomIntegration } from "./intercom";
 
 const integrations: IntegrationConfig[] = [
   asanaIntegration,
+  googleAdsIntegration,
   googleCalendarIntegration,
   googleDocsIntegration,
   googleDriveIntegration,
@@ -24,6 +26,11 @@ export const integrationRegistry = new Map<string, IntegrationConfig>(
 );
 
 export const allIntegrations = integrations;
+
+/** Integrations that require an org-level key before users can connect */
+export function getOrgKeyIntegrations(): IntegrationConfig[] {
+  return integrations.filter((i) => !!i.orgKeyRequired);
+}
 
 export function getToolNamesForIntegration(integrationId: string): string[] {
   const integration = integrationRegistry.get(integrationId);

@@ -165,6 +165,7 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
 
   // ── Platform tools ──
   submit_feedback: "write",
+  discover_tools: "read",
 };
 
 // Pattern-based heuristic for tools not in the static map.
