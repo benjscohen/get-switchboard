@@ -89,6 +89,7 @@ const proxyToolsPromise = loadProxyTools().catch((err) => {
 });
 let resolvedProxyTools: { tools: ProxyTool[]; fromFallback: boolean } | null = null;
 let proxyDiscoveryCooldownUntil: number | null = null;
+const discoveredIntegrations = new Set<string>();
 proxyToolsPromise.then((r) => {
   resolvedProxyTools = r;
 });
@@ -953,6 +954,14 @@ function registerTools(server: McpServer) {
               isError: true,
             };
           }
+        }
+
+        // Trigger on-demand schema discovery for integrations still using fallback schemas
+        if (resolvedProxyTools?.fromFallback && !discoveredIntegrations.has(proxy.id)) {
+          discoveredIntegrations.add(proxy.id);
+          discoverAndCacheProxyTools(proxy.id, proxy.serverUrl, bearerToken)
+            .then(() => loadProxyTools().then((r) => { resolvedProxyTools = r; }))
+            .catch((err) => console.warn(`[proxy] On-demand discovery failed for ${proxy.id}:`, err.message));
         }
 
         try {
