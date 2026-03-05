@@ -32,85 +32,63 @@ export const hubspotCrmIntegration: IntegrationConfig = {
     tokenUrl: "https://api.hubapi.com/oauth/v1/token",
     clientIdEnvVar: "HUBSPOT_CLIENT_ID",
     clientSecretEnvVar: "HUBSPOT_CLIENT_SECRET",
+    // Required scopes — mark these as "Required" in HubSpot app settings
     scopes: [
-      // Contacts
       "crm.objects.contacts.read",
-      "crm.objects.contacts.write",
-      // Companies
       "crm.objects.companies.read",
-      "crm.objects.companies.write",
-      // Deals
       "crm.objects.deals.read",
-      "crm.objects.deals.write",
-      // Tickets
       "crm.objects.tickets.read",
+      "crm.objects.owners.read",
+    ],
+    // Optional scopes — mark as "Optional" in HubSpot app settings
+    // Sent via optional_scope param so users can connect even without access to all
+    optionalScopes: [
+      "crm.objects.contacts.write",
+      "crm.objects.companies.write",
+      "crm.objects.deals.write",
       "crm.objects.tickets.write",
-      // Custom objects
       "crm.objects.custom.read",
       "crm.objects.custom.write",
-      // Leads
       "crm.objects.leads.read",
       "crm.objects.leads.write",
-      // Line Items
       "crm.objects.line_items.read",
       "crm.objects.line_items.write",
-      // Products
       "crm.objects.products.read",
       "crm.objects.products.write",
-      // Quotes
       "crm.objects.quotes.read",
       "crm.objects.quotes.write",
-      // Invoices
       "crm.objects.invoices.read",
       "crm.objects.invoices.write",
-      // Orders
       "crm.objects.orders.read",
       "crm.objects.orders.write",
-      // Subscriptions
       "crm.objects.subscriptions.read",
       "crm.objects.subscriptions.write",
-      // Appointments
       "crm.objects.appointments.read",
       "crm.objects.appointments.write",
-      // Courses
       "crm.objects.courses.read",
       "crm.objects.courses.write",
-      // Goals
       "crm.objects.goals.read",
       "crm.objects.goals.write",
-      // Forecasts
       "crm.objects.forecasts.read",
-      // Feedback
       "crm.objects.feedback_submissions.read",
-      // Marketing Events
       "crm.objects.marketing_events.read",
       "crm.objects.marketing_events.write",
-      // Owners
-      "crm.objects.owners.read",
-      // Users
       "crm.objects.users.read",
       "crm.objects.users.write",
-      // Carts
       "crm.objects.carts.read",
       "crm.objects.carts.write",
-      // Commerce Payments
       "crm.objects.commercepayments.read",
       "crm.objects.commercepayments.write",
-      // Listings
       "crm.objects.listings.read",
       "crm.objects.listings.write",
-      // Services
       "crm.objects.services.read",
       "crm.objects.services.write",
-      // Projects
       "crm.objects.projects.read",
       "crm.objects.projects.write",
-      // Partner clients/services
       "crm.objects.partner-clients.read",
       "crm.objects.partner-clients.write",
       "crm.objects.partner-services.read",
       "crm.objects.partner-services.write",
-      // Schemas
       "crm.schemas.contacts.read",
       "crm.schemas.contacts.write",
       "crm.schemas.companies.read",
@@ -143,7 +121,6 @@ export const hubspotCrmIntegration: IntegrationConfig = {
       "crm.schemas.services.write",
       "crm.schemas.subscriptions.read",
       "crm.schemas.subscriptions.write",
-      // Features
       "crm.lists.read",
       "crm.lists.write",
       "crm.import",

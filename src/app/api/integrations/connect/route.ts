@@ -64,6 +64,9 @@ export async function GET(req: NextRequest) {
       state,
       ...oauth.extraAuthParams,
     });
+    if (oauth.optionalScopes?.length) {
+      params.set("optional_scope", oauth.optionalScopes.join(" "));
+    }
 
     return NextResponse.redirect(`${oauth.authUrl}?${params.toString()}`);
   }

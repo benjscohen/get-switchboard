@@ -55,6 +55,8 @@ export type OAuthConfig = {
   clientIdEnvVar: string;
   clientSecretEnvVar: string;
   scopes: string[];
+  /** Scopes sent via optional_scope param (HubSpot requires this for non-required scopes) */
+  optionalScopes?: string[];
   extraAuthParams?: Record<string, string>;
 };
 
