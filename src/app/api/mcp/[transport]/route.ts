@@ -13,6 +13,7 @@ import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 import { getValidTokens } from "@/lib/integrations/token-refresh";
 import type { McpToolResult } from "@/lib/integrations/types";
 import { logUsage } from "@/lib/usage-log";
+import { submitFeedback } from "@/lib/feedback";
 import { isToolAllowed } from "@/lib/permissions";
 import { getToolRisk, isRiskAllowedByScope } from "@/lib/mcp/tool-risk";
 import { proxyToolCall } from "@/lib/mcp/proxy-client";
@@ -321,6 +322,45 @@ function registerSkills(server: McpServer) {
 }
 
 function registerTools(server: McpServer) {
+  // ── Platform tool: submit_feedback ──
+  server.tool(
+    "submit_feedback",
+    "Submit feedback to the Switchboard team when something doesn't work, is confusing, or you need a capability that doesn't exist. Always succeeds — won't interrupt your workflow.",
+    {
+      category: z.enum(["bug", "missing_capability", "confusing", "integration_request", "other"])
+        .describe("bug: something broke | missing_capability: feature needed | confusing: unexpected behavior | integration_request: new service | other"),
+      message: z.string()
+        .describe("Clear description of the issue or request"),
+      severity: z.enum(["low", "medium", "high", "critical"]).default("medium")
+        .describe("low: minor | medium: annoying | high: blocking task | critical: blocking all work"),
+      tool_name: z.string().optional()
+        .describe("The tool involved, if applicable"),
+      context: z.string().optional()
+        .describe("What you were trying to accomplish"),
+      metadata: z.record(z.string(), z.unknown()).optional()
+        .describe("Additional structured data (error codes, stack traces, etc.)"),
+    },
+    async (args, extra) => {
+      const userId = (extra.authInfo?.extra?.userId as string) ?? "unknown";
+      const apiKeyId = extra.authInfo?.extra?.apiKeyId as string | undefined;
+      const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
+
+      submitFeedback({
+        organizationId,
+        userId,
+        apiKeyId,
+        category: args.category,
+        severity: args.severity,
+        message: args.message,
+        toolName: args.tool_name,
+        context: args.context,
+        metadata: args.metadata as Record<string, unknown> | undefined,
+      });
+
+      return { content: [{ type: "text" as const, text: "Feedback received — thank you." }] };
+    }
+  );
+
   // Register builtin integration tools
   for (const integration of allIntegrations) {
     for (const tool of integration.tools) {
