@@ -7,6 +7,7 @@ import { googleDriveIntegration } from "./google-drive";
 import { googleGmailIntegration } from "./google-gmail";
 import { googleSheetsIntegration } from "./google-sheets";
 import { googleSlidesIntegration } from "./google-slides";
+import { hubspotCrmIntegration } from "./hubspot-crm";
 import { intercomIntegration } from "./intercom";
 import { linkedinAdsIntegration } from "./linkedin-ads";
 
@@ -19,6 +20,7 @@ const integrations: IntegrationConfig[] = [
   googleGmailIntegration,
   googleSheetsIntegration,
   googleSlidesIntegration,
+  hubspotCrmIntegration,
   intercomIntegration,
   linkedinAdsIntegration,
 ];

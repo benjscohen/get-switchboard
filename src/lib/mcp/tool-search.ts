@@ -53,6 +53,7 @@ export const CATEGORY_SYNONYMS: Record<string, string[]> = {
   spreadsheets: ["excel", "tables", "data"],
   files: ["storage", "cloud storage", "file management"],
   advertising: ["ads", "campaigns", "marketing", "PPC"],
+  crm: ["CRM", "sales", "contacts", "deals", "pipeline", "customer relationship", "leads", "accounts"],
 };
 
 export const CATEGORY_MAP: Record<string, string> = {
@@ -69,6 +70,8 @@ export const CATEGORY_MAP: Record<string, string> = {
   firecrawl: "web-scraping",
   granola: "meetings",
   "google-ads": "advertising",
+  "hubspot-crm": "crm",
+  "linkedin-ads": "advertising",
   platform: "platform",
   vault: "secrets",
 };

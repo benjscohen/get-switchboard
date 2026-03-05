@@ -149,6 +149,29 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   asana_manage_attachments: "write",
   asana_manage_templates: "write",
 
+  // ── HubSpot CRM ──
+  hubspot_crm_manage_objects: "write",
+  hubspot_crm_search_objects: "read",
+  hubspot_crm_batch_objects: "write",
+  hubspot_crm_manage_associations: "write",
+  hubspot_crm_merge_objects: "destructive",
+  hubspot_crm_manage_properties: "write",
+  hubspot_crm_manage_property_groups: "write",
+  hubspot_crm_manage_schemas: "write",
+  hubspot_crm_get_object_schema: "read",
+  hubspot_crm_manage_pipelines: "write",
+  hubspot_crm_manage_pipeline_stages: "write",
+  hubspot_crm_manage_owners: "read",
+  hubspot_crm_manage_users: "read",
+  hubspot_crm_manage_lists: "write",
+  hubspot_crm_manage_imports: "write",
+  hubspot_crm_manage_exports: "read",
+  hubspot_crm_manage_deal_splits: "write",
+  hubspot_crm_manage_calling_transcripts: "read",
+  hubspot_crm_manage_marketing_events: "write",
+  hubspot_crm_manage_feedback_submissions: "read",
+  hubspot_crm_manage_forecasts: "read",
+
   // ── Skill tools ──
   manage_skills: "write",
 

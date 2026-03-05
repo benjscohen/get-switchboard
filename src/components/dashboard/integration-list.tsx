@@ -225,6 +225,83 @@ function ExpandButton({
   );
 }
 
+/* ── Tool Group Toggles ── */
+
+function ToolGroupToggles({ integrationId }: { integrationId: string }) {
+  const [groups, setGroups] = useState<Record<string, { description: string; tools: string[] }> | null>(null);
+  const [enabled, setEnabled] = useState<string[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/integrations/tool-groups?integrationId=${integrationId}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data) {
+          setGroups(data.toolGroups);
+          setEnabled(data.enabledGroups);
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [integrationId]);
+
+  if (loading || !groups) return null;
+
+  const allKeys = Object.keys(groups);
+  const isAllEnabled = enabled === null;
+
+  async function toggleGroup(key: string) {
+    const currentEnabled = enabled ?? allKeys;
+    const next = currentEnabled.includes(key)
+      ? currentEnabled.filter((k) => k !== key)
+      : [...currentEnabled, key];
+
+    const newValue = next.length === allKeys.length ? null : next;
+    setEnabled(newValue);
+    setSaving(true);
+
+    await fetch("/api/integrations/tool-groups", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ integrationId, enabledGroups: newValue }),
+    });
+    setSaving(false);
+  }
+
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-medium text-text-secondary">Tool Groups</p>
+        {saving && <span className="text-xs text-text-tertiary">Saving...</span>}
+      </div>
+      <div className="space-y-2">
+        {allKeys.map((key) => {
+          const group = groups[key];
+          const isOn = isAllEnabled || (enabled?.includes(key) ?? false);
+          return (
+            <label key={key} className="flex items-center gap-3 cursor-pointer group">
+              <button
+                role="switch"
+                aria-checked={isOn}
+                onClick={() => toggleGroup(key)}
+                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${isOn ? "bg-accent" : "bg-border"}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform mt-0.5 ${isOn ? "translate-x-4 ml-0.5" : "translate-x-0.5"}`} />
+              </button>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm text-text-primary">{key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</span>
+                <span className="text-xs text-text-tertiary ml-2">({group.tools.length} tools)</span>
+                <p className="text-xs text-text-secondary truncate">{group.description}</p>
+              </div>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ── Integration Row (OAuth / org-key proxies) ── */
 
 function IntegrationRow({
@@ -306,6 +383,9 @@ function IntegrationRow({
         <GmailSenderSettings />
       )}
 
+      {expanded && integration.connected && (
+        <ToolGroupToggles integrationId={integration.id} />
+      )}
       {expanded && <ToolGrid tools={integration.tools} />}
     </div>
   );

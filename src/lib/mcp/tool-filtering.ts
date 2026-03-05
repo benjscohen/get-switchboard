@@ -21,6 +21,8 @@ export type FilterContext = {
   role?: string;
   orgRole?: string;
   discoveryMode?: boolean;
+  /** Tool names allowed by tool group preferences. Key = integrationId, value = Set of allowed tool names. Missing key = all tools allowed. */
+  toolGroupAllowedTools?: Record<string, Set<string>>;
 };
 
 /**
@@ -100,6 +102,12 @@ export function filterToolsForUser(
           )
         )
           return false;
+      }
+
+      // Tool group preferences
+      if (ctx.toolGroupAllowedTools) {
+        const allowedSet = ctx.toolGroupAllowedTools[meta.integrationId];
+        if (allowedSet && !allowedSet.has(name)) return false;
       }
 
       // API key scope filtering

@@ -76,6 +76,8 @@ export type IntegrationConfig = {
   toolCount: number;
   /** If set, org admins must provide a key before users can connect */
   orgKeyRequired?: OrgKeyConfig;
+  /** Optional tool groups for user-selectable tool categories */
+  toolGroups?: Record<string, { description: string; tools: string[] }>;
 };
 
 export type LocalIntegrationConfig = {
