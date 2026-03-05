@@ -109,7 +109,6 @@ export default async function AppLayout({
           <UserMenu
             displayName={displayName}
             avatarUrl={avatarUrl}
-            showSettings={showOrgSettings || role === "admin"}
           />
         </Container>
       </header>

@@ -1,20 +1,17 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface UserMenuProps {
   displayName: string;
   avatarUrl: string | null;
-  showSettings: boolean;
 }
 
 export function UserMenu({
   displayName,
   avatarUrl,
-  showSettings,
 }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -64,17 +61,6 @@ export function UserMenu({
 
       {open && (
         <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border bg-bg py-1 shadow-lg">
-          {showSettings && (
-            <>
-              <Link
-                href="/settings"
-                className="block px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-card hover:text-text-primary"
-              >
-                Settings
-              </Link>
-              <div className="my-1 border-t border-border" />
-            </>
-          )}
           <button
             onClick={handleSignOut}
             className="w-full px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-bg-card hover:text-text-primary"
