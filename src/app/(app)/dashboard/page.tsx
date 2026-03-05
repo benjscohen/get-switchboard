@@ -6,7 +6,7 @@ import { IntegrationList, type UserKeyItem } from "@/components/dashboard/integr
 import { ConnectCard } from "@/components/dashboard/connect-card";
 import { DashboardToasts } from "@/components/dashboard/dashboard-toasts";
 import { DiscoveryModeToggle } from "@/components/dashboard/discovery-mode-toggle";
-import { allIntegrations } from "@/lib/integrations/registry";
+import { allIntegrations, isIntegrationConfigured } from "@/lib/integrations/registry";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 import { loadProxyToolsByIntegration } from "@/lib/integrations/catalog";
 import { chromeMcpIntegration } from "@/lib/integrations/chrome-mcp";
@@ -84,7 +84,7 @@ export default async function DashboardPage() {
   );
 
   const builtinIntegrations = allIntegrations
-    .filter((i) => !i.orgKeyRequired || orgKeyConfiguredIds.has(i.id))
+    .filter((i) => isIntegrationConfigured(i) && (!i.orgKeyRequired || orgKeyConfiguredIds.has(i.id)))
     .map((i) => ({
       id: i.id,
       name: i.name,

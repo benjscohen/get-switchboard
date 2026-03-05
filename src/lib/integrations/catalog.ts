@@ -1,10 +1,10 @@
-import { allIntegrations } from "./registry";
+import { allIntegrations, isIntegrationConfigured } from "./registry";
 import { allProxyIntegrations } from "./proxy-registry";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { CatalogEntry } from "./types";
 
 export function getBuiltinCatalog(): CatalogEntry[] {
-  return allIntegrations.map((i) => ({
+  return allIntegrations.filter(isIntegrationConfigured).map((i) => ({
     id: i.id,
     name: i.name,
     description: i.description,

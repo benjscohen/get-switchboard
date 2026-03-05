@@ -29,12 +29,16 @@ describe("allIntegrations", () => {
     expect(allIntegrations.some((i) => i.id === "google-calendar")).toBe(true);
   });
 
-  it("has length 9", () => {
-    expect(allIntegrations).toHaveLength(9);
+  it("has length 10", () => {
+    expect(allIntegrations).toHaveLength(10);
   });
 
   it("is an array containing google-ads", () => {
     expect(allIntegrations.some((i) => i.id === "google-ads")).toBe(true);
+  });
+
+  it("is an array containing linkedin-ads", () => {
+    expect(allIntegrations.some((i) => i.id === "linkedin-ads")).toBe(true);
   });
 
   it("is an array containing google-drive", () => {
