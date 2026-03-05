@@ -88,6 +88,7 @@ const proxyToolsPromise = loadProxyTools().catch((err) => {
   return { tools: [] as ProxyTool[], fromFallback: true };
 });
 let resolvedProxyTools: { tools: ProxyTool[]; fromFallback: boolean } | null = null;
+let proxyDiscoveryCooldownUntil: number | null = null;
 proxyToolsPromise.then((r) => {
   resolvedProxyTools = r;
 });
@@ -975,6 +976,17 @@ function registerTools(server: McpServer) {
         } catch (err: unknown) {
           const message =
             err instanceof Error ? err.message : "Unknown error";
+          console.error(
+            `[proxy-tool] ${tool.name} failed for user=${userId} integration=${integrationId}:`,
+            message
+          );
+
+          // Provide actionable error messages for common auth failures
+          const isAuthError = /missing_token|invalid_auth|token_revoked|not_authed|account_inactive/i.test(message);
+          const userMessage = isAuthError
+            ? `Integration "${proxy.name}" returned an auth error. Please reconnect it in your dashboard.`
+            : `Proxy tool "${tool.name}" failed: ${message}`;
+
           logUsage({
             userId,
             apiKeyId,
@@ -987,7 +999,7 @@ function registerTools(server: McpServer) {
             riskLevel: getToolRisk(tool.name),
           });
           return {
-            content: [{ type: "text" as const, text: "An internal error occurred" }],
+            content: [{ type: "text" as const, text: userMessage }],
             isError: true,
           };
         }
@@ -1039,10 +1051,24 @@ async function mcpHandler(req: Request): Promise<Response> {
   }
 
   // Auto-discover proxy tools if we're using fallback (DB is empty)
-  if (resolvedProxyTools.fromFallback) {
+  // Skip OAuth-based integrations (they require per-user tokens for tools/list)
+  // Use cooldown to prevent re-triggering on every request
+  if (resolvedProxyTools.fromFallback && !proxyDiscoveryCooldownUntil) {
+    proxyDiscoveryCooldownUntil = Date.now() + 5 * 60 * 1000; // 5 min cooldown
     for (const proxy of allProxyIntegrations) {
-      discoverAndCacheProxyTools(proxy.id, proxy.serverUrl).catch(() => {});
+      // OAuth integrations can't discover without user tokens — skip them
+      if (proxy.oauth) continue;
+      discoverAndCacheProxyTools(proxy.id, proxy.serverUrl)
+        .then(() => {
+          // Reload from DB after successful discovery
+          loadProxyTools().then((result) => {
+            resolvedProxyTools = result;
+          });
+        })
+        .catch(() => {});
     }
+  } else if (proxyDiscoveryCooldownUntil && Date.now() > proxyDiscoveryCooldownUntil) {
+    proxyDiscoveryCooldownUntil = null; // Reset cooldown so next request can retry
   }
 
   const transport = new WebStandardStreamableHTTPServerTransport({

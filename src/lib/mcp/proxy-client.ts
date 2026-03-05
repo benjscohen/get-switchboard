@@ -71,6 +71,16 @@ export async function proxyToolCall(
       content,
       isError: Boolean(result.isError),
     };
+  } catch (err) {
+    // Enrich error messages with context about the upstream failure
+    const raw = err instanceof Error ? err.message : String(err);
+
+    // Check for JSON-RPC error responses embedded in the message
+    if (raw.includes("abort") || raw.includes("AbortError")) {
+      throw new Error(`Upstream MCP server at ${serverUrl} timed out after ${TIMEOUT_MS}ms`);
+    }
+
+    throw new Error(`Upstream MCP server error (${serverUrl}): ${raw}`);
   } finally {
     clearTimeout(timer);
     await client.close().catch(() => {});
