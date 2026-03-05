@@ -377,12 +377,12 @@ describe("filterToolsForUser", () => {
 
   describe("platform tools", () => {
     const platformTools: Array<[string, Partial<RegisteredTool>]> = [
-      ["list_skills", { description: "List skills" }],
+      ["manage_skills", { description: "Manage skills" }],
       ["submit_feedback", { description: "Submit feedback" }],
     ];
 
     const platformMeta: Array<[string, ToolMeta]> = [
-      ["list_skills", { integrationId: "platform", orgId: null }],
+      ["manage_skills", { integrationId: "platform", orgId: null }],
       ["submit_feedback", { integrationId: "platform", orgId: null }],
     ];
 
@@ -402,7 +402,7 @@ describe("filterToolsForUser", () => {
       const result = filterToolsForUser(allToolsWithPlatform(), allMetaWithPlatform(), ctx);
       const names = toolNames(result);
 
-      expect(names).toContain("list_skills");
+      expect(names).toContain("manage_skills");
       expect(names).toContain("submit_feedback");
     });
 
@@ -411,13 +411,13 @@ describe("filterToolsForUser", () => {
       const result = filterToolsForUser(allToolsWithPlatform(), allMetaWithPlatform(), ctx);
       const names = toolNames(result);
 
-      expect(names).toContain("list_skills");
+      expect(names).toContain("manage_skills");
       expect(names).toContain("submit_feedback");
     });
 
     it("platform tools are excluded when disabled", () => {
       const tools = buildRegisteredTools([
-        ["list_skills", { enabled: false }],
+        ["manage_skills", { enabled: false }],
         ["submit_feedback", { enabled: true }],
       ]);
       const meta = new Map<string, ToolMeta>([...platformMeta]);
@@ -425,7 +425,7 @@ describe("filterToolsForUser", () => {
       const result = filterToolsForUser(tools, meta, ctx);
       const names = toolNames(result);
 
-      expect(names).not.toContain("list_skills");
+      expect(names).not.toContain("manage_skills");
       expect(names).toContain("submit_feedback");
     });
 
@@ -438,7 +438,7 @@ describe("filterToolsForUser", () => {
         const result = filterToolsForUser(allToolsWithPlatform(), allMetaWithPlatform(), ctx);
         const names = toolNames(result);
 
-        expect(names).toContain("list_skills");
+        expect(names).toContain("manage_skills");
         expect(names).toContain("submit_feedback");
       }
     });
@@ -450,11 +450,7 @@ describe("filterToolsForUser", () => {
       ...customTools,
       ["discover_tools", { description: "Discover tools" }],
       ["submit_feedback", { description: "Submit feedback" }],
-      ["list_skills", { description: "List skills" }],
-      ["get_skill", { description: "Get skill" }],
-      ["create_skill", { description: "Create skill" }],
-      ["update_skill", { description: "Update skill" }],
-      ["delete_skill", { description: "Delete skill" }],
+      ["manage_skills", { description: "Manage skills" }],
     ];
 
     const discoveryMeta: Array<[string, ToolMeta]> = [
@@ -462,11 +458,7 @@ describe("filterToolsForUser", () => {
       ...customMeta,
       ["discover_tools", { integrationId: "platform", orgId: null }],
       ["submit_feedback", { integrationId: "platform", orgId: null }],
-      ["list_skills", { integrationId: "platform", orgId: null }],
-      ["get_skill", { integrationId: "platform", orgId: null }],
-      ["create_skill", { integrationId: "platform", orgId: null }],
-      ["update_skill", { integrationId: "platform", orgId: null }],
-      ["delete_skill", { integrationId: "platform", orgId: null }],
+      ["manage_skills", { integrationId: "platform", orgId: null }],
     ];
 
     it("returns only discovery-visible tools when discoveryMode is true", () => {
@@ -487,13 +479,9 @@ describe("filterToolsForUser", () => {
       const names = toolNames(result);
 
       expect(names).toEqual([
-        "create_skill",
-        "delete_skill",
         "discover_tools",
-        "get_skill",
-        "list_skills",
+        "manage_skills",
         "submit_feedback",
-        "update_skill",
       ]);
     });
 

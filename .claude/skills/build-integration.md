@@ -333,7 +333,39 @@ describe("all schemas reject empty object", () => {
 
 ---
 
-## Step 5: Register the Integration
+## Step 5: Register in Tool Search
+
+Add the new integration to the search maps in `src/lib/mcp/tool-search.ts` so `discover_tools` can find it via synonyms and category filters.
+
+### `CATEGORY_MAP`
+
+Maps `integrationId` → category. Add your integration here:
+
+```typescript
+export const CATEGORY_MAP: Record<string, string> = {
+  // ... existing entries
+  "notion-pages": "documents",  // ← use an existing category if it fits
+};
+```
+
+If no existing category fits, create a new one (e.g. `"design"`, `"analytics"`).
+
+### `CATEGORY_SYNONYMS`
+
+Maps category → alternative search terms. If you used an existing category, synonyms are already inherited. If you created a **new category**, add an entry:
+
+```typescript
+export const CATEGORY_SYNONYMS: Record<string, string[]> = {
+  // ... existing entries
+  design: ["UI", "mockups", "wireframes", "prototyping"],  // ← new category
+};
+```
+
+Think about what a user might type when looking for this integration — short words like "chat", "todo", "CRM" are the most important since they rely on synonyms to match.
+
+---
+
+## Step 6: Register the Integration
 
 ### `src/lib/integrations/registry.ts`
 
@@ -364,7 +396,7 @@ it("is an array containing notion-pages", () => {
 
 ---
 
-## Step 6: Environment Variables
+## Step 7: Environment Variables
 
 Document the required env vars for the new integration:
 
@@ -476,9 +508,10 @@ Apply these principles throughout:
 3. **Self-documenting** — every Zod field has `.describe()` with format hints and examples
 4. **DRY** — shared fragments at the top of schemas, helper functions at the top of tools
 5. **Composable** — multi-action tools use `switch/case` on an `operation` enum, not separate tools per action
-6. **Defensive** — clean return objects (no raw API dumps), safe error messages (no leaked internals)
-7. **Progressive disclosure** — required fields first, optional fields last, sensible defaults
-8. **LLM-optimized** — prefer formats LLMs generate naturally (hex colors, named positions) over raw API formats (RGB objects, raw indices)
+6. **Consolidated** — CRUD-like platform tools use a single tool with an `operation` enum discriminator (e.g. `manage_skills` with `operation: "list" | "get" | "create" | "update" | "delete"`) instead of registering 5 separate tools. This keeps the tool list compact and matches the multi-action pattern used by integrations. Use optional fields for operation-specific parameters.
+7. **Defensive** — clean return objects (no raw API dumps), safe error messages (no leaked internals)
+8. **Progressive disclosure** — required fields first, optional fields last, sensible defaults
+9. **LLM-optimized** — prefer formats LLMs generate naturally (hex colors, named positions) over raw API formats (RGB objects, raw indices)
 
 ---
 
@@ -510,6 +543,11 @@ Before declaring the integration complete, verify every item:
 - [ ] `extraAuthParams` requests offline/refresh tokens where needed
 - [ ] `createClient` uses per-user tokens (not shared env vars)
 - [ ] Export follows `camelCaseIntegration` naming
+
+### Tool Search
+- [ ] Added to `CATEGORY_MAP` in `src/lib/mcp/tool-search.ts`
+- [ ] If new category: added entry to `CATEGORY_SYNONYMS` with short search terms users would type
+- [ ] If existing category: verified synonyms cover the new integration's common search terms
 
 ### Tests & Registration
 - [ ] `schemas.test.ts` tests every schema (valid + invalid)

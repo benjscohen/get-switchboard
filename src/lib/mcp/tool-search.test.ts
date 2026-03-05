@@ -87,7 +87,7 @@ describe("extractAction", () => {
 
   it("handles list action", () => {
     expect(extractAction("google_calendar_list_events")).toBe("list_events");
-    expect(extractAction("list_skills")).toBe("list_skills");
+    expect(extractAction("manage_skills")).toBe("manage_skills");
   });
 });
 
@@ -388,7 +388,7 @@ describe("SEARCH_ENRICHMENTS", () => {
       "asana_create_task",
       "slack_send_message",
       "submit_feedback",
-      "list_skills",
+      "manage_skills",
     ];
 
     for (const tool of expectedTools) {

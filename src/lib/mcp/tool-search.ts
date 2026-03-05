@@ -244,9 +244,9 @@ export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: stri
     useWhen: "User wants to submit feedback, report an issue, or share suggestions about Switchboard",
     aliases: "give feedback, report issue, suggest improvement, bug report",
   },
-  list_skills: {
-    useWhen: "User wants to see available skills, list automations, or view saved prompts",
-    aliases: "show skills, view automations, list prompts, available skills",
+  manage_skills: {
+    useWhen: "User wants to list, view, create, update, or delete skills, automations, or saved prompts",
+    aliases: "show skills, view automations, list prompts, available skills, create skill, edit skill, delete skill",
   },
 };
 

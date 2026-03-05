@@ -64,11 +64,7 @@ function collectTools(): ToolEntry[] {
 
   const platformTools = [
     { name: "submit_feedback", description: "Submit feedback about Switchboard" },
-    { name: "list_skills", description: "List available skills and automations" },
-    { name: "get_skill", description: "Get details of a specific skill" },
-    { name: "create_skill", description: "Create a new skill" },
-    { name: "update_skill", description: "Update an existing skill" },
-    { name: "delete_skill", description: "Delete a skill" },
+    { name: "manage_skills", description: "List, get, create, update, or delete skills (prompt templates)" },
   ];
   for (const tool of platformTools) {
     tools.push({ name: tool.name, description: tool.description, integrationId: "platform", integrationName: "Platform" });

@@ -150,11 +150,7 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   asana_manage_templates: "write",
 
   // ── Skill tools ──
-  list_skills: "read",
-  get_skill: "read",
-  create_skill: "write",
-  update_skill: "write",
-  delete_skill: "destructive",
+  manage_skills: "write",
 
   // ── Vault tools ──
   vault_list_secrets: "read",

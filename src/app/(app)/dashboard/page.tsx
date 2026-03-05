@@ -185,11 +185,7 @@ export default async function DashboardPage() {
   // Build Switchboard platform integration
   const platformTools: Array<{ name: string; description: string }> = [
     { name: "submit_feedback", description: "Submit feedback to the Switchboard team" },
-    { name: "list_skills", description: "List available skills" },
-    { name: "get_skill", description: "Get a skill's content" },
-    { name: "create_skill", description: "Create a new skill" },
-    { name: "update_skill", description: "Update an existing skill" },
-    { name: "delete_skill", description: "Delete a skill" },
+    { name: "manage_skills", description: "List, get, create, update, or delete skills" },
     { name: "vault_list_secrets", description: "List vault secrets" },
     { name: "vault_get_secret", description: "Get a secret with decrypted values" },
     { name: "vault_set_secret", description: "Create or update a secret" },

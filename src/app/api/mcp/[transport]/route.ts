@@ -316,148 +316,136 @@ function registerSkills(server: McpServer) {
     }
   }
 
-  // Register list_skills tool
+  // Register manage_skills tool (consolidated CRUD)
   server.tool(
-    "list_skills",
-    "List available skills (prompt templates) for the current user",
-    {},
-    async (_args, extra) => {
-      const userId = extra.authInfo?.extra?.userId as string | undefined;
-      const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
-      const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
-
-      const visible = filterSkillsForUser(skills, { userId, organizationId, teamIds });
-      const list = visible.map((s) => ({
-        name: skillPromptName(s),
-        description: s.description,
-        argumentCount: s.arguments.length,
-      }));
-
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(list, null, 2) }],
-      };
-    }
-  );
-
-  // Register get_skill tool
-  server.tool(
-    "get_skill",
-    "Get a skill's content by its prompt name (e.g. org:code-review)",
-    { name: z.string().describe("The skill prompt name (e.g. org:code-review)") },
-    async (args, extra) => {
-      const userId = extra.authInfo?.extra?.userId as string | undefined;
-      const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
-      const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
-
-      const visible = filterSkillsForUser(skills, { userId, organizationId, teamIds });
-      const requestedName = args.name;
-      const skill = visible.find((s) => skillPromptName(s) === requestedName);
-
-      if (!skill) {
-        return {
-          content: [{ type: "text" as const, text: `Skill "${requestedName}" not found or not available` }],
-          isError: true,
-        };
-      }
-
-      const content = skill.content;
-
-      return {
-        content: [{ type: "text" as const, text: content }],
-      };
-    }
-  );
-
-  // Register create_skill tool
-  server.tool(
-    "create_skill",
-    "Create a new skill (prompt template). Note: newly created skills will be available as MCP prompts after server restart.",
+    "manage_skills",
+    "List, get, create, update, or delete skills (prompt templates)",
     {
-      scope: z.enum(["user", "organization", "team"]).describe("Skill visibility scope"),
-      name: z.string().describe("Skill name"),
-      slug: z.string().optional().describe("URL-friendly slug (auto-generated from name if omitted)"),
-      description: z.string().optional().describe("Short description of the skill"),
-      content: z.string().describe("Skill prompt content (supports {{arg}} interpolation)"),
+      operation: z.enum(["list", "get", "create", "update", "delete"])
+        .describe("Skill operation to perform"),
+      id: z.string().optional()
+        .describe("Skill ID (required for update, delete)"),
+      name: z.string().optional()
+        .describe("Skill prompt name for 'get' (e.g. org:code-review), or display name for 'create'/'update'"),
+      scope: z.enum(["user", "organization", "team"]).optional()
+        .describe("Skill visibility scope (required for create)"),
+      slug: z.string().optional()
+        .describe("URL-friendly slug (auto-generated from name if omitted)"),
+      description: z.string().optional()
+        .describe("Short description of the skill"),
+      content: z.string().optional()
+        .describe("Skill prompt content (supports {{arg}} interpolation)"),
       arguments: z.array(z.object({
         name: z.string(),
         description: z.string(),
         required: z.boolean(),
       })).optional().describe("Skill arguments for interpolation"),
-      team_id: z.string().optional().describe("Team ID (required when scope is 'team')"),
+      team_id: z.string().optional()
+        .describe("Team ID (required when scope is 'team')"),
+      enabled: z.boolean().optional()
+        .describe("Enable or disable the skill (update only)"),
     },
     async (args, extra) => {
-      const auth = mcpSkillAuth(extra);
-      if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+      switch (args.operation) {
+        case "list": {
+          const userId = extra.authInfo?.extra?.userId as string | undefined;
+          const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
+          const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
 
-      const result = await createSkill(auth, {
-        scope: args.scope,
-        teamId: args.team_id,
-        name: args.name,
-        slug: args.slug,
-        description: args.description,
-        content: args.content,
-        arguments: args.arguments,
-      });
+          const visible = filterSkillsForUser(skills, { userId, organizationId, teamIds });
+          const list = visible.map((s) => ({
+            name: skillPromptName(s),
+            description: s.description,
+            argumentCount: s.arguments.length,
+          }));
 
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) + "\n\nNote: This skill will be available as an MCP prompt after server restart." }],
-      };
-    }
-  );
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(list, null, 2) }],
+          };
+        }
 
-  // Register update_skill tool
-  server.tool(
-    "update_skill",
-    "Update an existing skill's name, description, content, arguments, or enabled status. Note: changes to MCP prompts take effect after server restart.",
-    {
-      id: z.string().describe("Skill ID to update"),
-      name: z.string().optional().describe("New skill name"),
-      description: z.string().optional().describe("New description"),
-      content: z.string().optional().describe("New prompt content"),
-      arguments: z.array(z.object({
-        name: z.string(),
-        description: z.string(),
-        required: z.boolean(),
-      })).optional().describe("New skill arguments"),
-      enabled: z.boolean().optional().describe("Enable or disable the skill"),
-    },
-    async (args, extra) => {
-      const auth = mcpSkillAuth(extra);
-      if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+        case "get": {
+          if (!args.name) {
+            return { content: [{ type: "text" as const, text: "Missing required field: name" }], isError: true };
+          }
+          const userId = extra.authInfo?.extra?.userId as string | undefined;
+          const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
+          const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
 
-      const result = await updateSkill(auth, args.id, {
-        name: args.name,
-        description: args.description,
-        content: args.content,
-        arguments: args.arguments,
-        enabled: args.enabled,
-      });
+          const visible = filterSkillsForUser(skills, { userId, organizationId, teamIds });
+          const skill = visible.find((s) => skillPromptName(s) === args.name);
 
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) + "\n\nNote: MCP prompt changes take effect after server restart." }],
-      };
-    }
-  );
+          if (!skill) {
+            return {
+              content: [{ type: "text" as const, text: `Skill "${args.name}" not found or not available` }],
+              isError: true,
+            };
+          }
 
-  // Register delete_skill tool
-  server.tool(
-    "delete_skill",
-    "Permanently delete a skill. This cannot be undone.",
-    {
-      id: z.string().describe("Skill ID to delete"),
-    },
-    async (args, extra) => {
-      const auth = mcpSkillAuth(extra);
-      if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+          return {
+            content: [{ type: "text" as const, text: skill.content }],
+          };
+        }
 
-      const result = await deleteSkillService(auth, args.id);
+        case "create": {
+          const auth = mcpSkillAuth(extra);
+          if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+          if (!args.scope || !args.name || !args.content) {
+            return { content: [{ type: "text" as const, text: "Missing required fields: scope, name, content" }], isError: true };
+          }
 
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return {
-        content: [{ type: "text" as const, text: "Skill deleted successfully." }],
-      };
+          const result = await createSkill(auth, {
+            scope: args.scope,
+            teamId: args.team_id,
+            name: args.name,
+            slug: args.slug,
+            description: args.description,
+            content: args.content,
+            arguments: args.arguments,
+          });
+
+          if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) + "\n\nNote: This skill will be available as an MCP prompt after server restart." }],
+          };
+        }
+
+        case "update": {
+          const auth = mcpSkillAuth(extra);
+          if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+          if (!args.id) {
+            return { content: [{ type: "text" as const, text: "Missing required field: id" }], isError: true };
+          }
+
+          const result = await updateSkill(auth, args.id, {
+            name: args.name,
+            description: args.description,
+            content: args.content,
+            arguments: args.arguments,
+            enabled: args.enabled,
+          });
+
+          if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) + "\n\nNote: MCP prompt changes take effect after server restart." }],
+          };
+        }
+
+        case "delete": {
+          const auth = mcpSkillAuth(extra);
+          if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+          if (!args.id) {
+            return { content: [{ type: "text" as const, text: "Missing required field: id" }], isError: true };
+          }
+
+          const result = await deleteSkillService(auth, args.id);
+
+          if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
+          return {
+            content: [{ type: "text" as const, text: "Skill deleted successfully." }],
+          };
+        }
+      }
     }
   );
 
@@ -492,12 +480,8 @@ function registerSkills(server: McpServer) {
     return { prompts };
   });
 
-  // Mark skill tools as platform tools (always visible, no connection required)
-  toolMeta.set("list_skills", { integrationId: "platform", orgId: null });
-  toolMeta.set("get_skill", { integrationId: "platform", orgId: null });
-  toolMeta.set("create_skill", { integrationId: "platform", orgId: null });
-  toolMeta.set("update_skill", { integrationId: "platform", orgId: null });
-  toolMeta.set("delete_skill", { integrationId: "platform", orgId: null });
+  // Mark skill tool as platform tool (always visible, no connection required)
+  toolMeta.set("manage_skills", { integrationId: "platform", orgId: null });
 }
 
 function registerTools(server: McpServer) {

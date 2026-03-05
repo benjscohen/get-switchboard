@@ -35,8 +35,7 @@ export function filterToolsForUser(
   // Discovery mode: only expose the discover_tools tool and a few platform utilities
   if (ctx.discoveryMode) {
     const DISCOVERY_VISIBLE = new Set([
-      "discover_tools", "submit_feedback",
-      "list_skills", "get_skill", "create_skill", "update_skill", "delete_skill",
+      "discover_tools", "submit_feedback", "manage_skills",
     ]);
     return Object.entries(registeredTools)
       .filter(([name, tool]) => tool.enabled && DISCOVERY_VISIBLE.has(name))
