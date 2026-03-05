@@ -766,7 +766,8 @@ function registerTools(server: McpServer) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         inputSchema: tool.inputSchema as any,
       },
-      async (args, extra) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async (args: Record<string, unknown>, extra: any) => {
         const expiredResult = checkKeyExpired(extra);
         if (expiredResult) return expiredResult;
 
