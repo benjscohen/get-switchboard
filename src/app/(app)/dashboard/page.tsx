@@ -206,7 +206,14 @@ export default async function DashboardPage() {
     id: "platform",
     name: "Switchboard",
     description: "Platform tools, skills, and admin management",
-    icon: null as React.ReactNode,
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" fill="#3B82F6" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" fill="#3B82F6" opacity="0.7" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" fill="#3B82F6" opacity="0.7" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" fill="#3B82F6" opacity="0.4" />
+      </svg>
+    ) as React.ReactNode,
     toolCount: switchboardTools.length,
     tools: switchboardTools,
     connected: true,
