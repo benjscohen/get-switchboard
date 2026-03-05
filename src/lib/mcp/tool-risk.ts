@@ -164,9 +164,9 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
 // Checked in order — first match wins.
 const DESTRUCTIVE_PATTERNS = [
   /\bdelete\b/, /\btrash\b/, /\bclear\b/, /\bremove\b/, /\bunshare\b/,
-  /\bsend_message\b/, /\breply_to_message\b/, /\bforward_message\b/,
-  /\bbatch_modify\b/, /\bmanage_vacation\b/, /\bmanage_filters\b/,
-  /\bmanage_permissions\b/, /\bpurge\b/, /\bdestroy\b/,
+  /\bsend message\b/, /\breply to message\b/, /\bforward message\b/,
+  /\bbatch modify\b/, /\bmanage vacation\b/, /\bmanage filters\b/,
+  /\bmanage permissions\b/, /\bpurge\b/, /\bdestroy\b/,
 ];
 const READ_PATTERNS = [
   /\blist\b/, /\bget\b/, /\bsearch\b/, /\bread\b/, /\bfind\b/,
@@ -176,9 +176,11 @@ const READ_PATTERNS = [
 ];
 
 function inferRisk(toolName: string): ToolRiskLevel {
-  const lower = toolName.toLowerCase();
-  if (DESTRUCTIVE_PATTERNS.some((p) => p.test(lower))) return "destructive";
-  if (READ_PATTERNS.some((p) => p.test(lower))) return "read";
+  // Replace _ with space so \b word boundaries work correctly for
+  // tool names like "slack_search_channels" or "protoniq__semantic_search"
+  const normalized = toolName.toLowerCase().replace(/_/g, " ");
+  if (DESTRUCTIVE_PATTERNS.some((p) => p.test(normalized))) return "destructive";
+  if (READ_PATTERNS.some((p) => p.test(normalized))) return "read";
   return "write";
 }
 
