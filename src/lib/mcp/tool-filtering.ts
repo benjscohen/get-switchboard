@@ -1,5 +1,6 @@
 import { isToolAllowed } from "@/lib/permissions";
 import { getToolRisk, isRiskAllowedByScope } from "@/lib/mcp/tool-risk";
+import { zodToJsonSchema } from "@/lib/mcp/schema-utils";
 
 export type ToolMeta = { integrationId: string; orgId: string | null; keyMode?: "org" | "per_user"; proxyOAuth?: boolean };
 
@@ -44,7 +45,7 @@ export function filterToolsForUser(
       .map(([name, tool]) => ({
         name,
         description: tool.description,
-        inputSchema: tool.inputSchema ?? { type: "object" as const },
+        inputSchema: zodToJsonSchema(tool.inputSchema) ?? { type: "object" as const },
         annotations: tool.annotations,
       }));
   }
@@ -120,7 +121,7 @@ export function filterToolsForUser(
     .map(([name, tool]) => ({
       name,
       description: tool.description,
-      inputSchema: tool.inputSchema ?? { type: "object" as const },
+      inputSchema: zodToJsonSchema(tool.inputSchema) ?? { type: "object" as const },
       annotations: tool.annotations,
     }));
 }

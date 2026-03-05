@@ -5,6 +5,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   supabaseAdmin: {},
 }));
 
+import { z } from "zod";
 import {
   filterToolsForUser,
   type RegisteredTool,
@@ -519,6 +520,71 @@ describe("filterToolsForUser", () => {
       expect(names).toContain("google_calendar_list_events");
       expect(names).toContain("discover_tools");
       expect(names).toContain("submit_feedback");
+    });
+  });
+
+  describe("Zod schema conversion", () => {
+    it("converts Zod inputSchema to clean JSON Schema", () => {
+      const zodSchema = z.object({
+        query: z.string().describe("Search query"),
+        limit: z.number().optional(),
+      });
+      const tools = buildRegisteredTools([
+        ["google_calendar_list_events", { inputSchema: zodSchema }],
+      ]);
+      const meta = new Map<string, ToolMeta>([
+        ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+      ]);
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }],
+      };
+      const result = filterToolsForUser(tools, meta, ctx);
+      const schema = result[0].inputSchema as Record<string, unknown>;
+
+      // Should have standard JSON Schema fields
+      expect(schema).toHaveProperty("type", "object");
+      expect(schema).toHaveProperty("properties");
+      expect(schema).toHaveProperty("required");
+
+      // Should NOT have Zod internals
+      expect(schema).not.toHaveProperty("def");
+      expect(schema).not.toHaveProperty("_zod");
+      expect(schema).not.toHaveProperty("safeParseAsync");
+
+      // Verify property structure
+      const props = schema.properties as Record<string, Record<string, unknown>>;
+      expect(props.query).toHaveProperty("type", "string");
+      expect(props.limit).toHaveProperty("type", "number");
+    });
+
+    it("passes through plain JSON Schema objects unchanged", () => {
+      const plainSchema = { type: "object", properties: { foo: { type: "string" } } };
+      const tools = buildRegisteredTools([
+        ["google_calendar_list_events", { inputSchema: plainSchema }],
+      ]);
+      const meta = new Map<string, ToolMeta>([
+        ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+      ]);
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }],
+      };
+      const result = filterToolsForUser(tools, meta, ctx);
+
+      expect(result[0].inputSchema).toEqual(plainSchema);
+    });
+
+    it("converts Zod schemas in discovery mode too", () => {
+      const zodSchema = z.object({ search: z.string() });
+      const tools = buildRegisteredTools([
+        ["discover_tools", { description: "Discover tools", inputSchema: zodSchema }],
+      ]);
+      const ctx: FilterContext = { discoveryMode: true };
+      const result = filterToolsForUser(tools, new Map(), ctx);
+      const schema = result[0].inputSchema as Record<string, unknown>;
+
+      expect(schema).toHaveProperty("type", "object");
+      expect(schema).not.toHaveProperty("def");
+      expect(schema).not.toHaveProperty("_zod");
     });
   });
 
