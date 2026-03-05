@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import { type HTMLAttributes } from "react";
 
 interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
-  variant?: "default" | "accent";
+  variant?: "default" | "accent" | "success";
 }
 
 export function Badge({ variant = "default", className, children, ...props }: BadgeProps) {
@@ -14,6 +14,8 @@ export function Badge({ variant = "default", className, children, ...props }: Ba
           "border border-border bg-bg-card text-text-secondary",
         variant === "accent" &&
           "border border-accent/30 bg-accent/10 text-accent",
+        variant === "success" &&
+          "border border-green-500/30 bg-green-500/10 text-green-500",
         className
       )}
       {...props}

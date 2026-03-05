@@ -132,13 +132,9 @@ export function IntegrationList({
         )}
         <div className="space-y-3">
           {unified.map((item) => {
-            const dimClass = item.connected
-              ? "opacity-50 hover:opacity-100 transition-opacity"
-              : "";
-
             if (item.kind === "integration") {
               return (
-                <div key={item.data.id} className={dimClass}>
+                <div key={item.data.id}>
                   <IntegrationRow
                     integration={item.data}
                     onDisconnect={handleDisconnect}
@@ -148,7 +144,7 @@ export function IntegrationList({
             }
 
             return (
-              <div key={`${item.data.type}:${item.data.targetId}`} className={dimClass}>
+              <div key={`${item.data.type}:${item.data.targetId}`}>
                 <UserKeyRow
                   item={item.data}
                   onKeyChange={handleUserKeyChange}
@@ -273,12 +269,14 @@ function IntegrationRow({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {integration.kind === "native-proxy" ? (
-            <Badge variant={integration.connected ? "accent" : "default"}>
+            <Badge variant={integration.connected ? "success" : "default"}>
+              {integration.connected && <svg className="mr-1 h-3 w-3" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
               {integration.connected ? "Enabled" : "Not configured"}
             </Badge>
           ) : (
             <>
-              <Badge variant={integration.connected ? "accent" : "default"}>
+              <Badge variant={integration.connected ? "success" : "default"}>
+                {integration.connected && <svg className="mr-1 h-3 w-3" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                 {integration.connected ? "Connected" : "Not connected"}
               </Badge>
               {integration.connected ? (
@@ -502,7 +500,7 @@ function UserKeyRow({
         <div className="flex items-center gap-2 shrink-0">
           {keyStatus === "personal" && (
             <>
-              <Badge variant="accent">Key Configured</Badge>
+              <Badge variant="success"><svg className="mr-1 h-3 w-3" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>Key Configured</Badge>
               <Button
                 variant="ghost"
                 size="sm"
@@ -545,7 +543,7 @@ function UserKeyRow({
             </>
           )}
           {keyStatus === "none" && (
-            <Badge variant="accent">No Auth</Badge>
+            <Badge variant="success"><svg className="mr-1 h-3 w-3" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>No Auth</Badge>
           )}
           <ExpandButton expanded={expanded} onToggle={() => setExpanded(!expanded)} />
         </div>
