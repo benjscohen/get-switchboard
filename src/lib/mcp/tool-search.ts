@@ -38,6 +38,7 @@ export type IntegrationSummary = {
 // ── Constants ──
 
 export const RELEVANCE_THRESHOLD = 0.3;
+export const SHORT_QUERY_THRESHOLD = 0.2;
 export const KEYWORD_ONLY_THRESHOLD = 0.15;
 export const DEFAULT_LIMIT = 10;
 
@@ -453,17 +454,25 @@ export async function searchToolsWithEmbeddings(
     const normalizedQuery = query.toLowerCase().replace(/\s+/g, "_");
     const nameBonus = entry.name === normalizedQuery ? 0.3 : 0;
 
-    // Hybrid: 70% semantic + 20% keyword + 10% name bonus potential
+    // Hybrid: 60% semantic + 30% keyword + 10% name bonus potential
     // Fall back to keyword-only when no semantic scores available
     const score = hasSemantic
-      ? semantic * 0.7 + keyword * 0.2 + nameBonus
+      ? semantic * 0.6 + keyword * 0.3 + nameBonus
       : keyword + nameBonus;
 
     return { entry, score };
   });
 
-  // Use lower threshold for keyword-only mode (short queries get diluted scores)
-  const threshold = hasSemantic ? RELEVANCE_THRESHOLD : KEYWORD_ONLY_THRESHOLD;
+  // Graduated threshold: short queries (1-2 tokens) get a lower bar since
+  // synonym matches produce moderate semantic scores
+  const queryTokens = extractKeywords(query);
+  const isShortQuery = queryTokens.length <= 2;
+
+  const threshold = !hasSemantic
+    ? KEYWORD_ONLY_THRESHOLD
+    : isShortQuery
+      ? SHORT_QUERY_THRESHOLD
+      : RELEVANCE_THRESHOLD;
 
   return results
     .filter((r) => r.score >= threshold)

@@ -86,6 +86,7 @@ export function UsersTable({ initialUsers }: UsersTableProps) {
                 <th className="pb-2 pr-4 font-medium">Organization</th>
                 <th className="pb-2 pr-4 font-medium">Status</th>
                 <th className="pb-2 pr-4 font-medium">Access</th>
+                <th className="pb-2 pr-4 font-medium">Services</th>
                 <th className="pb-2 pr-4 font-medium">Last Active</th>
                 <th className="pb-2 font-medium"></th>
               </tr>
@@ -149,6 +150,9 @@ export function UsersTable({ initialUsers }: UsersTableProps) {
                   <td className="py-3 pr-4 text-text-secondary">
                     {user.permissionsMode === "full" ? "Full" : "Custom"}
                   </td>
+                  <td className="py-3 pr-4 text-text-secondary">
+                    {user.connectionCount ?? 0}
+                  </td>
                   <td className="py-3 pr-4 text-text-secondary whitespace-nowrap">
                     {user.lastActive
                       ? new Date(user.lastActive).toLocaleDateString()
@@ -167,7 +171,7 @@ export function UsersTable({ initialUsers }: UsersTableProps) {
               {filtered.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="py-8 text-center text-text-tertiary"
                   >
                     {search
