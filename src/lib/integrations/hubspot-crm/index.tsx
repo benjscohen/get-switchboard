@@ -37,7 +37,6 @@ export const hubspotCrmIntegration: IntegrationConfig = {
       "crm.objects.contacts.read",
       "crm.objects.companies.read",
       "crm.objects.deals.read",
-      "crm.objects.tickets.read",
       "crm.objects.owners.read",
     ],
     // Optional scopes — mark as "Optional" in HubSpot app settings
@@ -46,6 +45,7 @@ export const hubspotCrmIntegration: IntegrationConfig = {
       "crm.objects.contacts.write",
       "crm.objects.companies.write",
       "crm.objects.deals.write",
+      "crm.objects.tickets.read",
       "crm.objects.tickets.write",
       "crm.objects.custom.read",
       "crm.objects.custom.write",
