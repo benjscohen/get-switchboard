@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { filterToolsForUser, type ToolMeta, type RegisteredTool } from "./tool-filtering";
 import { searchToolsWithEmbeddings, browseIntegrations, type ToolIndexEntry } from "./tool-search";
+import { zodToJsonSchema } from "./schema-utils";
 
 /**
  * Registers the `discover_tools` MCP tool on the server.
@@ -70,7 +71,7 @@ export function registerDiscoverTools(
           name: r.entry.name,
           description: r.entry.description,
           integration: r.entry.integration,
-          inputSchema: registeredTools[r.entry.name]?.inputSchema ?? null,
+          inputSchema: zodToJsonSchema(registeredTools[r.entry.name]?.inputSchema) ?? null,
         }));
 
         return {

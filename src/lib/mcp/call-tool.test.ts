@@ -255,9 +255,56 @@ describe("registerCallTool", () => {
     expect(res.isError).toBe(true);
     const parsed = JSON.parse(res.content[0].text);
     expect(parsed.error).toContain("Invalid arguments for tool google_calendar_list_events");
+    expect(parsed.error).toContain("calendarId");
     expect(parsed.expectedSchema).toEqual({ type: "object" });
     // Handler should NOT have been called
     expect(server._registeredTools["google_calendar_list_events"].handler).not.toHaveBeenCalled();
+  });
+
+  it("returns clean JSON Schema in expectedSchema when tool has a Zod schema", async () => {
+    const server = createMockServer();
+    const toolMeta = makeToolMeta([
+      ["my_tool", { integrationId: "google-calendar", orgId: null }],
+    ]);
+
+    const zodSchema = z.object({ name: z.string(), count: z.number().optional() });
+    // Use the Zod schema as inputSchema in registeredTools so zodToJsonSchema converts it
+    const registeredTools: Record<string, RegisteredTool> = {
+      my_tool: { enabled: true, description: "My tool", inputSchema: zodSchema as unknown },
+    };
+
+    server._registeredTools["my_tool"] = {
+      name: "my_tool",
+      description: "My tool",
+      schema: {},
+      inputSchema: zodSchema,
+      handler: vi.fn().mockResolvedValue({
+        content: [{ type: "text", text: "should not reach" }],
+      }),
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerCallTool(server as any, toolMeta, registeredTools);
+
+    const handler = server._registeredTools["call_tool"].handler;
+    const result = await handler(
+      { tool_name: "my_tool", arguments: { count: "not-a-number" } },
+      makeExtra(),
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = result as any;
+    expect(res.isError).toBe(true);
+    const parsed = JSON.parse(res.content[0].text);
+    // Error should be human-readable, not raw JSON
+    expect(parsed.error).toContain("name");
+    expect(parsed.error.startsWith("[")).toBe(false);
+    // expectedSchema should be clean JSON Schema, not Zod internals
+    expect(parsed.expectedSchema.type).toBe("object");
+    expect(parsed.expectedSchema.properties).toBeDefined();
+    expect(parsed.expectedSchema.properties.name).toEqual({ type: "string" });
+    expect(parsed.expectedSchema.properties.count).toEqual({ type: "number" });
+    expect(parsed.expectedSchema.required).toEqual(["name"]);
   });
 
   it("passes validation and calls handler when args match Zod schema", async () => {

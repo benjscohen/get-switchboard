@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { filterToolsForUser, type ToolMeta, type RegisteredTool } from "./tool-filtering";
+import { zodToJsonSchema } from "./schema-utils";
 
 /**
  * Registers the `call_tool` meta-tool that lets discovery-mode users
@@ -86,13 +87,16 @@ export function registerCallTool(
         const result = await (inputSchema as z.ZodTypeAny).safeParseAsync(args.arguments ?? {});
         if (!result.success) {
           const schema = registeredTools[args.tool_name]?.inputSchema;
+          const issues = result.error.issues.map(
+            (i) => `${i.path.join(".") || "(root)"}: ${i.message}`
+          ).join("; ");
           return {
             isError: true,
             content: [{
               type: "text" as const,
               text: JSON.stringify({
-                error: `Invalid arguments for tool ${args.tool_name}: ${result.error.message}`,
-                expectedSchema: schema ?? null,
+                error: `Invalid arguments for tool ${args.tool_name}: ${issues}`,
+                expectedSchema: zodToJsonSchema(schema) ?? null,
               }),
             }],
           };
@@ -116,7 +120,7 @@ export function registerCallTool(
             type: "text" as const,
             text: JSON.stringify({
               error: err instanceof Error ? err.message : "Tool execution failed",
-              expectedSchema: schema ?? null,
+              expectedSchema: zodToJsonSchema(schema) ?? null,
             }),
           }],
         };
