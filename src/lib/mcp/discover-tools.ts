@@ -66,16 +66,11 @@ export function registerDiscoverTools(
           limit: args.limit ?? 10,
         });
 
-        // Strip bloat: only include fields useful for the caller
         const results = rawResults.map((r) => ({
-          score: r.score,
           name: r.entry.name,
           description: r.entry.description,
           integration: r.entry.integration,
-          integrationId: r.entry.integrationId,
-          category: r.entry.category,
-          action: r.entry.action,
-          risk: r.entry.risk,
+          inputSchema: registeredTools[r.entry.name]?.inputSchema ?? null,
         }));
 
         return {
@@ -86,7 +81,7 @@ export function registerDiscoverTools(
               query: args.query,
               results,
               total: results.length,
-              tip: "Use call_tool with the tool name and arguments to execute it, or call the tool directly by name. Refine your query for more specific results.",
+              tip: "Pass tool name and arguments to call_tool to execute. The inputSchema shows required parameters.",
             }, null, 2),
           }],
         };

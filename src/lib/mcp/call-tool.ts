@@ -81,13 +81,27 @@ export function registerCallTool(
       }
 
       // Call the tool handler with the same extra context (preserves auth)
-      const result = await Promise.resolve(
-        tool.inputSchema
-          ? (tool.handler as (a: Record<string, unknown>, e: unknown) => Promise<unknown>)(args.arguments ?? {}, extra)
-          : (tool.handler as (e: unknown) => Promise<unknown>)(extra)
-      );
+      try {
+        const result = await Promise.resolve(
+          tool.inputSchema
+            ? (tool.handler as (a: Record<string, unknown>, e: unknown) => Promise<unknown>)(args.arguments ?? {}, extra)
+            : (tool.handler as (e: unknown) => Promise<unknown>)(extra)
+        );
 
-      return result as { content: Array<{ type: "text"; text: string }>; isError?: boolean };
+        return result as { content: Array<{ type: "text"; text: string }>; isError?: boolean };
+      } catch (err) {
+        const schema = registeredTools[args.tool_name]?.inputSchema;
+        return {
+          isError: true,
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              error: err instanceof Error ? err.message : "Tool execution failed",
+              expectedSchema: schema ?? null,
+            }),
+          }],
+        };
+      }
     }
   );
 

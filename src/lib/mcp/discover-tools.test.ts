@@ -111,17 +111,12 @@ describe("registerDiscoverTools", () => {
     const parsed = JSON.parse((result as any).content[0].text);
     expect(parsed.mode).toBe("search");
     expect(parsed.query).toBe("list calendar events");
-    // Implementation flattens entry fields into top-level result objects
     expect(parsed.results).toEqual([
       {
-        score: 0.9,
         name: "google_calendar_list_events",
         description: "List events",
         integration: "Google Calendar",
-        integrationId: "google-calendar",
-        category: "calendar",
-        action: "list_events",
-        risk: "read",
+        inputSchema: { type: "object" },
       },
     ]);
     expect(parsed.total).toBe(1);

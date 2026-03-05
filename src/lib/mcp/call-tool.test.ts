@@ -189,4 +189,36 @@ describe("registerCallTool", () => {
     // The exact same extra object should be passed through
     expect(capturedExtra[0]).toBe(extra);
   });
+
+  it("returns error with expectedSchema when handler throws", async () => {
+    const server = createMockServer();
+    const toolMeta = makeToolMeta([
+      ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+    ]);
+    const registeredTools = makeRegisteredTools(["google_calendar_list_events"]);
+
+    server._registeredTools["google_calendar_list_events"] = {
+      name: "google_calendar_list_events",
+      description: "List events",
+      schema: {},
+      inputSchema: { type: "object" },
+      handler: vi.fn().mockRejectedValue(new Error("Invalid arguments: missing required field 'calendarId'")),
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerCallTool(server as any, toolMeta, registeredTools);
+
+    const handler = server._registeredTools["call_tool"].handler;
+    const result = await handler(
+      { tool_name: "google_calendar_list_events", arguments: {} },
+      makeExtra(),
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = result as any;
+    expect(res.isError).toBe(true);
+    const parsed = JSON.parse(res.content[0].text);
+    expect(parsed.error).toContain("missing required field");
+    expect(parsed.expectedSchema).toEqual({ type: "object" });
+  });
 });
