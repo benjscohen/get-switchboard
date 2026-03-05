@@ -32,13 +32,27 @@ export type IntegrationSummary = {
   name: string;
   category: string;
   toolCount: number;
-  tools: { name: string; description: string; risk: ToolRiskLevel }[];
+  tools: { name: string; description?: string; risk: ToolRiskLevel }[];
 };
 
 // ── Constants ──
 
 export const RELEVANCE_THRESHOLD = 0.3;
+export const KEYWORD_ONLY_THRESHOLD = 0.15;
 export const DEFAULT_LIMIT = 10;
+
+export const CATEGORY_SYNONYMS: Record<string, string[]> = {
+  support: ["CRM", "customer relationship", "helpdesk", "tickets", "customer support"],
+  tasks: ["todo", "work items", "project management", "backlog"],
+  messaging: ["chat", "instant message", "IM", "team communication"],
+  "project-management": ["kanban", "sprint", "agile", "stories", "issues"],
+  email: ["mail", "inbox", "correspondence"],
+  calendar: ["schedule", "meetings", "appointments", "availability"],
+  documents: ["docs", "word processing", "writing"],
+  spreadsheets: ["excel", "tables", "data"],
+  files: ["storage", "cloud storage", "file management"],
+  advertising: ["ads", "campaigns", "marketing", "PPC"],
+};
 
 export const CATEGORY_MAP: Record<string, string> = {
   "google-calendar": "calendar",
@@ -272,7 +286,7 @@ export function buildSearchText(
   const aliases = enrichment?.aliases
     ?? toolName.replace(/_/g, " ");
 
-  return [
+  const parts = [
     `Tool: ${toolName}`,
     `Integration: ${integrationName}`,
     `Category: ${category}`,
@@ -280,7 +294,14 @@ export function buildSearchText(
     `Description: ${description}`,
     `Use when: ${useWhen}`,
     `Also known as: ${aliases}`,
-  ].join("\n");
+  ];
+
+  const catSynonyms = CATEGORY_SYNONYMS[category];
+  if (catSynonyms) {
+    parts.push(`Related terms: ${catSynonyms.join(", ")}`);
+  }
+
+  return parts.join("\n");
 }
 
 // ── Index building ──
@@ -371,8 +392,8 @@ export function keywordSearch(query: string, index: ToolIndexEntry[]): ScoredRes
     // Also count how many query tokens matched (recall)
     const recall = queryTokens.length > 0 ? intersection / queryTokens.length : 0;
 
-    // Weighted combination
-    const score = jaccard * 0.4 + recall * 0.4 + nameBonus + namePartialBonus;
+    // Weighted combination: favor recall so short queries aren't penalized
+    const score = recall * 0.6 + jaccard * 0.2 + nameBonus + namePartialBonus;
 
     return { entry, score };
   }).filter((r) => r.score > 0);
@@ -432,17 +453,20 @@ export async function searchToolsWithEmbeddings(
     const normalizedQuery = query.toLowerCase().replace(/\s+/g, "_");
     const nameBonus = entry.name === normalizedQuery ? 0.3 : 0;
 
-    // Hybrid: 60% semantic + 30% keyword + 10% name bonus potential
+    // Hybrid: 70% semantic + 20% keyword + 10% name bonus potential
     // Fall back to keyword-only when no semantic scores available
     const score = hasSemantic
-      ? semantic * 0.6 + keyword * 0.3 + nameBonus
+      ? semantic * 0.7 + keyword * 0.2 + nameBonus
       : keyword + nameBonus;
 
     return { entry, score };
   });
 
+  // Use lower threshold for keyword-only mode (short queries get diluted scores)
+  const threshold = hasSemantic ? RELEVANCE_THRESHOLD : KEYWORD_ONLY_THRESHOLD;
+
   return results
-    .filter((r) => r.score >= RELEVANCE_THRESHOLD)
+    .filter((r) => r.score >= threshold)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 }
@@ -478,9 +502,17 @@ export function searchTools(
 
 export function browseIntegrations(
   fullIndex: ToolIndexEntry[],
-  visibleToolNames: Set<string>
+  visibleToolNames: Set<string>,
+  opts?: { integration?: string; category?: string }
 ): IntegrationSummary[] {
-  const visible = fullIndex.filter((e) => visibleToolNames.has(e.name));
+  let visible = fullIndex.filter((e) => visibleToolNames.has(e.name));
+
+  if (opts?.integration) {
+    visible = visible.filter((e) => e.integrationId === opts.integration);
+  }
+  if (opts?.category) {
+    visible = visible.filter((e) => e.category === opts.category);
+  }
 
   const groups = new Map<string, IntegrationSummary>();
 
@@ -499,7 +531,6 @@ export function browseIntegrations(
     group.toolCount++;
     group.tools.push({
       name: entry.name,
-      description: entry.description,
       risk: entry.risk,
     });
   }

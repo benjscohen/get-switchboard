@@ -59,12 +59,24 @@ export function registerDiscoverTools(
 
       if (args.query) {
         // Search mode
-        const results = await searchToolsWithEmbeddings(args.query, searchIndex, visibleToolNames, {
+        const rawResults = await searchToolsWithEmbeddings(args.query, searchIndex, visibleToolNames, {
           integration: args.integration,
           category: args.category,
           action: args.action,
           limit: args.limit ?? 10,
         });
+
+        // Strip bloat: only include fields useful for the caller
+        const results = rawResults.map((r) => ({
+          score: r.score,
+          name: r.entry.name,
+          description: r.entry.description,
+          integration: r.entry.integration,
+          integrationId: r.entry.integrationId,
+          category: r.entry.category,
+          action: r.entry.action,
+          risk: r.entry.risk,
+        }));
 
         return {
           content: [{
@@ -80,7 +92,10 @@ export function registerDiscoverTools(
         };
       } else {
         // Browse mode
-        const integrations = browseIntegrations(searchIndex, visibleToolNames);
+        const integrations = browseIntegrations(searchIndex, visibleToolNames, {
+          integration: args.integration,
+          category: args.category,
+        });
 
         return {
           content: [{
