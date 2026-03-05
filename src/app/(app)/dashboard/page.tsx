@@ -31,28 +31,7 @@ export default async function DashboardPage() {
     (connections ?? []).map((c) => c.integration_id)
   );
 
-  // Check which org-key-required integrations have keys configured
-  const orgKeyIntegrationIds = new Set(
-    allIntegrations.filter((i) => i.orgKeyRequired).map((i) => i.id)
-  );
-  const orgKeyConfiguredIds = new Set(
-    orgKeys
-      .filter((k) => orgKeyIntegrationIds.has(k.integration_id) && k.enabled)
-      .map((k) => k.integration_id)
-  );
-
-  const builtinIntegrations = allIntegrations
-    .filter((i) => !i.orgKeyRequired || orgKeyConfiguredIds.has(i.id))
-    .map((i) => ({
-    id: i.id,
-    name: i.name,
-    description: i.description,
-    icon: i.icon(),
-    toolCount: i.toolCount,
-    tools: i.tools.map((t) => ({ name: t.name, description: t.description })),
-    connected: connectedIds.has(i.id),
-    kind: "builtin" as const,
-  }));
+  // builtinIntegrations is built after Phase 2 (needs orgKeyConfiguredIds)
 
   // Load custom MCP servers filtered by org (global + org-specific)
   let customServersQuery = supabaseAdmin
@@ -93,6 +72,29 @@ export default async function DashboardPage() {
   ]);
 
   const orgKeys = orgKeysData ?? [];
+
+  // Filter out org-key-required integrations that haven't been configured
+  const orgKeyIntegrationIds = new Set(
+    allIntegrations.filter((i) => i.orgKeyRequired).map((i) => i.id)
+  );
+  const orgKeyConfiguredIds = new Set(
+    orgKeys
+      .filter((k) => orgKeyIntegrationIds.has(k.integration_id) && k.enabled)
+      .map((k) => k.integration_id)
+  );
+
+  const builtinIntegrations = allIntegrations
+    .filter((i) => !i.orgKeyRequired || orgKeyConfiguredIds.has(i.id))
+    .map((i) => ({
+      id: i.id,
+      name: i.name,
+      description: i.description,
+      icon: i.icon(),
+      toolCount: i.toolCount,
+      tools: i.tools.map((t) => ({ name: t.name, description: t.description })),
+      connected: connectedIds.has(i.id),
+      kind: "builtin" as const,
+    }));
 
   const initialKeys = (apiKeys ?? []).map((k) => ({
     id: k.id,
