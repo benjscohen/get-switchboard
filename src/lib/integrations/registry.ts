@@ -6,6 +6,7 @@ import { googleDriveIntegration } from "./google-drive";
 import { googleGmailIntegration } from "./google-gmail";
 import { googleSheetsIntegration } from "./google-sheets";
 import { googleSlidesIntegration } from "./google-slides";
+import { intercomIntegration } from "./intercom";
 
 const integrations: IntegrationConfig[] = [
   asanaIntegration,
@@ -15,6 +16,7 @@ const integrations: IntegrationConfig[] = [
   googleGmailIntegration,
   googleSheetsIntegration,
   googleSlidesIntegration,
+  intercomIntegration,
 ];
 
 export const integrationRegistry = new Map<string, IntegrationConfig>(

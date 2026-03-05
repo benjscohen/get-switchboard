@@ -151,8 +151,9 @@ export async function GET(req: NextRequest) {
   const tokens = await tokenRes.json();
 
   // Slack v2 nests user tokens under authed_user
+  // Slack v2 nests under authed_user; Intercom uses "token" field
   const accessToken: string | undefined =
-    tokens.access_token ?? tokens.authed_user?.access_token;
+    tokens.access_token ?? tokens.authed_user?.access_token ?? tokens.token;
   const refreshToken: string | undefined =
     tokens.refresh_token ?? tokens.authed_user?.refresh_token;
   const expiresIn: number | undefined =
