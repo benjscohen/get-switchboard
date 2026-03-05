@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -304,15 +304,64 @@ function IntegrationRow({
         </div>
       </div>
 
-      {expanded && (
-        <>
-          {integration.id === "google-gmail" && integration.connected && (
-            <GmailSenderSettings />
-          )}
-          <ToolGrid tools={integration.tools} />
-        </>
+      {integration.id === "google-gmail" && integration.connected && (
+        <GmailSenderSettings />
       )}
+
+      {expanded && <ToolGrid tools={integration.tools} />}
     </div>
+  );
+}
+
+/* ── Gmail Signature Preview (sandboxed iframe) ── */
+
+function SignaturePreview({ html }: { html: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+
+    doc.open();
+    doc.write(`<!DOCTYPE html>
+<html><head><style>
+  body { margin: 0; padding: 8px; font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #333; }
+  img { max-width: 100%; height: auto; }
+  a { color: #1a73e8; }
+</style></head><body>${html}</body></html>`);
+    doc.close();
+
+    // Auto-resize iframe to content height
+    const resize = () => {
+      if (iframe.contentDocument?.body) {
+        iframe.style.height = iframe.contentDocument.body.scrollHeight + "px";
+      }
+    };
+    // Resize after images load
+    const images = doc.querySelectorAll("img");
+    if (images.length > 0) {
+      let loaded = 0;
+      images.forEach((img) => {
+        if (img.complete) { loaded++; }
+        else { img.addEventListener("load", () => { loaded++; if (loaded === images.length) resize(); }); }
+      });
+      if (loaded === images.length) resize();
+    }
+    // Initial resize
+    requestAnimationFrame(resize);
+  }, [html]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      sandbox=""
+      className="w-full border border-border rounded-md bg-white"
+      style={{ minHeight: 40, maxHeight: 200, overflow: "hidden" }}
+      title="Gmail signature preview"
+    />
   );
 }
 
@@ -321,7 +370,7 @@ function IntegrationRow({
 function GmailSenderSettings() {
   const [senderName, setSenderName] = useState("");
   const [email, setEmail] = useState<string | null>(null);
-  const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
+  const [signatureHtml, setSignatureHtml] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -333,7 +382,7 @@ function GmailSenderSettings() {
         const data = await res.json();
         setSenderName(data.senderName ?? "");
         setEmail(data.email ?? null);
-        setSignaturePreview(data.signaturePreview ?? null);
+        setSignatureHtml(data.signatureHtml ?? null);
       }
     } finally {
       setLoading(false);
@@ -347,14 +396,16 @@ function GmailSenderSettings() {
   async function handleSave() {
     setSaving(true);
     setSaved(false);
-    await fetch("/api/integrations/gmail-settings", {
+    const res = await fetch("/api/integrations/gmail-settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ senderName }),
     });
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    if (res.ok) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
   }
 
   if (loading) {
@@ -390,12 +441,10 @@ function GmailSenderSettings() {
           {saving ? "Saving..." : saved ? "Saved" : "Save"}
         </Button>
       </div>
-      {signaturePreview && (
+      {signatureHtml && (
         <div>
           <p className="text-xs text-text-secondary mb-1">Gmail Signature (auto-appended)</p>
-          <pre className="text-xs text-text-tertiary bg-bg-card rounded-md p-2 whitespace-pre-wrap max-h-32 overflow-y-auto">
-            {signaturePreview}
-          </pre>
+          <SignaturePreview html={signatureHtml} />
         </div>
       )}
     </div>

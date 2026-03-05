@@ -70,12 +70,14 @@ export async function GET() {
       senderName: connection.sender_name,
       email: primary?.sendAsEmail ?? "",
       signaturePreview: signaturePreview || null,
+      signatureHtml: signatureHtml || null,
     });
   } catch {
     return NextResponse.json({
       senderName: connection.sender_name,
       email: null,
       signaturePreview: null,
+      signatureHtml: null,
     });
   }
 }
@@ -89,18 +91,21 @@ export async function PATCH(req: NextRequest) {
     typeof body.senderName === "string" ? body.senderName.trim() : null;
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("connections")
     .update({ sender_name: senderName || null })
     .eq("user_id", auth.userId)
-    .eq("integration_id", "google-gmail");
+    .eq("integration_id", "google-gmail")
+    .select("sender_name")
+    .single();
 
   if (error) {
+    console.error("Gmail settings PATCH error:", error);
     return NextResponse.json(
       { error: "Failed to update sender name" },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ senderName: senderName || null });
+  return NextResponse.json({ senderName: data?.sender_name ?? null });
 }
