@@ -7,7 +7,7 @@ export default async function SettingsUsersPage() {
   const auth = await getAuthProfile();
   if (!auth) redirect("/login");
 
-  if (auth.profile?.role !== "admin") redirect("/dashboard");
+  if (auth.profile?.role !== "admin") redirect("/mcp");
 
   const { data: users } = await supabaseAdmin.rpc("get_admin_users");
 

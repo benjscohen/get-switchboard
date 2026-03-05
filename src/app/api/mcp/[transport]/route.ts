@@ -78,7 +78,7 @@ function toolPreCheck(
   if (extra.authInfo?.extra?.keyExpired) {
     const dashboardUrl = process.env.APP_URL || "your dashboard";
     return {
-      content: [{ type: "text" as const, text: `Your API key has expired. Generate a new one at ${dashboardUrl}/dashboard` }],
+      content: [{ type: "text" as const, text: `Your API key has expired. Generate a new one at ${dashboardUrl}/mcp` }],
       isError: true,
     };
   }

@@ -387,7 +387,7 @@ Supabase Postgres with Row Level Security on all tables. 23 migration files.
 
 ### 1. Dashboard — Supabase Auth + Google OAuth
 
-Users sign in via Google OAuth through Supabase Auth. The OAuth callback at `/auth/callback` exchanges the code for a session. Middleware at `middleware.ts` refreshes cookies and protects `/dashboard` and `/admin` routes.
+Users sign in via Google OAuth through Supabase Auth. The OAuth callback at `/auth/callback` exchanges the code for a session. Middleware at `middleware.ts` refreshes cookies and protects `/mcp` and `/admin` routes.
 
 ### 2. Integration OAuth — Per-User Token Exchange
 

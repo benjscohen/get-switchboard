@@ -7,8 +7,8 @@ describe("GET /.well-known/oauth-authorization-server", () => {
     const body = await response.json();
 
     expect(body.issuer).toBe("https://www.get-switchboard.com");
-    expect(body.authorization_endpoint).toBe("https://www.get-switchboard.com/dashboard");
-    expect(body.token_endpoint).toBe("https://www.get-switchboard.com/dashboard");
+    expect(body.authorization_endpoint).toBe("https://www.get-switchboard.com/mcp");
+    expect(body.token_endpoint).toBe("https://www.get-switchboard.com/mcp");
     expect(body.code_challenge_methods_supported).toContain("S256");
   });
 

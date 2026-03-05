@@ -27,7 +27,7 @@ export default async function AppLayout({
       <header className="border-b border-border bg-bg/80 backdrop-blur-xl">
         <Container className="flex h-14 items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="flex items-center gap-2 text-lg font-bold">
+            <Link href="/mcp" className="flex items-center gap-2 text-lg font-bold">
               <svg
                 width="20"
                 height="20"
@@ -79,7 +79,7 @@ export default async function AppLayout({
               </span>
             )}
             <Link
-              href="/dashboard"
+              href="/mcp"
               className="text-sm text-text-secondary transition-colors hover:text-text-primary"
             >
               MCP

@@ -32,8 +32,8 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Protect /dashboard and /admin routes
-  if (!user && (pathname.startsWith("/dashboard") || pathname.startsWith("/admin") || pathname.startsWith("/settings"))) {
+  // Protect /mcp and /admin routes
+  if (!user && (pathname.startsWith("/mcp") || pathname.startsWith("/admin") || pathname.startsWith("/settings"))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
@@ -42,7 +42,7 @@ export async function middleware(request: NextRequest) {
   // Redirect logged-in users away from /login
   if (user && pathname === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = "/mcp";
     return NextResponse.redirect(url);
   }
 
