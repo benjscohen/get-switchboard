@@ -29,6 +29,7 @@ function chainMock(resolvedValue: unknown = { data: null, error: null }) {
     update: vi.fn(() => chain),
     delete: vi.fn(() => chain),
     eq: vi.fn(() => chain),
+    is: vi.fn(() => chain),
     order: vi.fn(() => chain),
     single: vi.fn(() => Promise.resolve(resolvedValue)),
     then: (resolve: (v: unknown) => void) =>

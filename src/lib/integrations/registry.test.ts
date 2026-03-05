@@ -29,8 +29,12 @@ describe("allIntegrations", () => {
     expect(allIntegrations.some((i) => i.id === "google-calendar")).toBe(true);
   });
 
-  it("has length 6", () => {
-    expect(allIntegrations).toHaveLength(6);
+  it("has length 7", () => {
+    expect(allIntegrations).toHaveLength(7);
+  });
+
+  it("is an array containing google-drive", () => {
+    expect(allIntegrations.some((i) => i.id === "google-drive")).toBe(true);
   });
 
   it("is an array containing asana", () => {

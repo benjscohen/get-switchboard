@@ -18,6 +18,43 @@ vi.mock("@/lib/rate-limit", () => ({
   checkRateLimit: vi.fn(() => ({ allowed: true })),
 }));
 
+vi.mock("@/lib/supabase/admin", () => ({
+  supabaseAdmin: {
+    from: vi.fn(() => ({
+      select: vi.fn().mockReturnThis(),
+      insert: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: null, error: null }),
+    })),
+  },
+}));
+
+vi.mock("@/lib/oauth-pkce", () => ({
+  generatePkce: vi.fn().mockResolvedValue({
+    codeVerifier: "test-verifier",
+    codeChallenge: "test-challenge",
+  }),
+  getOrRegisterClient: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("@/lib/integrations/proxy-registry", () => ({
+  proxyIntegrationRegistry: new Map(),
+}));
+
+vi.mock("@/lib/oauth-state", () => ({
+  OAUTH_STATE_COOKIE: "oauth_state",
+  OAUTH_COOKIE_OPTIONS: {
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 600,
+    path: "/",
+  },
+}));
+
+vi.mock("@/lib/app-url", () => ({
+  getAppOrigin: vi.fn().mockReturnValue("http://localhost:3000"),
+}));
+
 vi.mock("@/lib/integrations/registry", () => ({
   integrationRegistry: new Map(),
 }));

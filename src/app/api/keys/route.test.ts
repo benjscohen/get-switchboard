@@ -128,7 +128,7 @@ describe("GET /api/keys", () => {
     expect(res.status).toBe(200);
     expect(json).toHaveLength(1);
     expect(json[0].id).toBe("key-1");
-    expect(json[0].createdBy).toBe("Test User");
+    expect(json[0].scope).toBe("full");
   });
 });
 
@@ -165,6 +165,7 @@ describe("POST /api/keys", () => {
       key: "sk_live_testkey123",
       prefix: "sk_live_test",
       name: "Test",
+      scope: "full",
     });
   });
 
