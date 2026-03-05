@@ -317,49 +317,37 @@ function IntegrationRow({
 
 function SignaturePreview({ html }: { html: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(60);
+
+  const srcdoc = `<!DOCTYPE html>
+<html><head><style>
+  body { margin: 0; padding: 8px; font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #333; overflow: hidden; }
+  img { max-width: 100%; height: auto; }
+  a { color: #1a73e8; pointer-events: none; }
+</style></head><body>${html}</body></html>`;
 
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
 
-    const doc = iframe.contentDocument;
-    if (!doc) return;
-
-    doc.open();
-    doc.write(`<!DOCTYPE html>
-<html><head><style>
-  body { margin: 0; padding: 8px; font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #333; }
-  img { max-width: 100%; height: auto; }
-  a { color: #1a73e8; }
-</style></head><body>${html}</body></html>`);
-    doc.close();
-
-    // Auto-resize iframe to content height
     const resize = () => {
-      if (iframe.contentDocument?.body) {
-        iframe.style.height = iframe.contentDocument.body.scrollHeight + "px";
-      }
+      try {
+        const h = iframe.contentDocument?.body?.scrollHeight;
+        if (h && h > 0) setHeight(h);
+      } catch { /* cross-origin fallback */ }
     };
-    // Resize after images load
-    const images = doc.querySelectorAll("img");
-    if (images.length > 0) {
-      let loaded = 0;
-      images.forEach((img) => {
-        if (img.complete) { loaded++; }
-        else { img.addEventListener("load", () => { loaded++; if (loaded === images.length) resize(); }); }
-      });
-      if (loaded === images.length) resize();
-    }
-    // Initial resize
-    requestAnimationFrame(resize);
+
+    iframe.addEventListener("load", resize);
+    return () => iframe.removeEventListener("load", resize);
   }, [html]);
 
   return (
     <iframe
       ref={iframeRef}
-      sandbox=""
+      srcDoc={srcdoc}
+      sandbox="allow-same-origin"
       className="w-full border border-border rounded-md bg-white"
-      style={{ minHeight: 40, maxHeight: 200, overflow: "hidden" }}
+      style={{ height: Math.min(height, 300), overflow: "hidden" }}
       title="Gmail signature preview"
     />
   );
