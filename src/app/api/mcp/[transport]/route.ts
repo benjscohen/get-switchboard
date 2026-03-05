@@ -86,9 +86,9 @@ customToolsPromise.then((tools) => {
 // Load proxy tools from DB at module init
 const proxyToolsPromise = loadProxyTools().catch((err) => {
   console.error("[MCP] proxy tools load error:", err);
-  return { tools: [] as ProxyTool[], fromFallback: true };
+  return { tools: [] as ProxyTool[], fallbackIntegrationIds: new Set(allProxyIntegrations.map(p => p.id)) };
 });
-let resolvedProxyTools: { tools: ProxyTool[]; fromFallback: boolean } | null = null;
+let resolvedProxyTools: { tools: ProxyTool[]; fallbackIntegrationIds: Set<string> } | null = null;
 let proxyDiscoveryCooldownUntil: number | null = null;
 const discoveredIntegrations = new Set<string>();
 proxyToolsPromise.then((r) => {
@@ -319,6 +319,13 @@ function registerSkills(server: McpServer) {
 
     return { prompts };
   });
+
+  // Mark skill tools as platform tools (always visible, no connection required)
+  toolMeta.set("list_skills", { integrationId: "platform", orgId: null });
+  toolMeta.set("get_skill", { integrationId: "platform", orgId: null });
+  toolMeta.set("create_skill", { integrationId: "platform", orgId: null });
+  toolMeta.set("update_skill", { integrationId: "platform", orgId: null });
+  toolMeta.set("delete_skill", { integrationId: "platform", orgId: null });
 }
 
 function registerTools(server: McpServer) {
@@ -360,6 +367,7 @@ function registerTools(server: McpServer) {
       return { content: [{ type: "text" as const, text: "Feedback received — thank you." }] };
     }
   );
+  toolMeta.set("submit_feedback", { integrationId: "platform", orgId: null });
 
   // Register builtin integration tools
   for (const integration of allIntegrations) {
@@ -997,7 +1005,7 @@ function registerTools(server: McpServer) {
         }
 
         // Trigger on-demand schema discovery for integrations still using fallback schemas
-        if (resolvedProxyTools?.fromFallback && !discoveredIntegrations.has(proxy.id)) {
+        if (resolvedProxyTools?.fallbackIntegrationIds.has(proxy.id) && !discoveredIntegrations.has(proxy.id)) {
           discoveredIntegrations.add(proxy.id);
           discoverAndCacheProxyTools(proxy.id, proxy.serverUrl, bearerToken)
             .then(() => loadProxyTools().then((r) => { resolvedProxyTools = r; }))
@@ -1102,7 +1110,7 @@ async function mcpHandler(req: Request): Promise<Response> {
   // Auto-discover proxy tools if we're using fallback (DB is empty)
   // Skip OAuth-based integrations (they require per-user tokens for tools/list)
   // Use cooldown to prevent re-triggering on every request
-  if (resolvedProxyTools.fromFallback && !proxyDiscoveryCooldownUntil) {
+  if (resolvedProxyTools.fallbackIntegrationIds.size > 0 && !proxyDiscoveryCooldownUntil) {
     proxyDiscoveryCooldownUntil = Date.now() + 5 * 60 * 1000; // 5 min cooldown
     for (const proxy of allProxyIntegrations) {
       // OAuth integrations can't discover without user tokens — skip them

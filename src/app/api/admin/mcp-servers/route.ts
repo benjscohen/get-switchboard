@@ -99,36 +99,44 @@ export async function POST(req: NextRequest) {
   }
 
   // Discover tools from the remote server
+  // For per_user key mode, skip discovery — no key available yet
   let tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }> = [];
-  try {
-    tools = await discoverTools(serverUrl, sharedApiKey);
+  if (resolvedKeyMode === "per_user") {
+    await supabaseAdmin
+      .from("custom_mcp_servers")
+      .update({ status: "active" })
+      .eq("id", server.id);
+  } else {
+    try {
+      tools = await discoverTools(serverUrl, sharedApiKey);
 
-    if (tools.length > 0) {
-      await supabaseAdmin.from("custom_mcp_tools").insert(
-        tools.map((t) => ({
-          server_id: server.id,
-          tool_name: t.name,
-          description: t.description,
-          input_schema: t.inputSchema,
-          enabled: false,
-        }))
-      );
+      if (tools.length > 0) {
+        await supabaseAdmin.from("custom_mcp_tools").insert(
+          tools.map((t) => ({
+            server_id: server.id,
+            tool_name: t.name,
+            description: t.description,
+            input_schema: t.inputSchema,
+            enabled: false,
+          }))
+        );
+      }
+
+      await supabaseAdmin
+        .from("custom_mcp_servers")
+        .update({
+          last_discovered_at: new Date().toISOString(),
+          status: "active",
+          last_error: null,
+        })
+        .eq("id", server.id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Discovery failed";
+      await supabaseAdmin
+        .from("custom_mcp_servers")
+        .update({ status: "error", last_error: message })
+        .eq("id", server.id);
     }
-
-    await supabaseAdmin
-      .from("custom_mcp_servers")
-      .update({
-        last_discovered_at: new Date().toISOString(),
-        status: "active",
-        last_error: null,
-      })
-      .eq("id", server.id);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Discovery failed";
-    await supabaseAdmin
-      .from("custom_mcp_servers")
-      .update({ status: "error", last_error: message })
-      .eq("id", server.id);
   }
 
   return NextResponse.json({

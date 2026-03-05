@@ -155,6 +155,9 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   create_skill: "write",
   update_skill: "write",
   delete_skill: "destructive",
+
+  // ── Platform tools ──
+  submit_feedback: "write",
 };
 
 // Pattern-based heuristic for tools not in the static map.

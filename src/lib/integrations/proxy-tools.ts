@@ -11,40 +11,43 @@ export type ProxyTool = {
 
 /**
  * Load proxy integration tools from DB, falling back to hardcoded
- * config tools if no DB rows exist yet.
+ * config tools for integrations that have no DB rows yet.
  */
 export async function loadProxyTools(): Promise<{
   tools: ProxyTool[];
-  fromFallback: boolean;
+  fallbackIntegrationIds: Set<string>;
 }> {
   const { data } = await supabaseAdmin
     .from("proxy_integration_tools")
     .select("integration_id, tool_name, description, input_schema")
     .eq("enabled", true);
 
-  if (data && data.length > 0) {
-    return {
-      tools: data.map((row) => ({
-        integrationId: row.integration_id,
-        name: row.tool_name,
-        description: row.description,
-        inputSchema: row.input_schema as Record<string, unknown>,
-      })),
-      fromFallback: false,
-    };
-  }
+  const dbTools = (data ?? []).map((row) => ({
+    integrationId: row.integration_id,
+    name: row.tool_name,
+    description: row.description,
+    inputSchema: row.input_schema as Record<string, unknown>,
+  }));
 
-  // Fallback: use hardcoded tools from config (pre-discovery)
-  const fallbackTools = allProxyIntegrations.flatMap((proxy) =>
-    (proxy.fallbackTools ?? []).map((t) => ({
+  const dbIntegrationIds = new Set(dbTools.map((t) => t.integrationId));
+  const fallbackIntegrationIds = new Set<string>();
+
+  // Add fallback tools for integrations not yet in DB
+  const fallbackTools = allProxyIntegrations.flatMap((proxy) => {
+    if (dbIntegrationIds.has(proxy.id)) return [];
+    fallbackIntegrationIds.add(proxy.id);
+    return (proxy.fallbackTools ?? []).map((t) => ({
       integrationId: proxy.id,
       name: t.name,
       description: t.description,
       inputSchema: t.inputSchema,
-    }))
-  );
+    }));
+  });
 
-  return { tools: fallbackTools, fromFallback: true };
+  return {
+    tools: [...dbTools, ...fallbackTools],
+    fallbackIntegrationIds,
+  };
 }
 
 /**

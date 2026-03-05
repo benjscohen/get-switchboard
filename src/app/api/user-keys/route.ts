@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAuth } from "@/lib/api-auth";
 import { encrypt } from "@/lib/encryption";
+import { discoverTools } from "@/lib/mcp/proxy-client";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 
 export async function PUT(req: NextRequest) {
@@ -25,7 +26,7 @@ export async function PUT(req: NextRequest) {
     // Verify server exists and is accessible (global or user's org)
     const { data: server } = await supabaseAdmin
       .from("custom_mcp_servers")
-      .select("id")
+      .select("id, server_url")
       .eq("id", targetId)
       .eq("status", "active")
       .or(`organization_id.is.null,organization_id.eq.${auth.organizationId}`)
@@ -51,6 +52,42 @@ export async function PUT(req: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // If no tools discovered yet, trigger discovery with the just-saved key
+    const { count } = await supabaseAdmin
+      .from("custom_mcp_tools")
+      .select("id", { count: "exact", head: true })
+      .eq("server_id", targetId);
+
+    if (count === 0) {
+      try {
+        const tools = await discoverTools(server.server_url, apiKey);
+
+        if (tools.length > 0) {
+          await supabaseAdmin.from("custom_mcp_tools").insert(
+            tools.map((t) => ({
+              server_id: targetId,
+              tool_name: t.name,
+              description: t.description,
+              input_schema: t.inputSchema,
+              enabled: true,
+            }))
+          );
+        }
+
+        await supabaseAdmin
+          .from("custom_mcp_servers")
+          .update({
+            last_discovered_at: new Date().toISOString(),
+            last_error: null,
+          })
+          .eq("id", targetId);
+
+        return NextResponse.json({ ok: true, discoveredTools: tools.length });
+      } catch {
+        // Discovery failed but key was saved successfully — don't fail the request
+      }
     }
   } else if (type === "proxy") {
     // Validate integration exists and is per_user

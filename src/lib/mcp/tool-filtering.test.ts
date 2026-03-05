@@ -375,6 +375,75 @@ describe("filterToolsForUser", () => {
     });
   });
 
+  describe("platform tools", () => {
+    const platformTools: Array<[string, Partial<RegisteredTool>]> = [
+      ["list_skills", { description: "List skills" }],
+      ["submit_feedback", { description: "Submit feedback" }],
+    ];
+
+    const platformMeta: Array<[string, ToolMeta]> = [
+      ["list_skills", { integrationId: "platform", orgId: null }],
+      ["submit_feedback", { integrationId: "platform", orgId: null }],
+    ];
+
+    function allToolsWithPlatform() {
+      return buildRegisteredTools([...builtinTools, ...customTools, ...platformTools]);
+    }
+
+    function allMetaWithPlatform() {
+      return new Map<string, ToolMeta>([...builtinMeta, ...customMeta, ...platformMeta]);
+    }
+
+    it("platform tools always appear regardless of connections", () => {
+      const ctx: FilterContext = {
+        connections: [],
+        organizationId: ORG_A,
+      };
+      const result = filterToolsForUser(allToolsWithPlatform(), allMetaWithPlatform(), ctx);
+      const names = toolNames(result);
+
+      expect(names).toContain("list_skills");
+      expect(names).toContain("submit_feedback");
+    });
+
+    it("platform tools appear even with empty context", () => {
+      const ctx: FilterContext = {};
+      const result = filterToolsForUser(allToolsWithPlatform(), allMetaWithPlatform(), ctx);
+      const names = toolNames(result);
+
+      expect(names).toContain("list_skills");
+      expect(names).toContain("submit_feedback");
+    });
+
+    it("platform tools are excluded when disabled", () => {
+      const tools = buildRegisteredTools([
+        ["list_skills", { enabled: false }],
+        ["submit_feedback", { enabled: true }],
+      ]);
+      const meta = new Map<string, ToolMeta>([...platformMeta]);
+      const ctx: FilterContext = {};
+      const result = filterToolsForUser(tools, meta, ctx);
+      const names = toolNames(result);
+
+      expect(names).not.toContain("list_skills");
+      expect(names).toContain("submit_feedback");
+    });
+
+    it("platform tools are visible across different orgs", () => {
+      for (const orgId of [ORG_A, ORG_B, undefined]) {
+        const ctx: FilterContext = {
+          connections: [],
+          organizationId: orgId,
+        };
+        const result = filterToolsForUser(allToolsWithPlatform(), allMetaWithPlatform(), ctx);
+        const names = toolNames(result);
+
+        expect(names).toContain("list_skills");
+        expect(names).toContain("submit_feedback");
+      }
+    });
+  });
+
   describe("combined filtering scenarios", () => {
     it("user with one connection in a non-matching org sees only global custom tools + connected builtin", () => {
       const ctx: FilterContext = {

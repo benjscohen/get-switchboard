@@ -28,14 +28,19 @@ export function UserKeyForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    await fetch("/api/user-keys", {
+    const res = await fetch("/api/user-keys", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type, targetId, apiKey }),
     });
+    const data = await res.json();
     setSaving(false);
     setApiKey("");
-    onSaved();
+    if (data.discoveredTools > 0) {
+      window.location.reload();
+    } else {
+      onSaved();
+    }
   }
 
   return (

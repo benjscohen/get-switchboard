@@ -15,7 +15,7 @@ export async function POST(
 
   const { data: server } = await supabaseAdmin
     .from("custom_mcp_servers")
-    .select("id, server_url, shared_api_key")
+    .select("id, server_url, shared_api_key, key_mode")
     .eq("id", id)
     .single();
 
@@ -23,7 +23,26 @@ export async function POST(
     return NextResponse.json({ error: "Server not found" }, { status: 404 });
   }
 
-  const apiKey = server.shared_api_key ? decrypt(server.shared_api_key) : undefined;
+  let apiKey: string | undefined;
+  if (server.shared_api_key) {
+    apiKey = decrypt(server.shared_api_key);
+  } else if (server.key_mode === "per_user") {
+    // For per_user servers, try the admin's own personal key
+    const { data: userKey } = await supabaseAdmin
+      .from("custom_mcp_user_keys")
+      .select("api_key")
+      .eq("user_id", auth.userId)
+      .eq("server_id", id)
+      .single();
+
+    if (!userKey) {
+      return NextResponse.json(
+        { error: "Add your personal API key first (via dashboard) before refreshing tools" },
+        { status: 400 }
+      );
+    }
+    apiKey = decrypt(userKey.api_key);
+  }
 
   try {
     const tools = await discoverTools(server.server_url, apiKey);

@@ -40,6 +40,9 @@ export function filterToolsForUser(
       const meta = toolMeta.get(name);
       if (!meta) return false;
 
+      // Platform tools are always visible (no connection required)
+      if (meta.integrationId === "platform") return true;
+
       // Native proxy tools: require key or OAuth connection based on config
       if (meta.integrationId.startsWith("proxy:")) {
         const proxyId = meta.integrationId.replace("proxy:", "");
