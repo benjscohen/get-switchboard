@@ -80,6 +80,25 @@ export function registerCallTool(
         };
       }
 
+      // Pre-validate arguments against the tool's Zod schema
+      const inputSchema = tool.inputSchema;
+      if (inputSchema && typeof (inputSchema as z.ZodTypeAny).safeParseAsync === "function") {
+        const result = await (inputSchema as z.ZodTypeAny).safeParseAsync(args.arguments ?? {});
+        if (!result.success) {
+          const schema = registeredTools[args.tool_name]?.inputSchema;
+          return {
+            isError: true,
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({
+                error: `Invalid arguments for tool ${args.tool_name}: ${result.error.message}`,
+                expectedSchema: schema ?? null,
+              }),
+            }],
+          };
+        }
+      }
+
       // Call the tool handler with the same extra context (preserves auth)
       try {
         const result = await Promise.resolve(

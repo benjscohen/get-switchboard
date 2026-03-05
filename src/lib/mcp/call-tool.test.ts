@@ -5,6 +5,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   supabaseAdmin: {},
 }));
 
+import { z } from "zod";
 import { registerCallTool } from "./call-tool";
 import type { ToolMeta, RegisteredTool } from "./tool-filtering";
 
@@ -220,5 +221,75 @@ describe("registerCallTool", () => {
     const parsed = JSON.parse(res.content[0].text);
     expect(parsed.error).toContain("missing required field");
     expect(parsed.expectedSchema).toEqual({ type: "object" });
+  });
+
+  it("returns validation error with expectedSchema when args fail Zod schema", async () => {
+    const server = createMockServer();
+    const toolMeta = makeToolMeta([
+      ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+    ]);
+    const registeredTools = makeRegisteredTools(["google_calendar_list_events"]);
+
+    const zodSchema = z.object({ calendarId: z.string() });
+    server._registeredTools["google_calendar_list_events"] = {
+      name: "google_calendar_list_events",
+      description: "List events",
+      schema: {},
+      inputSchema: zodSchema,
+      handler: vi.fn().mockResolvedValue({
+        content: [{ type: "text", text: "should not reach" }],
+      }),
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerCallTool(server as any, toolMeta, registeredTools);
+
+    const handler = server._registeredTools["call_tool"].handler;
+    const result = await handler(
+      { tool_name: "google_calendar_list_events", arguments: {} },
+      makeExtra(),
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = result as any;
+    expect(res.isError).toBe(true);
+    const parsed = JSON.parse(res.content[0].text);
+    expect(parsed.error).toContain("Invalid arguments for tool google_calendar_list_events");
+    expect(parsed.expectedSchema).toEqual({ type: "object" });
+    // Handler should NOT have been called
+    expect(server._registeredTools["google_calendar_list_events"].handler).not.toHaveBeenCalled();
+  });
+
+  it("passes validation and calls handler when args match Zod schema", async () => {
+    const server = createMockServer();
+    const toolMeta = makeToolMeta([
+      ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+    ]);
+    const registeredTools = makeRegisteredTools(["google_calendar_list_events"]);
+
+    const zodSchema = z.object({ calendarId: z.string() });
+    server._registeredTools["google_calendar_list_events"] = {
+      name: "google_calendar_list_events",
+      description: "List events",
+      schema: {},
+      inputSchema: zodSchema,
+      handler: vi.fn().mockResolvedValue({
+        content: [{ type: "text", text: "events list" }],
+      }),
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerCallTool(server as any, toolMeta, registeredTools);
+
+    const handler = server._registeredTools["call_tool"].handler;
+    const result = await handler(
+      { tool_name: "google_calendar_list_events", arguments: { calendarId: "primary" } },
+      makeExtra(),
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = result as any;
+    expect(res.isError).toBeUndefined();
+    expect(res.content[0].text).toBe("events list");
   });
 });
