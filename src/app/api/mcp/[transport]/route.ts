@@ -759,10 +759,12 @@ function registerTools(server: McpServer) {
 
     const integrationId = `proxy:${tool.integrationId}`;
     toolMeta.set(tool.name, { integrationId, orgId: null, keyMode: proxy.keyMode, proxyOAuth: !!proxy.oauth });
-    server.tool(
+    server.registerTool(
       tool.name,
-      tool.description,
-      tool.inputSchema,
+      {
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      },
       async (args, extra) => {
         const expiredResult = checkKeyExpired(extra);
         if (expiredResult) return expiredResult;
