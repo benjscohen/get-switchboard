@@ -2,6 +2,7 @@ const APP_URL = process.env.APP_URL || "https://www.get-switchboard.com";
 
 const metadata = {
   issuer: APP_URL,
+  authorization_endpoint: `${APP_URL}/dashboard`,
   token_endpoint: `${APP_URL}/dashboard`,
   grant_types_supported: [],
   response_types_supported: [],
