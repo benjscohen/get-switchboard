@@ -86,7 +86,7 @@ export function registerDiscoverTools(
               query: args.query,
               results,
               total: results.length,
-              tip: "Use the tool name directly to call it. Refine your query for more specific results.",
+              tip: "Use call_tool with the tool name and arguments to execute it, or call the tool directly by name. Refine your query for more specific results.",
             }, null, 2),
           }],
         };

@@ -28,6 +28,7 @@ import {
 import { registerAdminTools } from "@/lib/mcp/admin-tools";
 import { registerVaultTools } from "@/lib/mcp/vault-tools";
 import { registerDiscoverTools } from "@/lib/mcp/discover-tools";
+import { registerCallTool } from "@/lib/mcp/call-tool";
 import { buildToolIndex, ensureToolEmbeddings, type ToolIndexEntry } from "@/lib/mcp/tool-search";
 import {
   createSkill,
@@ -760,8 +761,9 @@ function registerTools(server: McpServer) {
     annotations?: unknown;
   }> })._registeredTools;
 
-  // Register discover_tools (needs registeredTools reference)
+  // Register discover_tools and call_tool (needs registeredTools reference)
   registerDiscoverTools(server, toolMeta, searchIndex, registeredTools);
+  registerCallTool(server, toolMeta, registeredTools);
 
   server.server.setRequestHandler(ListToolsRequestSchema, (_request, extra) => {
     const tools = filterToolsForUser(registeredTools, toolMeta, {
