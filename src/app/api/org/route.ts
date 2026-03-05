@@ -6,26 +6,27 @@ export async function GET() {
   const auth = await requireAuth();
   if (!auth.authenticated) return auth.response;
 
-  const { data: org } = await supabaseAdmin
-    .from("organizations")
-    .select("id, name, slug, is_personal, created_at")
-    .eq("id", auth.organizationId)
-    .single();
+  const [{ data: org }, { count: memberCount }, { data: domains }] =
+    await Promise.all([
+      supabaseAdmin
+        .from("organizations")
+        .select("id, name, slug, is_personal, created_at")
+        .eq("id", auth.organizationId)
+        .single(),
+      supabaseAdmin
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", auth.organizationId),
+      supabaseAdmin
+        .from("organization_domains")
+        .select("id, domain, is_primary, created_at")
+        .eq("organization_id", auth.organizationId)
+        .order("is_primary", { ascending: false }),
+    ]);
 
   if (!org) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 });
   }
-
-  const { count: memberCount } = await supabaseAdmin
-    .from("profiles")
-    .select("id", { count: "exact", head: true })
-    .eq("organization_id", auth.organizationId);
-
-  const { data: domains } = await supabaseAdmin
-    .from("organization_domains")
-    .select("id, domain, is_primary, created_at")
-    .eq("organization_id", auth.organizationId)
-    .order("is_primary", { ascending: false });
 
   return NextResponse.json({
     id: org.id,

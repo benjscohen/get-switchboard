@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthProfile } from "@/lib/auth-cache";
 import { Container } from "@/components/ui/container";
 import { UserMenu } from "@/components/app/user-menu";
 
@@ -9,17 +9,10 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const auth = await getAuthProfile();
+  if (!auth) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, name, image, organization_id, org_role, organizations(name, slug, is_personal)")
-    .eq("id", user.id)
-    .single();
+  const { user, profile } = auth;
 
   const displayName = profile?.name ?? user.user_metadata?.full_name ?? user.email ?? "";
   const avatarUrl = profile?.image ?? user.user_metadata?.avatar_url ?? null;

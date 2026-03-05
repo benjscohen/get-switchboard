@@ -8,22 +8,22 @@ export async function GET() {
   const auth = await requireOrgAdmin();
   if (!auth.authenticated) return auth.response;
 
-  const { data: orgKeys } = await supabaseAdmin
-    .from("integration_org_keys")
-    .select("integration_id, enabled")
-    .eq("organization_id", auth.organizationId);
+  const orgOnlyIntegrations = allProxyIntegrations.filter((i) => i.keyMode === "org");
+
+  const [{ data: orgKeys }, { data: dbTools }] = await Promise.all([
+    supabaseAdmin
+      .from("integration_org_keys")
+      .select("integration_id, enabled")
+      .eq("organization_id", auth.organizationId),
+    supabaseAdmin
+      .from("proxy_integration_tools")
+      .select("integration_id")
+      .eq("enabled", true),
+  ]);
 
   const keyMap = new Map(
     (orgKeys ?? []).map((k) => [k.integration_id, k.enabled])
   );
-
-  const orgOnlyIntegrations = allProxyIntegrations.filter((i) => i.keyMode === "org");
-
-  // Load tool counts from DB
-  const { data: dbTools } = await supabaseAdmin
-    .from("proxy_integration_tools")
-    .select("integration_id")
-    .eq("enabled", true);
 
   const dbToolCounts = new Map<string, number>();
   for (const t of dbTools ?? []) {

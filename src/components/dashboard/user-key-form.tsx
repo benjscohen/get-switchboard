@@ -1,7 +1,58 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
+
+function SimpleMarkdown({ text }: { text: string }) {
+  const elements = useMemo(() => {
+    // Split by markdown link pattern, bold, and italic
+    const parts: React.ReactNode[] = [];
+    // Process the text segment by segment
+    const regex = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)|\*\*(.+?)\*\*|\*(.+?)\*/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let key = 0;
+
+    while ((match = regex.exec(text)) !== null) {
+      // Add text before this match
+      if (match.index > lastIndex) {
+        parts.push(text.slice(lastIndex, match.index));
+      }
+
+      if (match[1] && match[2]) {
+        // Link: [text](url)
+        parts.push(
+          <a
+            key={key++}
+            href={match[2]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent underline hover:text-accent/80"
+          >
+            {match[1]}
+          </a>
+        );
+      } else if (match[3]) {
+        // Bold: **text**
+        parts.push(<strong key={key++}>{match[3]}</strong>);
+      } else if (match[4]) {
+        // Italic: *text*
+        parts.push(<em key={key++}>{match[4]}</em>);
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+
+    return parts;
+  }, [text]);
+
+  return <>{elements}</>;
+}
 
 interface UserKeyFormProps {
   type: "custom-mcp" | "proxy";
@@ -47,7 +98,11 @@ export function UserKeyForm({
     <div className="mt-3 border-t border-border pt-3">
       {instructions && (
         <p className="text-sm text-text-secondary mb-3 whitespace-pre-line">
-          {instructions}
+          {typeof instructions === "string" ? (
+            <SimpleMarkdown text={instructions} />
+          ) : (
+            instructions
+          )}
         </p>
       )}
       <form onSubmit={handleSubmit} className="flex items-center gap-2">

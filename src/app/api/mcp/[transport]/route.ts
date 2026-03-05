@@ -49,8 +49,27 @@ function checkToolRateLimit(userId: string, toolName: string) {
   );
 }
 
-// Check if the API key is expired and return a helpful MCP error
-function checkKeyExpired(extra: { authInfo?: { extra?: Record<string, unknown> } }) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type McpResult = { content: any[]; isError?: boolean; [key: string]: unknown };
+type McpErrorResult = { content: Array<{ type: "text"; text: string }>; isError: true };
+
+type PreCheckSuccess = {
+  userId: string;
+  apiKeyId: string | undefined;
+  organizationId: string | undefined;
+  startTime: number;
+};
+
+/**
+ * Shared pre-execution checks for all tool types.
+ * Returns userId + context on success, or an MCP error result on failure.
+ */
+function toolPreCheck(
+  toolName: string,
+  integrationId: string,
+  extra: { authInfo?: { extra?: Record<string, unknown> } },
+): PreCheckSuccess | McpErrorResult {
+  // Key expiry
   if (extra.authInfo?.extra?.keyExpired) {
     const dashboardUrl = process.env.APP_URL || "your dashboard";
     return {
@@ -58,7 +77,86 @@ function checkKeyExpired(extra: { authInfo?: { extra?: Record<string, unknown> }
       isError: true,
     };
   }
-  return null;
+
+  const userId = extra.authInfo?.extra?.userId as string | undefined;
+  const apiKeyId = extra.authInfo?.extra?.apiKeyId as string | undefined;
+  const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
+  const risk = getToolRisk(toolName);
+
+  if (!userId) {
+    logUsage({ userId: "unknown", apiKeyId, toolName, integrationId, status: "unauthorized", organizationId, riskLevel: risk });
+    return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+  }
+
+  // Permissions check
+  const permissionsMode = extra.authInfo?.extra?.permissionsMode as string | undefined;
+  const integrationAccess = extra.authInfo?.extra?.integrationAccess as
+    | Array<{ integrationId: string; allowedTools: string[] }>
+    | undefined;
+
+  if (permissionsMode && integrationAccess && !isToolAllowed(permissionsMode, integrationAccess, integrationId, toolName)) {
+    logUsage({ userId, apiKeyId, toolName, integrationId, status: "unauthorized", errorMessage: "Tool not available", organizationId, riskLevel: risk });
+    return { content: [{ type: "text" as const, text: "Tool not available" }], isError: true };
+  }
+
+  // API key scope check
+  const apiKeyScope = extra.authInfo?.extra?.apiKeyScope as string | undefined;
+  if (apiKeyScope && apiKeyScope !== "full" && !isRiskAllowedByScope(risk, apiKeyScope)) {
+    logUsage({ userId, apiKeyId, toolName, integrationId, status: "unauthorized", errorMessage: "Tool not available for this API key scope", organizationId, riskLevel: risk });
+    return { content: [{ type: "text" as const, text: "Tool not available" }], isError: true };
+  }
+
+  // Per-user rate limit
+  const rl = checkToolRateLimit(userId, toolName);
+  if (!rl.allowed) {
+    logUsage({ userId, apiKeyId, toolName, integrationId, status: "error", errorMessage: "Rate limit exceeded", organizationId, riskLevel: risk });
+    return { content: [{ type: "text" as const, text: `Rate limit exceeded. Try again in ${rl.retryAfter}s.` }], isError: true };
+  }
+
+  return { userId, apiKeyId, organizationId, startTime: Date.now() };
+}
+
+function isPreCheckError(result: PreCheckSuccess | McpErrorResult): result is McpErrorResult {
+  return "isError" in result;
+}
+
+/**
+ * Wraps tool execution with success/error usage logging.
+ */
+async function executeWithLogging(
+  ctx: { userId: string; apiKeyId?: string; organizationId?: string; toolName: string; integrationId: string; startTime: number },
+  fn: () => Promise<McpResult>,
+  opts?: { formatError?: (err: unknown) => string },
+): Promise<McpResult> {
+  try {
+    const result = await fn();
+    logUsage({
+      userId: ctx.userId,
+      apiKeyId: ctx.apiKeyId,
+      toolName: ctx.toolName,
+      integrationId: ctx.integrationId,
+      status: result.isError ? "error" : "success",
+      durationMs: Date.now() - ctx.startTime,
+      organizationId: ctx.organizationId,
+      riskLevel: getToolRisk(ctx.toolName),
+    });
+    return result;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    logUsage({
+      userId: ctx.userId,
+      apiKeyId: ctx.apiKeyId,
+      toolName: ctx.toolName,
+      integrationId: ctx.integrationId,
+      status: "error",
+      errorMessage: message,
+      durationMs: Date.now() - ctx.startTime,
+      organizationId: ctx.organizationId,
+      riskLevel: getToolRisk(ctx.toolName),
+    });
+    const clientMessage = opts?.formatError?.(err) ?? "An internal error occurred";
+    return { content: [{ type: "text" as const, text: clientMessage }], isError: true };
+  }
 }
 
 // Metadata map for filtering tools/list per-user
@@ -372,103 +470,16 @@ function registerTools(server: McpServer) {
   // Register builtin integration tools
   for (const integration of allIntegrations) {
     for (const tool of integration.tools) {
-      toolMeta.set(tool.name, { integrationId: integration.id, orgId: null });
+      const integrationId = integration.id;
+      toolMeta.set(tool.name, { integrationId, orgId: null });
       server.tool(
         tool.name,
         tool.description,
         tool.schema.shape,
-        async (args, extra) => {
-          const expiredResult = checkKeyExpired(extra);
-          if (expiredResult) return expiredResult;
-
-          const startTime = Date.now();
-          const userId = extra.authInfo?.extra?.userId as string | undefined;
-          const apiKeyId = extra.authInfo?.extra?.apiKeyId as string | undefined;
-          const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
-
-          if (!userId) {
-            logUsage({
-              userId: "unknown",
-              apiKeyId,
-              toolName: tool.name,
-              integrationId: integration.id,
-              status: "unauthorized",
-              organizationId,
-              riskLevel: getToolRisk(tool.name),
-            });
-            return {
-              content: [{ type: "text" as const, text: "Unauthorized" }],
-              isError: true,
-            };
-          }
-
-          // Check per-user tool permissions
-          const permissionsMode = extra.authInfo?.extra?.permissionsMode as string | undefined;
-          const integrationAccess = extra.authInfo?.extra?.integrationAccess as
-            | Array<{ integrationId: string; allowedTools: string[] }>
-            | undefined;
-
-          if (
-            permissionsMode &&
-            integrationAccess &&
-            !isToolAllowed(permissionsMode, integrationAccess, integration.id, tool.name)
-          ) {
-            logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId: integration.id,
-              status: "unauthorized",
-              errorMessage: "Tool not available",
-              organizationId,
-              riskLevel: getToolRisk(tool.name),
-            });
-            return {
-              content: [{ type: "text" as const, text: "Tool not available" }],
-              isError: true,
-            };
-          }
-
-          // API key scope check
-          const apiKeyScope = extra.authInfo?.extra?.apiKeyScope as string | undefined;
-          if (apiKeyScope && apiKeyScope !== "full") {
-            const risk = getToolRisk(tool.name);
-            if (!isRiskAllowedByScope(risk, apiKeyScope)) {
-              logUsage({
-                userId,
-                apiKeyId,
-                toolName: tool.name,
-                integrationId: integration.id,
-                status: "unauthorized",
-                errorMessage: "Tool not available for this API key scope",
-                organizationId,
-                riskLevel: getToolRisk(tool.name),
-              });
-              return {
-                content: [{ type: "text" as const, text: "Tool not available" }],
-                isError: true,
-              };
-            }
-          }
-
-          // Per-user rate limit by risk level
-          const rl = checkToolRateLimit(userId, tool.name);
-          if (!rl.allowed) {
-            logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId: integration.id,
-              status: "error",
-              errorMessage: "Rate limit exceeded",
-              organizationId,
-              riskLevel: getToolRisk(tool.name),
-            });
-            return {
-              content: [{ type: "text" as const, text: `Rate limit exceeded. Try again in ${rl.retryAfter}s.` }],
-              isError: true,
-            };
-          }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        async (args, extra): Promise<any> => {
+          const pre = toolPreCheck(tool.name, integrationId, extra);
+          if (isPreCheckError(pre)) return pre;
 
           // Look up the user's connection for this integration
           const connections = extra.authInfo?.extra?.connections as
@@ -482,111 +493,48 @@ function registerTools(server: McpServer) {
               }>
             | undefined;
 
-          const connection = connections?.find(
-            (c) => c.integrationId === integration.id
-          );
-
+          const connection = connections?.find((c) => c.integrationId === integrationId);
           if (!connection) {
             logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId: integration.id,
-              status: "error",
-              errorMessage: "Integration not connected",
-              durationMs: Date.now() - startTime,
-              organizationId,
+              userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: tool.name, integrationId,
+              status: "error", errorMessage: "Integration not connected",
+              durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
               riskLevel: getToolRisk(tool.name),
             });
             return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: `Integration "${integration.name}" is not connected. Connect it at your dashboard.`,
-                },
-              ],
+              content: [{ type: "text" as const, text: `Integration "${integration.name}" is not connected. Connect it at your dashboard.` }],
               isError: true,
             };
           }
 
-          try {
-            const tokens = await getValidTokens(connection);
-            const client = integration.createClient(tokens);
-            const result = await tool.execute(
-              args as Record<string, unknown>,
-              client,
-              { senderName: connection.senderName }
-            );
-            logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId: integration.id,
-              status: "success",
-              durationMs: Date.now() - startTime,
-              organizationId,
-              riskLevel: getToolRisk(tool.name),
-            });
-            if (
-              result &&
-              typeof result === "object" &&
-              "_mcpContent" in (result as Record<string, unknown>)
-            ) {
-              return {
-                content: (result as McpToolResult)._mcpContent,
-              };
-            }
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify(result, null, 2),
-                },
-              ],
-            };
-          } catch (err: unknown) {
-            const message =
-              err instanceof Error ? err.message : "Unknown error";
-            logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId: integration.id,
-              status: "error",
-              errorMessage: message,
-              durationMs: Date.now() - startTime,
-              organizationId,
-              riskLevel: getToolRisk(tool.name),
-            });
-
-            // Determine a useful client-facing message
-            let clientMessage: string;
-            const authMessages = [
-              "Token expired and no refresh token available",
-              "Token refresh failed. Please reconnect the integration.",
-              "Integration not connected",
-            ];
-            if (authMessages.includes(message)) {
-              clientMessage = message;
-            } else if (
-              err &&
-              typeof err === "object" &&
-              "response" in err
-            ) {
-              // Google API errors (GaxiosError) — surface the descriptive message
-              const apiMsg = (
-                err as { response?: { data?: { error?: { message?: string } } } }
-              ).response?.data?.error?.message;
-              clientMessage = apiMsg || message;
-            } else {
-              clientMessage = "An internal error occurred";
-            }
-
-            return {
-              content: [{ type: "text" as const, text: clientMessage }],
-              isError: true,
-            };
-          }
+          return executeWithLogging(
+            { ...pre, toolName: tool.name, integrationId },
+            async () => {
+              const tokens = await getValidTokens(connection);
+              const client = integration.createClient(tokens);
+              const result = await tool.execute(args as Record<string, unknown>, client, { senderName: connection.senderName });
+              if (result && typeof result === "object" && "_mcpContent" in (result as Record<string, unknown>)) {
+                return { content: (result as McpToolResult)._mcpContent };
+              }
+              return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+            },
+            {
+              formatError: (err) => {
+                const message = err instanceof Error ? err.message : "Unknown error";
+                const authMessages = [
+                  "Token expired and no refresh token available",
+                  "Token refresh failed. Please reconnect the integration.",
+                  "Integration not connected",
+                ];
+                if (authMessages.includes(message)) return message;
+                if (err && typeof err === "object" && "response" in err) {
+                  const apiMsg = (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
+                  return apiMsg || message;
+                }
+                return "An internal error occurred";
+              },
+            },
+          );
         }
       );
     }
@@ -611,126 +559,28 @@ function registerTools(server: McpServer) {
     const integrationId = `custom:${srv.id}`;
 
     toolMeta.set(namespacedName, { integrationId, orgId: srv.organization_id });
+    const zodSchema = jsonSchemaToZodToolSchema(ct.input_schema as Record<string, unknown>);
     server.tool(
       namespacedName,
       `[${srv.name}] ${ct.description}`,
-      ct.input_schema as Record<string, unknown>,
-      async (args, extra) => {
-        const expiredResult = checkKeyExpired(extra);
-        if (expiredResult) return expiredResult;
+      zodSchema.shape,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async (args, extra): Promise<any> => {
+        const pre = toolPreCheck(namespacedName, integrationId, extra);
+        if (isPreCheckError(pre)) return pre;
 
-        const startTime = Date.now();
-        const userId = extra.authInfo?.extra?.userId as string | undefined;
-        const apiKeyId = extra.authInfo?.extra?.apiKeyId as string | undefined;
-        const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
-
-        if (!userId) {
+        // Org-scoped access check
+        if (srv.organization_id !== null && srv.organization_id !== pre.organizationId) {
           logUsage({
-            userId: "unknown",
-            apiKeyId,
-            toolName: namespacedName,
-            integrationId,
-            status: "unauthorized",
-            organizationId,
-            riskLevel: getToolRisk(namespacedName),
+            userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: namespacedName, integrationId,
+            status: "unauthorized", errorMessage: "Tool not available for this organization",
+            organizationId: pre.organizationId, riskLevel: getToolRisk(namespacedName),
           });
-          return {
-            content: [{ type: "text" as const, text: "Unauthorized" }],
-            isError: true,
-          };
-        }
-
-        // Org-scoped access check: global servers (null org_id) are available to all,
-        // org-specific servers are only available to members of that org
-        if (srv.organization_id !== null && srv.organization_id !== organizationId) {
-          logUsage({
-            userId,
-            apiKeyId,
-            toolName: namespacedName,
-            integrationId,
-            status: "unauthorized",
-            errorMessage: "Tool not available for this organization",
-            organizationId,
-            riskLevel: getToolRisk(namespacedName),
-          });
-          return {
-            content: [{ type: "text" as const, text: "Tool not available" }],
-            isError: true,
-          };
-        }
-
-        // Check permissions
-        const permissionsMode = extra.authInfo?.extra?.permissionsMode as string | undefined;
-        const integrationAccess = extra.authInfo?.extra?.integrationAccess as
-          | Array<{ integrationId: string; allowedTools: string[] }>
-          | undefined;
-
-        if (
-          permissionsMode &&
-          integrationAccess &&
-          !isToolAllowed(permissionsMode, integrationAccess, integrationId, namespacedName)
-        ) {
-          logUsage({
-            userId,
-            apiKeyId,
-            toolName: namespacedName,
-            integrationId,
-            status: "unauthorized",
-            errorMessage: "Tool not available",
-            organizationId,
-            riskLevel: getToolRisk(namespacedName),
-          });
-          return {
-            content: [{ type: "text" as const, text: "Tool not available" }],
-            isError: true,
-          };
-        }
-
-        // API key scope check
-        const apiKeyScope = extra.authInfo?.extra?.apiKeyScope as string | undefined;
-        if (apiKeyScope && apiKeyScope !== "full") {
-          const risk = getToolRisk(namespacedName);
-          if (!isRiskAllowedByScope(risk, apiKeyScope)) {
-            logUsage({
-              userId,
-              apiKeyId,
-              toolName: namespacedName,
-              integrationId,
-              status: "unauthorized",
-              errorMessage: "Tool not available for this API key scope",
-              organizationId,
-              riskLevel: getToolRisk(namespacedName),
-            });
-            return {
-              content: [{ type: "text" as const, text: "Tool not available" }],
-              isError: true,
-            };
-          }
-        }
-
-        // Per-user rate limit by risk level
-        const rl = checkToolRateLimit(userId, namespacedName);
-        if (!rl.allowed) {
-          logUsage({
-            userId,
-            apiKeyId,
-            toolName: namespacedName,
-            integrationId,
-            status: "error",
-            errorMessage: "Rate limit exceeded",
-            organizationId,
-            riskLevel: getToolRisk(namespacedName),
-          });
-          return {
-            content: [{ type: "text" as const, text: `Rate limit exceeded. Try again in ${rl.retryAfter}s.` }],
-            isError: true,
-          };
+          return { content: [{ type: "text" as const, text: "Tool not available" }], isError: true };
         }
 
         // Resolve API key: user key > shared key
-        const customMcpKeys = extra.authInfo?.extra?.customMcpKeys as
-          | Record<string, string>
-          | undefined;
+        const customMcpKeys = extra.authInfo?.extra?.customMcpKeys as Record<string, string> | undefined;
         const userKey = customMcpKeys?.[srv.id];
         const sharedKey = srv.shared_api_key ? decrypt(srv.shared_api_key) : undefined;
         const resolvedKey = userKey ?? sharedKey;
@@ -738,66 +588,26 @@ function registerTools(server: McpServer) {
         if (!resolvedKey && srv.auth_type === "bearer") {
           const isPerUser = srv.key_mode === "per_user";
           logUsage({
-            userId,
-            apiKeyId,
-            toolName: namespacedName,
-            integrationId,
-            status: "error",
-            errorMessage: isPerUser ? "No personal API key configured" : "No API key configured",
-            durationMs: Date.now() - startTime,
-            organizationId,
+            userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: namespacedName, integrationId,
+            status: "error", errorMessage: isPerUser ? "No personal API key configured" : "No API key configured",
+            durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
             riskLevel: getToolRisk(namespacedName),
           });
           return {
-            content: [
-              {
-                type: "text" as const,
-                text: isPerUser
-                  ? "This server requires a personal API key. Add one in your dashboard."
-                  : "No API key configured for this MCP server. Add one in your dashboard.",
-              },
-            ],
+            content: [{
+              type: "text" as const,
+              text: isPerUser
+                ? "This server requires a personal API key. Add one in your dashboard."
+                : "No API key configured for this MCP server. Add one in your dashboard.",
+            }],
             isError: true,
           };
         }
 
-        try {
-          const result = await proxyToolCall(
-            srv.server_url,
-            resolvedKey,
-            ct.tool_name,
-            args as Record<string, unknown>
-          );
-          logUsage({
-            userId,
-            apiKeyId,
-            toolName: namespacedName,
-            integrationId,
-            status: result.isError ? "error" : "success",
-            durationMs: Date.now() - startTime,
-            organizationId,
-            riskLevel: getToolRisk(namespacedName),
-          });
-          return result;
-        } catch (err: unknown) {
-          const message =
-            err instanceof Error ? err.message : "Unknown error";
-          logUsage({
-            userId,
-            apiKeyId,
-            toolName: namespacedName,
-            integrationId,
-            status: "error",
-            errorMessage: message,
-            durationMs: Date.now() - startTime,
-            organizationId,
-            riskLevel: getToolRisk(namespacedName),
-          });
-          return {
-            content: [{ type: "text" as const, text: "An internal error occurred" }],
-            isError: true,
-          };
-        }
+        return executeWithLogging(
+          { ...pre, toolName: namespacedName, integrationId },
+          async () => proxyToolCall(srv.server_url, resolvedKey, ct.tool_name, args as Record<string, unknown>),
+        );
       }
     );
   }
@@ -815,104 +625,15 @@ function registerTools(server: McpServer) {
       tool.name,
       tool.description,
       zodSchema.shape,
-      async (args, extra) => {
-        const expiredResult = checkKeyExpired(extra);
-        if (expiredResult) return expiredResult;
-
-        const startTime = Date.now();
-        const userId = extra.authInfo?.extra?.userId as string | undefined;
-        const apiKeyId = extra.authInfo?.extra?.apiKeyId as string | undefined;
-        const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
-
-        if (!userId) {
-          logUsage({
-            userId: "unknown",
-            apiKeyId,
-            toolName: tool.name,
-            integrationId,
-            status: "unauthorized",
-            organizationId,
-            riskLevel: getToolRisk(tool.name),
-          });
-          return {
-            content: [{ type: "text" as const, text: "Unauthorized" }],
-            isError: true,
-          };
-        }
-
-        // Check per-user tool permissions
-        const permissionsMode = extra.authInfo?.extra?.permissionsMode as string | undefined;
-        const integrationAccess = extra.authInfo?.extra?.integrationAccess as
-          | Array<{ integrationId: string; allowedTools: string[] }>
-          | undefined;
-
-        if (
-          permissionsMode &&
-          integrationAccess &&
-          !isToolAllowed(permissionsMode, integrationAccess, integrationId, tool.name)
-        ) {
-          logUsage({
-            userId,
-            apiKeyId,
-            toolName: tool.name,
-            integrationId,
-            status: "unauthorized",
-            errorMessage: "Tool not available",
-            organizationId,
-            riskLevel: getToolRisk(tool.name),
-          });
-          return {
-            content: [{ type: "text" as const, text: "Tool not available" }],
-            isError: true,
-          };
-        }
-
-        // API key scope check
-        const apiKeyScope = extra.authInfo?.extra?.apiKeyScope as string | undefined;
-        if (apiKeyScope && apiKeyScope !== "full") {
-          const risk = getToolRisk(tool.name);
-          if (!isRiskAllowedByScope(risk, apiKeyScope)) {
-            logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId,
-              status: "unauthorized",
-              errorMessage: "Tool not available for this API key scope",
-              organizationId,
-              riskLevel: getToolRisk(tool.name),
-            });
-            return {
-              content: [{ type: "text" as const, text: "Tool not available" }],
-              isError: true,
-            };
-          }
-        }
-
-        // Per-user rate limit by risk level
-        const rl = checkToolRateLimit(userId, tool.name);
-        if (!rl.allowed) {
-          logUsage({
-            userId,
-            apiKeyId,
-            toolName: tool.name,
-            integrationId,
-            status: "error",
-            errorMessage: "Rate limit exceeded",
-            organizationId,
-            riskLevel: getToolRisk(tool.name),
-          });
-          return {
-            content: [{ type: "text" as const, text: `Rate limit exceeded. Try again in ${rl.retryAfter}s.` }],
-            isError: true,
-          };
-        }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async (args, extra): Promise<any> => {
+        const pre = toolPreCheck(tool.name, integrationId, extra);
+        if (isPreCheckError(pre)) return pre;
 
         // Resolve bearer token: OAuth connection or API key
         let bearerToken: string | undefined;
 
         if (proxy.oauth) {
-          // OAuth-based proxy: use connection tokens
           const connections = extra.authInfo?.extra?.connections as
             | Array<{
                 id: string;
@@ -927,23 +648,13 @@ function registerTools(server: McpServer) {
           const connection = connections?.find((c) => c.integrationId === proxy.id);
           if (!connection) {
             logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId,
-              status: "error",
-              errorMessage: "Integration not connected",
-              durationMs: Date.now() - startTime,
-              organizationId,
+              userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: tool.name, integrationId,
+              status: "error", errorMessage: "Integration not connected",
+              durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
               riskLevel: getToolRisk(tool.name),
             });
             return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: `Integration "${proxy.name}" is not connected. Connect it at your dashboard.`,
-                },
-              ],
+              content: [{ type: "text" as const, text: `Integration "${proxy.name}" is not connected. Connect it at your dashboard.` }],
               isError: true,
             };
           }
@@ -954,23 +665,14 @@ function registerTools(server: McpServer) {
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : "Token error";
             logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId,
-              status: "error",
-              errorMessage: message,
-              durationMs: Date.now() - startTime,
-              organizationId,
+              userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: tool.name, integrationId,
+              status: "error", errorMessage: message,
+              durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
               riskLevel: getToolRisk(tool.name),
             });
-            return {
-              content: [{ type: "text" as const, text: message }],
-              isError: true,
-            };
+            return { content: [{ type: "text" as const, text: message }], isError: true };
           }
         } else {
-          // Key-based proxy
           bearerToken = proxy.keyMode === "per_user"
             ? (extra.authInfo?.extra?.proxyUserKeys as Record<string, string> | undefined)?.[proxy.id]
             : (extra.authInfo?.extra?.integrationOrgKeys as Record<string, string> | undefined)?.[proxy.id];
@@ -980,25 +682,18 @@ function registerTools(server: McpServer) {
               ? "No personal API key configured"
               : "No API key configured for this integration";
             logUsage({
-              userId,
-              apiKeyId,
-              toolName: tool.name,
-              integrationId,
-              status: "error",
-              errorMessage,
-              durationMs: Date.now() - startTime,
-              organizationId,
+              userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: tool.name, integrationId,
+              status: "error", errorMessage,
+              durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
               riskLevel: getToolRisk(tool.name),
             });
             return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: proxy.keyMode === "per_user"
-                    ? `Integration "${proxy.name}" requires a personal API key. Add one in your dashboard.`
-                    : `Integration "${proxy.name}" is not configured. An org admin must add an API key in Organization Settings.`,
-                },
-              ],
+              content: [{
+                type: "text" as const,
+                text: proxy.keyMode === "per_user"
+                  ? `Integration "${proxy.name}" requires a personal API key. Add one in your dashboard.`
+                  : `Integration "${proxy.name}" is not configured. An org admin must add an API key in Organization Settings.`,
+              }],
               isError: true,
             };
           }
@@ -1012,54 +707,20 @@ function registerTools(server: McpServer) {
             .catch((err) => console.warn(`[proxy] On-demand discovery failed for ${proxy.id}:`, err.message));
         }
 
-        try {
-          const result = await proxyToolCall(
-            proxy.serverUrl,
-            bearerToken,
-            tool.name,
-            args as Record<string, unknown>
-          );
-          logUsage({
-            userId,
-            apiKeyId,
-            toolName: tool.name,
-            integrationId,
-            status: result.isError ? "error" : "success",
-            durationMs: Date.now() - startTime,
-            organizationId,
-            riskLevel: getToolRisk(tool.name),
-          });
-          return result;
-        } catch (err: unknown) {
-          const message =
-            err instanceof Error ? err.message : "Unknown error";
-          console.error(
-            `[proxy-tool] ${tool.name} failed for user=${userId} integration=${integrationId}:`,
-            message
-          );
-
-          // Provide actionable error messages for common auth failures
-          const isAuthError = /missing_token|invalid_auth|token_revoked|not_authed|account_inactive/i.test(message);
-          const userMessage = isAuthError
-            ? `Integration "${proxy.name}" returned an auth error. Please reconnect it in your dashboard.`
-            : `Proxy tool "${tool.name}" failed: ${message}`;
-
-          logUsage({
-            userId,
-            apiKeyId,
-            toolName: tool.name,
-            integrationId,
-            status: "error",
-            errorMessage: message,
-            durationMs: Date.now() - startTime,
-            organizationId,
-            riskLevel: getToolRisk(tool.name),
-          });
-          return {
-            content: [{ type: "text" as const, text: userMessage }],
-            isError: true,
-          };
-        }
+        return executeWithLogging(
+          { ...pre, toolName: tool.name, integrationId },
+          async () => proxyToolCall(proxy.serverUrl, bearerToken, tool.name, args as Record<string, unknown>),
+          {
+            formatError: (err) => {
+              const message = err instanceof Error ? err.message : "Unknown error";
+              console.error(`[proxy-tool] ${tool.name} failed for user=${pre.userId} integration=${integrationId}:`, message);
+              const isAuthError = /missing_token|invalid_auth|token_revoked|not_authed|account_inactive/i.test(message);
+              return isAuthError
+                ? `Integration "${proxy.name}" returned an auth error. Please reconnect it in your dashboard.`
+                : `Proxy tool "${tool.name}" failed: ${message}`;
+            },
+          },
+        );
       }
     );
   }

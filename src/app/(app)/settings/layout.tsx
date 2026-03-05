@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthProfile } from "@/lib/auth-cache";
 import { Container } from "@/components/ui/container";
 import { SettingsNav } from "@/components/app/settings-nav";
 
@@ -8,18 +8,10 @@ export default async function SettingsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const auth = await getAuthProfile();
+  if (!auth) redirect("/login");
 
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, org_role")
-    .eq("id", user.id)
-    .single();
+  const { profile } = auth;
 
   const isOrgAdmin =
     profile?.org_role === "owner" || profile?.org_role === "admin";

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { McpServerForm } from "@/components/admin/mcp-server-form";
+import { McpServerForm, McpServerInitialData } from "@/components/admin/mcp-server-form";
 import { McpToolList } from "@/components/admin/mcp-tool-list";
 
 interface McpTool {
@@ -36,6 +36,7 @@ export default function SettingsMcpServersPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const fetchServers = useCallback(async () => {
     const res = await fetch("/api/admin/mcp-servers");
@@ -95,7 +96,7 @@ export default function SettingsMcpServersPage() {
       {showForm && (
         <Card hover={false}>
           <McpServerForm
-            onCreated={() => {
+            onSaved={() => {
               setShowForm(false);
               fetchServers();
             }}
@@ -114,6 +115,36 @@ export default function SettingsMcpServersPage() {
         {servers.map((server) => {
           const enabledCount = server.tools.filter((t) => t.enabled).length;
           const isExpanded = expanded.has(server.id);
+          const isEditing = editingId === server.id;
+
+          if (isEditing) {
+            const initialData: McpServerInitialData = {
+              id: server.id,
+              name: server.name,
+              slug: server.slug,
+              description: server.description,
+              serverUrl: server.serverUrl,
+              authType: server.authType,
+              keyMode: server.keyMode,
+              userKeyInstructions: server.userKeyInstructions,
+              hasSharedKey: server.hasSharedKey,
+            };
+            return (
+              <Card key={server.id} hover={false} className="p-4">
+                <p className="text-sm font-medium mb-3">
+                  Editing: {server.name}
+                </p>
+                <McpServerForm
+                  initialData={initialData}
+                  onSaved={() => {
+                    setEditingId(null);
+                    fetchServers();
+                  }}
+                  onCancel={() => setEditingId(null)}
+                />
+              </Card>
+            );
+          }
 
           return (
             <Card key={server.id} hover={false} className="p-4">
@@ -154,6 +185,13 @@ export default function SettingsMcpServersPage() {
                 </span>
 
                 <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingId(server.id)}
+                  >
+                    Edit
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"

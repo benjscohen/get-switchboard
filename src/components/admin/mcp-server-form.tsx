@@ -3,32 +3,47 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
+export interface McpServerInitialData {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  serverUrl: string;
+  authType: string;
+  keyMode: "shared" | "per_user";
+  userKeyInstructions: string | null;
+  hasSharedKey: boolean;
+}
+
 interface McpServerFormProps {
-  onCreated: () => void;
+  initialData?: McpServerInitialData;
+  onSaved: () => void;
   onCancel: () => void;
 }
 
-export function McpServerForm({ onCreated, onCancel }: McpServerFormProps) {
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [serverUrl, setServerUrl] = useState("");
-  const [authType, setAuthType] = useState("bearer");
+export function McpServerForm({ initialData, onSaved, onCancel }: McpServerFormProps) {
+  const isEdit = !!initialData;
+  const [name, setName] = useState(initialData?.name ?? "");
+  const [slug, setSlug] = useState(initialData?.slug ?? "");
+  const [serverUrl, setServerUrl] = useState(initialData?.serverUrl ?? "");
+  const [authType, setAuthType] = useState(initialData?.authType ?? "bearer");
   const [sharedApiKey, setSharedApiKey] = useState("");
-  const [keyMode, setKeyMode] = useState<"shared" | "per_user">("shared");
-  const [userKeyInstructions, setUserKeyInstructions] = useState("");
-  const [description, setDescription] = useState("");
+  const [keyMode, setKeyMode] = useState<"shared" | "per_user">(initialData?.keyMode ?? "shared");
+  const [userKeyInstructions, setUserKeyInstructions] = useState(initialData?.userKeyInstructions ?? "");
+  const [description, setDescription] = useState(initialData?.description ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   function handleNameChange(value: string) {
     setName(value);
-    // Auto-generate slug from name
-    setSlug(
-      value
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
-    );
+    if (!isEdit) {
+      setSlug(
+        value
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+      );
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -36,26 +51,39 @@ export function McpServerForm({ onCreated, onCancel }: McpServerFormProps) {
     setSaving(true);
     setError("");
 
+    const payload = isEdit
+      ? {
+          id: initialData.id,
+          name,
+          serverUrl,
+          authType,
+          keyMode: authType === "bearer" ? keyMode : undefined,
+          sharedApiKey: authType === "bearer" && keyMode === "shared" && sharedApiKey ? sharedApiKey : undefined,
+          userKeyInstructions: authType === "bearer" && keyMode === "per_user" ? (userKeyInstructions || null) : undefined,
+          description,
+        }
+      : {
+          name,
+          slug,
+          serverUrl,
+          authType,
+          keyMode: authType === "bearer" ? keyMode : undefined,
+          sharedApiKey: authType === "bearer" && keyMode === "shared" ? (sharedApiKey || undefined) : undefined,
+          userKeyInstructions: authType === "bearer" && keyMode === "per_user" ? (userKeyInstructions || undefined) : undefined,
+          description,
+        };
+
     const res = await fetch("/api/admin/mcp-servers", {
-      method: "POST",
+      method: isEdit ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        slug,
-        serverUrl,
-        authType,
-        keyMode: authType === "bearer" ? keyMode : undefined,
-        sharedApiKey: authType === "bearer" && keyMode === "shared" ? (sharedApiKey || undefined) : undefined,
-        userKeyInstructions: authType === "bearer" && keyMode === "per_user" ? (userKeyInstructions || undefined) : undefined,
-        description,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (res.ok) {
-      onCreated();
+      onSaved();
     } else {
       const d = await res.json();
-      setError(d.error || "Failed to create server");
+      setError(d.error || (isEdit ? "Failed to save changes" : "Failed to create server"));
     }
 
     setSaving(false);
@@ -82,9 +110,10 @@ export function McpServerForm({ onCreated, onCancel }: McpServerFormProps) {
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             required
+            disabled={isEdit}
             pattern="[a-z0-9-]+"
             placeholder="shortcut"
-            className="mt-1 block w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm font-mono focus:border-accent focus:outline-none"
+            className="mt-1 block w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm font-mono focus:border-accent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
           />
         </label>
       </div>
@@ -148,7 +177,7 @@ export function McpServerForm({ onCreated, onCancel }: McpServerFormProps) {
             type="password"
             value={sharedApiKey}
             onChange={(e) => setSharedApiKey(e.target.value)}
-            placeholder="sk-..."
+            placeholder={isEdit && initialData.hasSharedKey ? "Leave blank to keep existing key" : "sk-..."}
             className="mt-1 block w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
           />
         </label>
@@ -173,7 +202,7 @@ export function McpServerForm({ onCreated, onCancel }: McpServerFormProps) {
 
       <div className="flex gap-2">
         <Button size="sm" type="submit" disabled={saving}>
-          {saving ? "Adding..." : "Add Server"}
+          {saving ? "Saving..." : isEdit ? "Save Changes" : "Add Server"}
         </Button>
         <Button size="sm" variant="ghost" type="button" onClick={onCancel}>
           Cancel
