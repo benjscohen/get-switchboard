@@ -1,4 +1,5 @@
 import type { IntegrationToolDef } from "../types";
+import { flexParse } from "../shared/json-params";
 import * as s from "./schemas";
 
 // ── Client type ──
@@ -102,15 +103,6 @@ function buildPaginationParams(
   if (pageSize) params.pageSize = String(pageSize);
   if (pageToken) params.pageToken = pageToken;
   return params;
-}
-
-function parseJson(raw: string | undefined): unknown {
-  if (!raw) return undefined;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    throw new Error("Invalid JSON string");
-  }
 }
 
 function dateRangeParam(dr: {
@@ -379,7 +371,7 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
         };
       }
       if (args.targeting_criteria) {
-        body.targetingCriteria = parseJson(args.targeting_criteria as string);
+        body.targetingCriteria = flexParse(args.targeting_criteria as string);
       }
       if (args.creative_selection)
         body.creativeSelection = args.creative_selection;
@@ -409,7 +401,7 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
         };
       }
       if (args.targeting_criteria) {
-        fields.targetingCriteria = parseJson(
+        fields.targetingCriteria = flexParse(
           args.targeting_criteria as string
         );
       }
@@ -471,7 +463,7 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
       const body: Record<string, unknown> = {
         account: `urn:li:sponsoredAccount:${args.ad_account_id}`,
         campaign: `urn:li:sponsoredCampaign:${args.campaign_id}`,
-        content: parseJson(args.content as string),
+        content: flexParse(args.content as string),
         intendedStatus: args.intended_status || "DRAFT",
       };
       return linkedinPost(

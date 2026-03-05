@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonParam, jsonParamOptional } from "../shared/json-params";
 
 // ── Shared fragments ──
 
@@ -182,12 +183,7 @@ export const createCampaignSchema = z.object({
     .number()
     .optional()
     .describe("Bid amount in account currency cents"),
-  targeting_criteria: z
-    .string()
-    .optional()
-    .describe(
-      "JSON string of targeting criteria, e.g. {\"include\":{\"and\":[{\"or\":{\"urn:li:adTargetingFacet:locations\":[\"urn:li:geo:103644278\"]}}]}}"
-    ),
+  targeting_criteria: jsonParamOptional("Targeting criteria object, e.g. {\"include\":{\"and\":[{\"or\":{\"urn:li:adTargetingFacet:locations\":[\"urn:li:geo:103644278\"]}}]}}"),
   creative_selection: z
     .enum(["ROUND_ROBIN", "OPTIMIZED"])
     .optional()
@@ -210,10 +206,7 @@ export const updateCampaignSchema = z.object({
     .number()
     .optional()
     .describe("New bid amount in account currency cents"),
-  targeting_criteria: z
-    .string()
-    .optional()
-    .describe("New targeting criteria as JSON string"),
+  targeting_criteria: jsonParamOptional("New targeting criteria object"),
 });
 
 // ── 4. Creatives ──
@@ -237,11 +230,7 @@ export const getCreativeSchema = z.object({
 export const createCreativeSchema = z.object({
   ad_account_id: adAccountId,
   campaign_id: campaignId,
-  content: z
-    .string()
-    .describe(
-      "JSON string of creative content (varies by type, e.g. {\"article\":{\"source\":\"https://example.com\",\"title\":\"Ad Title\",\"description\":\"Ad Description\"}})"
-    ),
+  content: jsonParam("Creative content object (varies by type, e.g. {\"article\":{\"source\":\"https://example.com\",\"title\":\"Ad Title\",\"description\":\"Ad Description\"}})"),
   intended_status: z
     .enum(["ACTIVE", "PAUSED", "DRAFT"])
     .optional()

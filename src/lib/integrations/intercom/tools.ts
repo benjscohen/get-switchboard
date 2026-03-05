@@ -1,4 +1,5 @@
 import type { IntegrationToolDef } from "../types";
+import { flexParse } from "../shared/json-params";
 import * as s from "./schemas";
 
 // ── Client type ──
@@ -43,16 +44,6 @@ function qs(params: Record<string, unknown>): string {
   return parts.length ? `?${parts.join("&")}` : "";
 }
 
-/** Parse a JSON string field or return undefined */
-function parseJson(raw: string | undefined): unknown {
-  if (!raw) return undefined;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    throw new Error("Invalid JSON string");
-  }
-}
-
 // ── Typed tool def ──
 
 type IntercomToolDef = Omit<IntegrationToolDef, "execute"> & {
@@ -74,7 +65,7 @@ export const INTERCOM_TOOLS: IntercomToolDef[] = [
     execute: async (a, c) => {
       const op = a.operation as string;
       const id = a.contact_id as string | undefined;
-      const customAttrs = parseJson(a.custom_attributes as string | undefined);
+      const customAttrs = flexParse(a.custom_attributes as string | undefined);
 
       switch (op) {
         case "get":
@@ -126,7 +117,7 @@ export const INTERCOM_TOOLS: IntercomToolDef[] = [
     execute: async (a, c) => {
       const op = a.operation as string;
       const id = a.company_id as string | undefined;
-      const customAttrs = parseJson(a.custom_attributes as string | undefined);
+      const customAttrs = flexParse(a.custom_attributes as string | undefined);
 
       switch (op) {
         case "get":
@@ -153,7 +144,7 @@ export const INTERCOM_TOOLS: IntercomToolDef[] = [
         case "list":
           return api(c, `/companies${qs({ per_page: a.per_page, starting_after: a.starting_after })}`);
         case "search": {
-          const query = parseJson(a.query as string | undefined);
+          const query = flexParse(a.query as string | undefined);
           return api(c, "/companies/search", {
             method: "POST",
             body: JSON.stringify({ query, pagination: { per_page: a.per_page, starting_after: a.starting_after } }),
@@ -183,7 +174,7 @@ export const INTERCOM_TOOLS: IntercomToolDef[] = [
         case "list":
           return api(c, `/conversations${qs({ per_page: a.per_page, starting_after: a.starting_after })}`);
         case "search": {
-          const query = parseJson(a.query as string | undefined);
+          const query = flexParse(a.query as string | undefined);
           return api(c, "/conversations/search", {
             method: "POST",
             body: JSON.stringify({ query, pagination: { per_page: a.per_page, starting_after: a.starting_after } }),
@@ -344,7 +335,7 @@ export const INTERCOM_TOOLS: IntercomToolDef[] = [
     execute: async (a, c) => {
       const op = a.operation as string;
       const id = a.ticket_id as string | undefined;
-      const ticketAttrs = parseJson(a.ticket_attributes as string | undefined);
+      const ticketAttrs = flexParse(a.ticket_attributes as string | undefined);
 
       switch (op) {
         case "get":
@@ -374,7 +365,7 @@ export const INTERCOM_TOOLS: IntercomToolDef[] = [
           });
         }
         case "search": {
-          const query = parseJson(a.query as string | undefined);
+          const query = flexParse(a.query as string | undefined);
           return api(c, "/tickets/search", {
             method: "POST",
             body: JSON.stringify({ query, pagination: { per_page: a.per_page, starting_after: a.starting_after } }),
@@ -407,7 +398,7 @@ export const INTERCOM_TOOLS: IntercomToolDef[] = [
 
       if (a.query) {
         // Raw query passthrough
-        query = parseJson(a.query as string);
+        query = flexParse(a.query as string);
       } else {
         // Build query from friendly fields
         const filters: Array<{
@@ -433,7 +424,7 @@ export const INTERCOM_TOOLS: IntercomToolDef[] = [
           filters.push({ field: "id", operator: "IN", value: ids });
         }
         if (a.custom_attributes) {
-          const attrs = parseJson(a.custom_attributes as string) as Record<
+          const attrs = flexParse(a.custom_attributes as string) as Record<
             string,
             unknown
           >;
@@ -503,7 +494,7 @@ export const INTERCOM_TOOLS: IntercomToolDef[] = [
           };
           if (a.user_id) body.user_id = a.user_id;
           if (a.email) body.email = a.email;
-          const metadata = parseJson(a.metadata as string | undefined);
+          const metadata = flexParse(a.metadata as string | undefined);
           if (metadata) body.metadata = metadata;
           return api(c, "/events", {
             method: "POST",
@@ -571,7 +562,7 @@ export const INTERCOM_TOOLS: IntercomToolDef[] = [
           };
           if (a.label) body.label = a.label;
           if (a.description) body.description = a.description;
-          const options = parseJson(a.options as string | undefined);
+          const options = flexParse(a.options as string | undefined);
           if (options) body.options = options;
           return api(c, "/data_attributes", {
             method: "POST",
@@ -583,7 +574,7 @@ export const INTERCOM_TOOLS: IntercomToolDef[] = [
           if (a.label !== undefined) body.label = a.label;
           if (a.description !== undefined) body.description = a.description;
           if (a.archived !== undefined) body.archived = a.archived;
-          const options = parseJson(a.options as string | undefined);
+          const options = flexParse(a.options as string | undefined);
           if (options) body.options = options;
           return api(c, `/data_attributes/${a.data_attribute_id}`, {
             method: "PUT",

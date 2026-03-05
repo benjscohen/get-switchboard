@@ -2,6 +2,7 @@ import { slides_v1 } from "@googleapis/slides";
 import type { IntegrationToolDef } from "../types";
 import type { McpToolResult } from "../types";
 import { hexToRgb } from "../shared/color";
+import { flexParse } from "../shared/json-params";
 import * as s from "./schemas";
 
 type SlidesToolDef = Omit<IntegrationToolDef, "execute"> & {
@@ -1137,12 +1138,7 @@ export const SLIDES_TOOLS: SlidesToolDef[] = [
       "Raw batchUpdate escape hatch: send Slides API requests directly (as a JSON string or native array) for advanced operations",
     schema: s.batchUpdateSchema,
     execute: async (a, slides) => {
-      const raw = a.requests;
-      const requests = (
-        typeof raw === "string"
-          ? JSON.parse(raw)
-          : raw
-      ) as slides_v1.Schema$Request[];
+      const requests = flexParse<slides_v1.Schema$Request[]>(a.requests as string | unknown[]);
       const res =
         await slides.presentations.batchUpdate({
           presentationId: pid(a),

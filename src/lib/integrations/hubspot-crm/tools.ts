@@ -1,4 +1,5 @@
 import type { IntegrationToolDef } from "../types";
+import { flexParse } from "../shared/json-params";
 import * as s from "./schemas";
 
 // ── Client type ──
@@ -42,16 +43,6 @@ function qs(params: Record<string, unknown>): string {
   return parts.length ? `?${parts.join("&")}` : "";
 }
 
-/** Parse a JSON string field or return undefined */
-function parseJson(raw: string | undefined): unknown {
-  if (!raw) return undefined;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    throw new Error("Invalid JSON string");
-  }
-}
-
 // ── Typed tool def ──
 
 type HubSpotCrmToolDef = Omit<IntegrationToolDef, "execute"> & {
@@ -83,10 +74,10 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
           );
         case "create": {
           const body: Record<string, unknown> = {
-            properties: parseJson(a.properties as string | undefined) ?? {},
+            properties: flexParse(a.properties as string | Record<string, unknown> | unknown[] | undefined) ?? {},
           };
-          const associations = parseJson(
-            a.associations as string | undefined
+          const associations = flexParse(
+            a.associations as string | Record<string, unknown> | unknown[] | undefined
           );
           if (associations) body.associations = associations;
           return api(c, `/crm/v3/objects/${objectType}`, {
@@ -98,7 +89,7 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
           return api(c, `/crm/v3/objects/${objectType}/${id}`, {
             method: "PATCH",
             body: JSON.stringify({
-              properties: parseJson(a.properties as string | undefined) ?? {},
+              properties: flexParse(a.properties as string | Record<string, unknown> | unknown[] | undefined) ?? {},
             }),
           });
         case "archive":
@@ -129,9 +120,9 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
     execute: async (a, c) => {
       const objectType = a.object_type as string;
       const body: Record<string, unknown> = {};
-      const filterGroups = parseJson(a.filter_groups as string | undefined);
+      const filterGroups = flexParse(a.filter_groups as string | Record<string, unknown> | unknown[] | undefined);
       if (filterGroups) body.filterGroups = filterGroups;
-      const sorts = parseJson(a.sorts as string | undefined);
+      const sorts = flexParse(a.sorts as string | Record<string, unknown> | unknown[] | undefined);
       if (sorts) body.sorts = sorts;
       if (a.query) body.query = a.query;
       if (a.properties) body.properties = (a.properties as string).split(",").map((p) => p.trim());
@@ -153,7 +144,7 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
     execute: async (a, c) => {
       const op = a.operation as string;
       const objectType = a.object_type as string;
-      const inputs = parseJson(a.inputs as string);
+      const inputs = flexParse(a.inputs as string | Record<string, unknown> | unknown[] | undefined);
       return api(c, `/crm/v3/objects/${objectType}/batch/${op}`, {
         method: "POST",
         body: JSON.stringify({ inputs }),
@@ -248,7 +239,7 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
           };
           if (a.group_name) body.groupName = a.group_name;
           if (a.description) body.description = a.description;
-          const options = parseJson(a.options as string | undefined);
+          const options = flexParse(a.options as string | Record<string, unknown> | unknown[] | undefined);
           if (options) body.options = options;
           return api(c, `/crm/v3/properties/${objectType}`, {
             method: "POST",
@@ -262,7 +253,7 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
           if (a.field_type !== undefined) body.fieldType = a.field_type;
           if (a.group_name !== undefined) body.groupName = a.group_name;
           if (a.description !== undefined) body.description = a.description;
-          const options = parseJson(a.options as string | undefined);
+          const options = flexParse(a.options as string | Record<string, unknown> | unknown[] | undefined);
           if (options) body.options = options;
           return api(c, `/crm/v3/properties/${objectType}/${propName}`, {
             method: "PATCH",
@@ -351,18 +342,18 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
           return api(c, `/crm/v3/schemas/${objectType}`);
         case "create": {
           const body: Record<string, unknown> = { name: a.name };
-          const labels = parseJson(a.labels as string | undefined);
+          const labels = flexParse(a.labels as string | Record<string, unknown> | unknown[] | undefined);
           if (labels) body.labels = labels;
-          const properties = parseJson(a.properties as string | undefined);
+          const properties = flexParse(a.properties as string | Record<string, unknown> | unknown[] | undefined);
           if (properties) body.properties = properties;
-          const requiredProperties = parseJson(
-            a.required_properties as string | undefined
+          const requiredProperties = flexParse(
+            a.required_properties as string | Record<string, unknown> | unknown[] | undefined
           );
           if (requiredProperties) body.requiredProperties = requiredProperties;
           if (a.primary_display_property)
             body.primaryDisplayProperty = a.primary_display_property;
-          const secondaryDisplayProperties = parseJson(
-            a.secondary_display_properties as string | undefined
+          const secondaryDisplayProperties = flexParse(
+            a.secondary_display_properties as string | Record<string, unknown> | unknown[] | undefined
           );
           if (secondaryDisplayProperties)
             body.secondaryDisplayProperties = secondaryDisplayProperties;
@@ -373,16 +364,16 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
         }
         case "update": {
           const body: Record<string, unknown> = {};
-          const labels = parseJson(a.labels as string | undefined);
+          const labels = flexParse(a.labels as string | Record<string, unknown> | unknown[] | undefined);
           if (labels) body.labels = labels;
-          const requiredProperties = parseJson(
-            a.required_properties as string | undefined
+          const requiredProperties = flexParse(
+            a.required_properties as string | Record<string, unknown> | unknown[] | undefined
           );
           if (requiredProperties) body.requiredProperties = requiredProperties;
           if (a.primary_display_property)
             body.primaryDisplayProperty = a.primary_display_property;
-          const secondaryDisplayProperties = parseJson(
-            a.secondary_display_properties as string | undefined
+          const secondaryDisplayProperties = flexParse(
+            a.secondary_display_properties as string | Record<string, unknown> | unknown[] | undefined
           );
           if (secondaryDisplayProperties)
             body.secondaryDisplayProperties = secondaryDisplayProperties;
@@ -432,7 +423,7 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
         case "create": {
           const body: Record<string, unknown> = { label: a.label };
           if (a.display_order !== undefined) body.displayOrder = a.display_order;
-          const stages = parseJson(a.stages as string | undefined);
+          const stages = flexParse(a.stages as string | Record<string, unknown> | unknown[] | undefined);
           if (stages) body.stages = stages;
           return api(c, `/crm/v3/pipelines/${objectType}`, {
             method: "POST",
@@ -443,7 +434,7 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
           const body: Record<string, unknown> = {};
           if (a.label !== undefined) body.label = a.label;
           if (a.display_order !== undefined) body.displayOrder = a.display_order;
-          const stages = parseJson(a.stages as string | undefined);
+          const stages = flexParse(a.stages as string | Record<string, unknown> | unknown[] | undefined);
           if (stages) body.stages = stages;
           return api(c, `/crm/v3/pipelines/${objectType}/${pipelineId}`, {
             method: "PATCH",
@@ -486,7 +477,7 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
         case "create": {
           const body: Record<string, unknown> = { label: a.label };
           if (a.display_order !== undefined) body.displayOrder = a.display_order;
-          const metadata = parseJson(a.metadata as string | undefined);
+          const metadata = flexParse(a.metadata as string | Record<string, unknown> | unknown[] | undefined);
           if (metadata) body.metadata = metadata;
           return api(
             c,
@@ -501,7 +492,7 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
           const body: Record<string, unknown> = {};
           if (a.label !== undefined) body.label = a.label;
           if (a.display_order !== undefined) body.displayOrder = a.display_order;
-          const metadata = parseJson(a.metadata as string | undefined);
+          const metadata = flexParse(a.metadata as string | Record<string, unknown> | unknown[] | undefined);
           if (metadata) body.metadata = metadata;
           return api(
             c,
@@ -589,8 +580,8 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
             objectTypeId: a.object_type_id,
             processingType: a.processing_type,
           };
-          const filterBranch = parseJson(
-            a.filter_branch as string | undefined
+          const filterBranch = flexParse(
+            a.filter_branch as string | Record<string, unknown> | unknown[] | undefined
           );
           if (filterBranch) body.filterBranch = filterBranch;
           return api(c, "/crm/v3/lists", {
@@ -601,8 +592,8 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
         case "update": {
           const body: Record<string, unknown> = {};
           if (a.name) body.name = a.name;
-          const filterBranch = parseJson(
-            a.filter_branch as string | undefined
+          const filterBranch = flexParse(
+            a.filter_branch as string | Record<string, unknown> | unknown[] | undefined
           );
           if (filterBranch) body.filterBranch = filterBranch;
           return api(c, `/crm/v3/lists/${listId}`, {
@@ -622,14 +613,14 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
             }),
           });
         case "add_members": {
-          const recordIds = parseJson(a.record_ids as string);
+          const recordIds = flexParse(a.record_ids as string | Record<string, unknown> | unknown[] | undefined);
           return api(c, `/crm/v3/lists/${listId}/memberships/add`, {
             method: "PUT",
             body: JSON.stringify(recordIds),
           });
         }
         case "remove_members": {
-          const recordIds = parseJson(a.record_ids as string);
+          const recordIds = flexParse(a.record_ids as string | Record<string, unknown> | unknown[] | undefined);
           return api(c, `/crm/v3/lists/${listId}/memberships/remove`, {
             method: "PUT",
             body: JSON.stringify(recordIds),
@@ -653,7 +644,7 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
 
       switch (op) {
         case "start": {
-          const files = parseJson(a.files as string | undefined);
+          const files = flexParse(a.files as string | Record<string, unknown> | unknown[] | undefined);
           return api(c, "/crm/v3/imports", {
             method: "POST",
             body: JSON.stringify({
@@ -684,8 +675,8 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
 
       switch (op) {
         case "start": {
-          const properties = parseJson(a.properties as string | undefined);
-          const filter = parseJson(a.filter as string | undefined);
+          const properties = flexParse(a.properties as string | Record<string, unknown> | unknown[] | undefined);
+          const filter = flexParse(a.filter as string | Record<string, unknown> | unknown[] | undefined);
           const body: Record<string, unknown> = {
             exportType: a.object_type,
           };
@@ -720,7 +711,7 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
         case "get":
           return api(c, `/crm/v3/objects/deals/${dealId}/splits`);
         case "set": {
-          const splits = parseJson(a.splits as string);
+          const splits = flexParse(a.splits as string | Record<string, unknown> | unknown[] | undefined);
           return api(c, `/crm/v3/objects/deals/${dealId}/splits`, {
             method: "PUT",
             body: JSON.stringify(splits),
@@ -796,8 +787,8 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
           if (a.end_date_time) body.endDateTime = a.end_date_time;
           if (a.event_organizer) body.eventOrganizer = a.event_organizer;
           if (a.event_description) body.eventDescription = a.event_description;
-          const customProperties = parseJson(
-            a.custom_properties as string | undefined
+          const customProperties = flexParse(
+            a.custom_properties as string | Record<string, unknown> | unknown[] | undefined
           );
           if (customProperties) body.customProperties = customProperties;
           return api(c, "/marketing/v3/marketing-events/events", {
@@ -813,8 +804,8 @@ export const HUBSPOT_CRM_TOOLS: HubSpotCrmToolDef[] = [
           if (a.end_date_time) body.endDateTime = a.end_date_time;
           if (a.event_organizer) body.eventOrganizer = a.event_organizer;
           if (a.event_description) body.eventDescription = a.event_description;
-          const customProperties = parseJson(
-            a.custom_properties as string | undefined
+          const customProperties = flexParse(
+            a.custom_properties as string | Record<string, unknown> | unknown[] | undefined
           );
           if (customProperties) body.customProperties = customProperties;
           return api(

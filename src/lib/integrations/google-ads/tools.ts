@@ -1,5 +1,6 @@
 import type { IntegrationToolDef } from "../types";
 import * as s from "./schemas";
+import { flexParse } from "../shared/json-params";
 
 // ── Client type ──
 
@@ -63,15 +64,6 @@ async function mutate(
     throw new Error(`Google Ads API ${res.status}: ${text}`);
   }
   return res.json();
-}
-
-function parseJson(raw: string | undefined): unknown {
-  if (!raw) return undefined;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    throw new Error("Invalid JSON string");
-  }
 }
 
 // ── Typed tool def ──
@@ -199,7 +191,7 @@ export const GOOGLE_ADS_TOOLS: GoogleAdsToolDef[] = [
         else if (bst === "TARGET_ROAS")
           campaign.targetRoas = { targetRoas: a.target_roas };
       }
-      const networkSettings = parseJson(
+      const networkSettings = flexParse(
         a.network_settings as string | undefined
       );
       if (networkSettings) campaign.networkSettings = networkSettings;
@@ -399,9 +391,9 @@ export const GOOGLE_ADS_TOOLS: GoogleAdsToolDef[] = [
     execute: async (a, client) => {
       const cid = (a.customer_id as string).replace(/-/g, "");
       const h = buildHeaders(client, a.login_customer_id as string | undefined);
-      const headlines = parseJson(a.headlines as string) as unknown[];
-      const descriptions = parseJson(a.descriptions as string) as unknown[];
-      const finalUrls = parseJson(a.final_urls as string) as string[];
+      const headlines = flexParse(a.headlines as string) as unknown[];
+      const descriptions = flexParse(a.descriptions as string) as unknown[];
+      const finalUrls = flexParse(a.final_urls as string) as string[];
       const ad: Record<string, unknown> = {
         responsiveSearchAd: {
           headlines,
@@ -503,7 +495,7 @@ export const GOOGLE_ADS_TOOLS: GoogleAdsToolDef[] = [
     execute: async (a, client) => {
       const cid = (a.customer_id as string).replace(/-/g, "");
       const h = buildHeaders(client, a.login_customer_id as string | undefined);
-      const keywords = parseJson(a.keywords as string) as Array<{
+      const keywords = flexParse(a.keywords as string) as Array<{
         text: string;
         matchType: string;
         cpcBidMicros?: number;

@@ -1,4 +1,5 @@
 import type { IntegrationToolDef } from "../types";
+import { flexParse } from "../shared/json-params";
 import * as s from "./schemas";
 
 // ── Client type ──
@@ -70,18 +71,6 @@ function splitGids(csv: string): string[] {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-}
-
-/** Parse optional JSON custom_fields string into an object */
-function parseCustomFields(
-  raw: string | undefined
-): Record<string, unknown> | undefined {
-  if (!raw) return undefined;
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    throw new Error("custom_fields must be a valid JSON object string");
-  }
 }
 
 // ── Typed tool def ──
@@ -157,7 +146,7 @@ export const ASANA_TOOLS: AsanaToolDef[] = [
       if (a.projects) data.projects = splitGids(a.projects as string);
       if (a.tags) data.tags = splitGids(a.tags as string);
       if (a.followers) data.followers = splitGids(a.followers as string);
-      const cf = parseCustomFields(a.custom_fields as string | undefined);
+      const cf = flexParse<Record<string, unknown>>(a.custom_fields as string | Record<string, unknown> | undefined);
       if (cf) data.custom_fields = cf;
       return unwrap(
         await api(c, "/tasks", {
@@ -190,7 +179,7 @@ export const ASANA_TOOLS: AsanaToolDef[] = [
           data[key] = a[key] === "null" ? null : a[key];
         }
       }
-      const cf = parseCustomFields(a.custom_fields as string | undefined);
+      const cf = flexParse<Record<string, unknown>>(a.custom_fields as string | Record<string, unknown> | undefined);
       if (cf) data.custom_fields = cf;
       return unwrap(
         await api(c, `/tasks/${gid}`, {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonParamOptional } from "../shared/json-params";
 
 // ── Shared fragments ──
 
@@ -144,10 +145,7 @@ export const createTaskSchema = z.object({
     .string()
     .optional()
     .describe("Comma-separated user GIDs to add as followers"),
-  custom_fields: z
-    .string()
-    .optional()
-    .describe("JSON object mapping custom field GID to value"),
+  custom_fields: jsonParamOptional("Object mapping custom field GID to value"),
 });
 
 export const updateTaskSchema = z.object({
@@ -164,10 +162,7 @@ export const updateTaskSchema = z.object({
   start_on: z.string().optional().describe("New start date (YYYY-MM-DD)"),
   start_at: z.string().optional().describe("New start datetime (ISO 8601)"),
   completed: z.boolean().optional().describe("Mark task complete or incomplete"),
-  custom_fields: z
-    .string()
-    .optional()
-    .describe("JSON object mapping custom field GID to value"),
+  custom_fields: jsonParamOptional("Object mapping custom field GID to value"),
 });
 
 export const manageTaskRelationsSchema = z.object({

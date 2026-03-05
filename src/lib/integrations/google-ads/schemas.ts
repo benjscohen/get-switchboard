@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonParam, jsonParamOptional } from "../shared/json-params";
 
 // ── Shared fragments ──
 
@@ -83,12 +84,9 @@ export const createCampaignSchema = z.object({
     .number()
     .optional()
     .describe("Target ROAS (for TARGET_ROAS, e.g. 3.5 = 350%)"),
-  network_settings: z
-    .string()
-    .optional()
-    .describe(
-      "JSON string of network settings, e.g. {\"targetGoogleSearch\":true,\"targetSearchNetwork\":true}"
-    ),
+  network_settings: jsonParamOptional(
+    "Network settings object, e.g. {\"targetGoogleSearch\":true,\"targetSearchNetwork\":true}"
+  ),
 });
 
 export const updateCampaignSchema = z.object({
@@ -196,19 +194,15 @@ export const createResponsiveSearchAdSchema = z.object({
   ad_group_resource_name: z
     .string()
     .describe("Ad group resource name"),
-  headlines: z
-    .string()
-    .describe(
-      "JSON array of headline objects, e.g. [{\"text\":\"Buy Now\"},{\"text\":\"Free Shipping\"}]. Min 3, max 15."
-    ),
-  descriptions: z
-    .string()
-    .describe(
-      "JSON array of description objects, e.g. [{\"text\":\"Great deals await.\"}]. Min 2, max 4."
-    ),
-  final_urls: z
-    .string()
-    .describe("JSON array of final URL strings, e.g. [\"https://example.com\"]"),
+  headlines: jsonParam(
+    "Array of headline objects, e.g. [{\"text\":\"Buy Now\"},{\"text\":\"Free Shipping\"}]. Min 3, max 15."
+  ),
+  descriptions: jsonParam(
+    "Array of description objects, e.g. [{\"text\":\"Great deals await.\"}]. Min 2, max 4."
+  ),
+  final_urls: jsonParam(
+    "Array of final URL strings, e.g. [\"https://example.com\"]"
+  ),
   path1: z
     .string()
     .optional()
@@ -265,11 +259,9 @@ export const addKeywordsSchema = z.object({
   customer_id: customerId,
   login_customer_id: loginCustomerId,
   ad_group_resource_name: z.string().describe("Ad group resource name"),
-  keywords: z
-    .string()
-    .describe(
-      'JSON array of keyword objects, e.g. [{"text":"running shoes","matchType":"BROAD","cpcBidMicros":1500000}]'
-    ),
+  keywords: jsonParam(
+    'Array of keyword objects, e.g. [{"text":"running shoes","matchType":"BROAD","cpcBidMicros":1500000}]'
+  ),
 });
 
 export const updateKeywordSchema = z.object({

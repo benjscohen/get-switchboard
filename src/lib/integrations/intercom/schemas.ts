@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonParamOptional } from "../shared/json-params";
 
 // ── Shared fragments ──
 
@@ -48,10 +49,7 @@ export const manageContactsSchema = z.object({
   name: z.string().optional().describe("Contact full name"),
   external_id: z.string().optional().describe("External ID for the contact"),
   avatar: z.string().optional().describe("URL to contact avatar image"),
-  custom_attributes: z
-    .string()
-    .optional()
-    .describe("JSON string of custom attributes to set on the contact"),
+  custom_attributes: jsonParamOptional("Custom attributes to set on the contact"),
   ...paginationFields,
 });
 
@@ -79,14 +77,8 @@ export const manageCompaniesSchema = z.object({
   size: z.number().optional().describe("Number of employees"),
   website: z.string().optional().describe("Company website URL"),
   industry: z.string().optional().describe("Company industry"),
-  custom_attributes: z
-    .string()
-    .optional()
-    .describe("JSON string of custom attributes"),
-  query: z
-    .string()
-    .optional()
-    .describe("JSON string of search query (for search operation)"),
+  custom_attributes: jsonParamOptional("Custom attributes object"),
+  query: jsonParamOptional("Search query object (for search operation)"),
   ...paginationFields,
 });
 
@@ -140,10 +132,7 @@ export const manageConversationsSchema = z.object({
     .optional()
     .describe("Unix timestamp to snooze until"),
   // search
-  query: z
-    .string()
-    .optional()
-    .describe("JSON string of search query (for search operation)"),
+  query: jsonParamOptional("Search query object (for search operation)"),
   ...paginationFields,
 });
 
@@ -205,14 +194,8 @@ export const manageTicketsSchema = z.object({
     .enum(["comment", "note"])
     .optional()
     .describe("Reply type (for reply)"),
-  ticket_attributes: z
-    .string()
-    .optional()
-    .describe("JSON string of ticket attributes (for create/update)"),
-  query: z
-    .string()
-    .optional()
-    .describe("JSON string of search query (for search)"),
+  ticket_attributes: jsonParamOptional("Ticket attributes object (for create/update)"),
+  query: jsonParamOptional("Search query object (for search)"),
   ...paginationFields,
 });
 
@@ -238,20 +221,9 @@ export const searchContactsSchema = z.object({
     .string()
     .optional()
     .describe("Comma-separated list of contact IDs to look up"),
-  custom_attributes: z
-    .string()
-    .optional()
-    .describe(
-      "JSON string of custom attribute filters, e.g. '{\"plan\": \"pro\"}'"
-    ),
+  custom_attributes: jsonParamOptional("Custom attribute filters, e.g. {\"plan\": \"pro\"}"),
   // Raw fallback for advanced queries
-  query: z
-    .string()
-    .optional()
-    .describe(
-      "Raw Intercom search query JSON (advanced). If provided, friendly fields above are ignored. " +
-        'Format: {"field":"email","operator":"=","value":"x@y.com"}'
-    ),
+  query: jsonParamOptional("Raw Intercom search query (advanced). If provided, friendly fields above are ignored. Format: {\"field\":\"email\",\"operator\":\"=\",\"value\":\"x@y.com\"}"),
   ...paginationFields,
 });
 
@@ -277,10 +249,7 @@ export const manageEventsSchema = z.object({
     .optional()
     .describe("User ID or Intercom user ID (for track/list)"),
   email: z.string().optional().describe("User email (alternative to user_id for track)"),
-  metadata: z
-    .string()
-    .optional()
-    .describe("JSON string of event metadata (for track)"),
+  metadata: jsonParamOptional("Event metadata object (for track)"),
   // list fields
   intercom_user_id: z
     .string()
@@ -328,10 +297,7 @@ export const manageDataAttributesSchema = z.object({
     .string()
     .optional()
     .describe("Attribute description (for create/update)"),
-  options: z
-    .string()
-    .optional()
-    .describe("JSON array of options for list attributes (for create)"),
+  options: jsonParamOptional("Array of options for list attributes (for create)"),
   archived: z
     .boolean()
     .optional()

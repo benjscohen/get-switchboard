@@ -1,6 +1,7 @@
 import type { sheets_v4 } from "@googleapis/sheets";
 import type { IntegrationToolDef } from "../types";
 import * as s from "./schemas";
+import { flexParse } from "../shared/json-params";
 
 type SheetsToolDef = Omit<IntegrationToolDef, "execute"> & {
   execute: (
@@ -26,28 +27,6 @@ function gridRange(
     endRowIndex: endRow,
     endColumnIndex: endCol,
   };
-}
-
-/** JSON string → row arrays */
-function parseValues(json: string): unknown[][] {
-  return JSON.parse(json) as unknown[][];
-}
-
-/** JSON string → batch write data */
-function parseRangesData(
-  json: string
-): Array<{ range: string; values: unknown[][] }> {
-  return JSON.parse(json) as Array<{ range: string; values: unknown[][] }>;
-}
-
-/** JSON string → sort specs */
-function parseSortSpecs(
-  json: string
-): Array<{ column_index: number; order: string }> {
-  return JSON.parse(json) as Array<{
-    column_index: number;
-    order: string;
-  }>;
 }
 
 import { hexToRgb } from "../shared/color";
@@ -201,7 +180,7 @@ export const SHEETS_TOOLS: SheetsToolDef[] = [
       const ssId = a.spreadsheetId as string;
 
       if (a.rangesData) {
-        const data = parseRangesData(a.rangesData as string);
+        const data = flexParse<Array<{ range: string; values: unknown[][] }>>(a.rangesData as string)!;
         return sheets.spreadsheets.values
           .batchUpdate({
             spreadsheetId: ssId,
@@ -222,7 +201,7 @@ export const SHEETS_TOOLS: SheetsToolDef[] = [
           range: a.range as string,
           valueInputOption: "USER_ENTERED",
           requestBody: {
-            values: parseValues(a.values as string),
+            values: flexParse<unknown[][]>(a.values as string)!,
           },
         })
         .then((r) => r.data);
@@ -240,7 +219,7 @@ export const SHEETS_TOOLS: SheetsToolDef[] = [
           valueInputOption: "USER_ENTERED",
           insertDataOption: "INSERT_ROWS",
           requestBody: {
-            values: parseValues(a.values as string),
+            values: flexParse<unknown[][]>(a.values as string)!,
           },
         })
         .then((r) => r.data),
@@ -269,7 +248,7 @@ export const SHEETS_TOOLS: SheetsToolDef[] = [
 
       if (op === "sort") {
         const specs = a.sortSpecs
-          ? parseSortSpecs(a.sortSpecs as string).map((s) => ({
+          ? flexParse<Array<{ column_index: number; order: string }>>(a.sortSpecs as string)!.map((s) => ({
               dimensionIndex: s.column_index,
               sortOrder: s.order,
             }))

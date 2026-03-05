@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonParam, jsonParamOptional } from "../shared/json-params";
 
 // ── Shared fragments ──
 
@@ -21,11 +22,9 @@ export const rangeNotation = z
     "Grid range as start_row:start_col:end_row:end_col (0-indexed, exclusive end). Example: 0:0:10:5"
   );
 
-export const values = z
-  .string()
-  .describe(
-    'JSON array of row arrays, e.g. [["Name","Age"],["Alice",30]]'
-  );
+export const values = jsonParam(
+  'Array of row arrays, e.g. [["Name","Age"],["Alice",30]]'
+);
 
 // ── Metadata & Discovery (3) ──
 
@@ -69,12 +68,9 @@ export const writeSchema = z.object({
   spreadsheetId,
   range,
   values,
-  rangesData: z
-    .string()
-    .optional()
-    .describe(
-      'JSON array of {range, values} for batch writes, e.g. [{"range":"Sheet1!A1","values":[["a"]]}]'
-    ),
+  rangesData: jsonParamOptional(
+    'Array of {range, values} for batch writes, e.g. [{"range":"Sheet1!A1","values":[["a"]]}]'
+  ),
 });
 
 export const appendSchema = z.object({
@@ -104,12 +100,9 @@ export const sortFilterSchema = z.object({
     .enum(["ASCENDING", "DESCENDING"])
     .optional()
     .describe("Sort direction"),
-  sortSpecs: z
-    .string()
-    .optional()
-    .describe(
-      'JSON array of {column_index, order} for multi-column sort, e.g. [{"column_index":0,"order":"ASCENDING"}]'
-    ),
+  sortSpecs: jsonParamOptional(
+    'Array of {column_index, order} for multi-column sort, e.g. [{"column_index":0,"order":"ASCENDING"}]'
+  ),
 });
 
 // ── Structure (3) ──

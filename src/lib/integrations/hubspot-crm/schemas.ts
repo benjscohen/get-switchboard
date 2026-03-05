@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonParam, jsonParamOptional } from "../shared/json-params";
 
 // ── Shared fragments ──
 
@@ -35,26 +36,15 @@ export const manageObjectsSchema = z.object({
     .string()
     .optional()
     .describe("Object ID (for get/update/archive)"),
-  properties: z
-    .string()
-    .optional()
-    .describe(
-      "JSON string of properties object for create/update, or comma-separated property names for get/list"
-    ),
-  associations: z
-    .string()
-    .optional()
-    .describe("JSON string of associations array (for create)"),
+  properties: jsonParamOptional("Properties object for create/update, or comma-separated property names for get/list"),
+  associations: jsonParamOptional("Associations array for create"),
   ...paginationFields,
 });
 
 export const searchObjectsSchema = z.object({
   object_type: objectType,
-  filter_groups: z
-    .string()
-    .optional()
-    .describe("JSON string of HubSpot filter groups array"),
-  sorts: z.string().optional().describe("JSON string of sorts array"),
+  filter_groups: jsonParamOptional("HubSpot filter groups array"),
+  sorts: jsonParamOptional("Sorts array"),
   query: z
     .string()
     .optional()
@@ -66,9 +56,7 @@ export const searchObjectsSchema = z.object({
 export const batchObjectsSchema = z.object({
   operation: z.enum(["create", "update", "read", "archive"]),
   object_type: objectType,
-  inputs: z
-    .string()
-    .describe("JSON string array of input objects for the batch operation"),
+  inputs: jsonParam("Array of input objects for the batch operation"),
 });
 
 export const manageAssociationsSchema = z.object({
@@ -131,12 +119,7 @@ export const managePropertiesSchema = z.object({
     .string()
     .optional()
     .describe("Property description (for create/update)"),
-  options: z
-    .string()
-    .optional()
-    .describe(
-      "JSON string array of options for enumeration type (for create/update)"
-    ),
+  options: jsonParamOptional("Array of options for enumeration type (for create/update)"),
 });
 
 export const managePropertyGroupsSchema = z.object({
@@ -170,26 +153,14 @@ export const manageSchemasSchema = z.object({
     .string()
     .optional()
     .describe("Internal schema name (for create)"),
-  labels: z
-    .string()
-    .optional()
-    .describe('JSON string of labels object, e.g. {"singular":"Car","plural":"Cars"} (for create/update)'),
-  properties: z
-    .string()
-    .optional()
-    .describe("JSON string array of property definitions (for create)"),
-  required_properties: z
-    .string()
-    .optional()
-    .describe("JSON string array of required property names (for create/update)"),
+  labels: jsonParamOptional('Labels object, e.g. {"singular":"Car","plural":"Cars"} (for create/update)'),
+  properties: jsonParamOptional("Array of property definitions (for create)"),
+  required_properties: jsonParamOptional("Array of required property names (for create/update)"),
   primary_display_property: z
     .string()
     .optional()
     .describe("Primary display property name (for create/update)"),
-  secondary_display_properties: z
-    .string()
-    .optional()
-    .describe("JSON string array of secondary display property names (for create/update)"),
+  secondary_display_properties: jsonParamOptional("Array of secondary display property names (for create/update)"),
 });
 
 export const getObjectSchemaSchema = z.object({
@@ -215,10 +186,7 @@ export const managePipelinesSchema = z.object({
     .number()
     .optional()
     .describe("Display order for the pipeline"),
-  stages: z
-    .string()
-    .optional()
-    .describe("JSON string array of stage definitions (for create/update)"),
+  stages: jsonParamOptional("Array of stage definitions (for create/update)"),
 });
 
 export const managePipelineStagesSchema = z.object({
@@ -239,10 +207,7 @@ export const managePipelineStagesSchema = z.object({
     .number()
     .optional()
     .describe("Display order for the stage"),
-  metadata: z
-    .string()
-    .optional()
-    .describe("JSON string of stage metadata (for create/update)"),
+  metadata: jsonParamOptional("Stage metadata object (for create/update)"),
 });
 
 // ── Owners & Users (2) ──
@@ -291,14 +256,8 @@ export const manageListsSchema = z.object({
     .enum(["MANUAL", "DYNAMIC"])
     .optional()
     .describe("List processing type (for create)"),
-  filter_branch: z
-    .string()
-    .optional()
-    .describe("JSON string of filter branch definition (for DYNAMIC lists)"),
-  record_ids: z
-    .string()
-    .optional()
-    .describe("JSON string array of record IDs (for add_members/remove_members)"),
+  filter_branch: jsonParamOptional("Filter branch definition (for DYNAMIC lists)"),
+  record_ids: jsonParamOptional("Array of record IDs (for add_members/remove_members)"),
   query: z
     .string()
     .optional()
@@ -314,10 +273,7 @@ export const manageImportsSchema = z.object({
     .string()
     .optional()
     .describe("Import ID (for get/cancel)"),
-  files: z
-    .string()
-    .optional()
-    .describe("JSON string array of import file configurations (for start)"),
+  files: jsonParamOptional("Array of import file configurations (for start)"),
   import_name: z
     .string()
     .optional()
@@ -334,14 +290,8 @@ export const manageExportsSchema = z.object({
     .string()
     .optional()
     .describe("Object type to export (for start)"),
-  properties: z
-    .string()
-    .optional()
-    .describe("JSON string array of property names to export (for start)"),
-  filter: z
-    .string()
-    .optional()
-    .describe("JSON string of filter criteria (for start)"),
+  properties: jsonParamOptional("Array of property names to export (for start)"),
+  filter: jsonParamOptional("Filter criteria object (for start)"),
 });
 
 // ── Specialized (5) ──
@@ -349,10 +299,7 @@ export const manageExportsSchema = z.object({
 export const manageDealSplitsSchema = z.object({
   operation: z.enum(["get", "set"]),
   deal_id: z.string().describe("Deal ID"),
-  splits: z
-    .string()
-    .optional()
-    .describe("JSON string array of split definitions (for set)"),
+  splits: jsonParamOptional("Array of split definitions (for set)"),
 });
 
 export const manageCallingTranscriptsSchema = z.object({
@@ -394,10 +341,7 @@ export const manageMarketingEventsSchema = z.object({
     .string()
     .optional()
     .describe("Event description (for create/update)"),
-  custom_properties: z
-    .string()
-    .optional()
-    .describe("JSON string of custom properties (for create/update)"),
+  custom_properties: jsonParamOptional("Custom properties object (for create/update)"),
   ...paginationFields,
 });
 

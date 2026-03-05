@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonParam } from "../shared/json-params";
 
 // ── Shared fragments ──
 
@@ -301,14 +302,9 @@ export const updatePageSchema = z.object({
 // 12. Batch update
 export const batchUpdateSchema = z.object({
   presentationId,
-  requests: z
-    .union([
-      z.string(),
-      z.array(z.record(z.string(), z.unknown())),
-    ])
-    .describe(
-      "Slides API batchUpdate requests — pass a JSON string or a native array of request objects"
-    ),
+  requests: jsonParam(
+    "Slides API batchUpdate requests — pass a JSON string or a native array of request objects"
+  ),
 });
 
 // 13. Delete element
