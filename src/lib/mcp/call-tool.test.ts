@@ -72,7 +72,7 @@ describe("registerCallTool", () => {
     const registeredTools = makeRegisteredTools([]);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    registerCallTool(server as any, toolMeta, registeredTools);
+    registerCallTool(server as any, toolMeta, registeredTools, new Map());
 
     expect(server.tool).toHaveBeenCalledTimes(1);
     expect(server.tool.mock.calls[0][0]).toBe("call_tool");
@@ -98,7 +98,7 @@ describe("registerCallTool", () => {
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    registerCallTool(server as any, toolMeta, registeredTools);
+    registerCallTool(server as any, toolMeta, registeredTools, new Map());
 
     const handler = server._registeredTools["call_tool"].handler;
     const extra = makeExtra();
@@ -123,7 +123,7 @@ describe("registerCallTool", () => {
     const registeredTools = makeRegisteredTools(["google_docs_get_document"]);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    registerCallTool(server as any, toolMeta, registeredTools);
+    registerCallTool(server as any, toolMeta, registeredTools, new Map());
 
     const handler = server._registeredTools["call_tool"].handler;
     // User only has google-calendar connection, not google-docs
@@ -144,7 +144,7 @@ describe("registerCallTool", () => {
     const registeredTools = makeRegisteredTools([]);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    registerCallTool(server as any, toolMeta, registeredTools);
+    registerCallTool(server as any, toolMeta, registeredTools, new Map());
 
     const handler = server._registeredTools["call_tool"].handler;
     const result = await handler(
@@ -178,7 +178,7 @@ describe("registerCallTool", () => {
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    registerCallTool(server as any, toolMeta, registeredTools);
+    registerCallTool(server as any, toolMeta, registeredTools, new Map());
 
     const handler = server._registeredTools["call_tool"].handler;
     const extra = makeExtra({ userId: "specific-user" });
@@ -207,7 +207,7 @@ describe("registerCallTool", () => {
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    registerCallTool(server as any, toolMeta, registeredTools);
+    registerCallTool(server as any, toolMeta, registeredTools, new Map());
 
     const handler = server._registeredTools["call_tool"].handler;
     const result = await handler(
@@ -242,7 +242,7 @@ describe("registerCallTool", () => {
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    registerCallTool(server as any, toolMeta, registeredTools);
+    registerCallTool(server as any, toolMeta, registeredTools, new Map());
 
     const handler = server._registeredTools["call_tool"].handler;
     const result = await handler(
@@ -284,7 +284,7 @@ describe("registerCallTool", () => {
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    registerCallTool(server as any, toolMeta, registeredTools);
+    registerCallTool(server as any, toolMeta, registeredTools, new Map());
 
     const handler = server._registeredTools["call_tool"].handler;
     const result = await handler(
@@ -326,7 +326,7 @@ describe("registerCallTool", () => {
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    registerCallTool(server as any, toolMeta, registeredTools);
+    registerCallTool(server as any, toolMeta, registeredTools, new Map());
 
     const handler = server._registeredTools["call_tool"].handler;
     const result = await handler(
@@ -338,5 +338,130 @@ describe("registerCallTool", () => {
     const res = result as any;
     expect(res.isError).toBeUndefined();
     expect(res.content[0].text).toBe("events list");
+  });
+
+  it("prefixes successful response with integration name when in map", async () => {
+    const server = createMockServer();
+    const toolMeta = makeToolMeta([
+      ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+    ]);
+    const registeredTools = makeRegisteredTools(["google_calendar_list_events"]);
+
+    server._registeredTools["google_calendar_list_events"] = {
+      name: "google_calendar_list_events",
+      description: "List events",
+      schema: {},
+      inputSchema: { type: "object" },
+      handler: vi.fn().mockResolvedValue({
+        content: [{ type: "text", text: '{"events": []}' }],
+      }),
+    };
+
+    const integrationNames = new Map([["google_calendar_list_events", "Google Calendar"]]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerCallTool(server as any, toolMeta, registeredTools, integrationNames);
+
+    const handler = server._registeredTools["call_tool"].handler;
+    const result = await handler(
+      { tool_name: "google_calendar_list_events", arguments: {} },
+      makeExtra(),
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = result as any;
+    expect(res.content[0].text).toBe('[Google Calendar] {"events": []}');
+  });
+
+  it("does not prefix when tool name is not in integration map", async () => {
+    const server = createMockServer();
+    const toolMeta = makeToolMeta([
+      ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+    ]);
+    const registeredTools = makeRegisteredTools(["google_calendar_list_events"]);
+
+    server._registeredTools["google_calendar_list_events"] = {
+      name: "google_calendar_list_events",
+      description: "List events",
+      schema: {},
+      inputSchema: { type: "object" },
+      handler: vi.fn().mockResolvedValue({
+        content: [{ type: "text", text: "raw output" }],
+      }),
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerCallTool(server as any, toolMeta, registeredTools, new Map());
+
+    const handler = server._registeredTools["call_tool"].handler;
+    const result = await handler(
+      { tool_name: "google_calendar_list_events", arguments: {} },
+      makeExtra(),
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = result as any;
+    expect(res.content[0].text).toBe("raw output");
+  });
+
+  it("does not prefix error responses", async () => {
+    const server = createMockServer();
+    const toolMeta = makeToolMeta([
+      ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+    ]);
+    const registeredTools = makeRegisteredTools(["google_calendar_list_events"]);
+
+    server._registeredTools["google_calendar_list_events"] = {
+      name: "google_calendar_list_events",
+      description: "List events",
+      schema: {},
+      inputSchema: { type: "object" },
+      handler: vi.fn().mockResolvedValue({
+        isError: true,
+        content: [{ type: "text", text: "something went wrong" }],
+      }),
+    };
+
+    const integrationNames = new Map([["google_calendar_list_events", "Google Calendar"]]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerCallTool(server as any, toolMeta, registeredTools, integrationNames);
+
+    const handler = server._registeredTools["call_tool"].handler;
+    const result = await handler(
+      { tool_name: "google_calendar_list_events", arguments: {} },
+      makeExtra(),
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = result as any;
+    expect(res.content[0].text).toBe("something went wrong");
+  });
+
+  it("handles responses with no content array safely", async () => {
+    const server = createMockServer();
+    const toolMeta = makeToolMeta([
+      ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+    ]);
+    const registeredTools = makeRegisteredTools(["google_calendar_list_events"]);
+
+    server._registeredTools["google_calendar_list_events"] = {
+      name: "google_calendar_list_events",
+      description: "List events",
+      schema: {},
+      inputSchema: { type: "object" },
+      handler: vi.fn().mockResolvedValue({}),
+    };
+
+    const integrationNames = new Map([["google_calendar_list_events", "Google Calendar"]]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerCallTool(server as any, toolMeta, registeredTools, integrationNames);
+
+    const handler = server._registeredTools["call_tool"].handler;
+    const result = await handler(
+      { tool_name: "google_calendar_list_events", arguments: {} },
+      makeExtra(),
+    );
+
+    // Should return as-is without crashing
+    expect(result).toEqual({});
   });
 });

@@ -763,7 +763,8 @@ function registerTools(server: McpServer) {
 
   // Register discover_tools and call_tool (needs registeredTools reference)
   registerDiscoverTools(server, toolMeta, searchIndex, registeredTools);
-  registerCallTool(server, toolMeta, registeredTools);
+  const integrationNames = new Map(toolEntries.map(e => [e.name, e.integrationName]));
+  registerCallTool(server, toolMeta, registeredTools, integrationNames);
 
   server.server.setRequestHandler(ListToolsRequestSchema, (_request, extra) => {
     const tools = filterToolsForUser(registeredTools, toolMeta, {

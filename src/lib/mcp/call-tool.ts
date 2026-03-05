@@ -11,6 +11,7 @@ export function registerCallTool(
   server: McpServer,
   toolMeta: Map<string, ToolMeta>,
   registeredTools: Record<string, RegisteredTool>,
+  integrationNames: Map<string, string>,
 ) {
   server.tool(
     "call_tool",
@@ -111,7 +112,12 @@ export function registerCallTool(
             : (tool.handler as (e: unknown) => Promise<unknown>)(extra)
         );
 
-        return result as { content: Array<{ type: "text"; text: string }>; isError?: boolean };
+        const typed = result as { content?: Array<{ type: string; text?: string }>; isError?: boolean };
+        const label = integrationNames.get(args.tool_name);
+        if (label && !typed.isError && typed.content?.[0]?.type === "text" && typeof typed.content[0].text === "string") {
+          typed.content[0].text = `[${label}] ${typed.content[0].text}`;
+        }
+        return typed as { content: Array<{ type: "text"; text: string }>; isError?: boolean };
       } catch (err) {
         const schema = registeredTools[args.tool_name]?.inputSchema;
         return {
