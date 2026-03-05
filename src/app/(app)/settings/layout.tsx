@@ -21,11 +21,12 @@ export default async function SettingsLayout({
 
   const tabs: { href: string; label: string }[] = [];
 
-  // Org admin/owner OR platform admin sees Organization + Teams
+  // Org admin/owner OR platform admin sees Organization, Teams, MCP Servers
   if (isOrgAdmin || isSuperAdmin) {
     tabs.push(
       { href: "/settings/organization", label: "Organization" },
       { href: "/settings/teams", label: "Teams" },
+      { href: "/settings/mcp-servers", label: "MCP Servers" },
     );
   }
 
@@ -34,7 +35,6 @@ export default async function SettingsLayout({
     tabs.push(
       { href: "/settings/users", label: "Users" },
       { href: "/settings/dashboard", label: "Dashboard" },
-      { href: "/settings/mcp-servers", label: "MCP Servers" },
     );
   }
 

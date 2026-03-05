@@ -3,7 +3,6 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAuthProfile } from "@/lib/auth-cache";
 import { OrgNameForm } from "@/components/settings/org-name-form";
 import { DomainManager } from "@/components/settings/domain-manager";
-import { IntegrationsCard } from "@/components/app/integrations-card";
 
 export default async function SettingsOrganizationPage() {
   const auth = await getAuthProfile();
@@ -37,7 +36,6 @@ export default async function SettingsOrganizationPage() {
           isPrimary: d.is_primary,
         }))}
       />
-      <IntegrationsCard />
     </div>
   );
 }
