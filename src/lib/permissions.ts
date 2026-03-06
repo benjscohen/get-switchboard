@@ -6,6 +6,28 @@ import { proxyIntegrationRegistry } from "@/lib/integrations/proxy-registry";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getToolRisk } from "@/lib/mcp/tool-risk";
 
+/**
+ * Check if a user is allowed to access an integration based on org-level scoping.
+ * Returns true (allowed) if:
+ * - No scopes defined at all
+ * - No userId provided (can't enforce)
+ * - User is an org admin/owner (bypass)
+ * - No scope row for this integration (everyone has access)
+ * - User is in the scope's allowed user set
+ */
+export function isUserInScope(
+  integrationScopes: Record<string, Set<string>> | undefined,
+  userId: string | undefined,
+  orgRole: string | undefined,
+  integrationId: string
+): boolean {
+  if (!integrationScopes || !userId) return true;
+  if (orgRole === "owner" || orgRole === "admin") return true;
+  const allowedUsers = integrationScopes[integrationId];
+  if (allowedUsers && !allowedUsers.has(userId)) return false;
+  return true;
+}
+
 type IntegrationAccessRow = {
   integrationId: string;
   allowedTools: string[];

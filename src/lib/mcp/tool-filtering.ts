@@ -1,4 +1,4 @@
-import { isToolAllowed } from "@/lib/permissions";
+import { isToolAllowed, isUserInScope } from "@/lib/permissions";
 import { getToolRisk, isRiskAllowedByScope } from "@/lib/mcp/tool-risk";
 import { zodToJsonSchema } from "@/lib/mcp/schema-utils";
 
@@ -24,6 +24,10 @@ export type FilterContext = {
   discoveryMode?: boolean;
   /** Tool names allowed by tool group preferences. Key = integrationId, value = Set of allowed tool names. Missing key = all tools allowed. */
   toolGroupAllowedTools?: Record<string, Set<string>>;
+  /** Org-level integration access scopes. Key = integrationId, value = Set of allowed user IDs. Missing key = everyone. */
+  integrationScopes?: Record<string, Set<string>>;
+  /** Current user ID (for integration scope checks). */
+  userId?: string;
 };
 
 /**
@@ -71,6 +75,9 @@ export function filterToolsForUser(
       if (meta.integrationId === "admin:super") {
         return ctx.role === "admin";
       }
+
+      // Integration access scope check (org-level restriction)
+      if (!isUserInScope(ctx.integrationScopes, ctx.userId, ctx.orgRole, meta.integrationId)) return false;
 
       // Native proxy tools: require key or OAuth connection based on config
       if (meta.integrationId.startsWith("proxy:")) {

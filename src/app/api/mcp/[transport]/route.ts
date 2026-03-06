@@ -14,7 +14,7 @@ import { getValidTokens } from "@/lib/integrations/token-refresh";
 import type { McpToolResult } from "@/lib/integrations/types";
 import { logUsage } from "@/lib/usage-log";
 import { submitFeedback } from "@/lib/feedback";
-import { isToolAllowed } from "@/lib/permissions";
+import { isToolAllowed, isUserInScope } from "@/lib/permissions";
 import { getToolRisk, isRiskAllowedByScope } from "@/lib/mcp/tool-risk";
 import { proxyToolCall } from "@/lib/mcp/proxy-client";
 import { jsonSchemaToZodToolSchema } from "@/lib/mcp/json-schema-to-zod";
@@ -101,6 +101,14 @@ function toolPreCheck(
     | undefined;
 
   if (permissionsMode && integrationAccess && !isToolAllowed(permissionsMode, integrationAccess, integrationId, toolName)) {
+    logUsage({ userId, apiKeyId, toolName, integrationId, status: "unauthorized", errorMessage: "Tool not available", organizationId, riskLevel: risk });
+    return { content: [{ type: "text" as const, text: "Tool not available" }], isError: true };
+  }
+
+  // Integration access scope check (org-level restriction)
+  const integrationScopes = extra.authInfo?.extra?.integrationScopes as Record<string, Set<string>> | undefined;
+  const orgRole = extra.authInfo?.extra?.orgRole as string | undefined;
+  if (!isUserInScope(integrationScopes, userId, orgRole, integrationId)) {
     logUsage({ userId, apiKeyId, toolName, integrationId, status: "unauthorized", errorMessage: "Tool not available", organizationId, riskLevel: risk });
     return { content: [{ type: "text" as const, text: "Tool not available" }], isError: true };
   }
@@ -792,6 +800,8 @@ function buildAndRegisterDiscovery(server: McpServer) {
       role: extra.authInfo?.extra?.role as string | undefined,
       orgRole: extra.authInfo?.extra?.orgRole as string | undefined,
       discoveryMode: extra.authInfo?.extra?.discoveryMode as boolean | undefined,
+      integrationScopes: extra.authInfo?.extra?.integrationScopes as Record<string, Set<string>> | undefined,
+      userId: extra.authInfo?.extra?.userId as string | undefined,
     });
 
     return { tools };
@@ -896,6 +906,7 @@ const authedHandler = withMcpAuth(
       { data: rawOrgKeys },
       { data: rawProxyUserKeys },
       { data: teamMemberships },
+      { data: rawScopes },
     ] = await Promise.all([
       supabaseAdmin.from("profiles").select("status, permissions_mode, organization_id, org_role, role, discovery_mode").eq("id", apiKey.user_id).single(),
       supabaseAdmin.from("user_integration_access").select("integration_id, allowed_tools").eq("user_id", apiKey.user_id),
@@ -904,6 +915,10 @@ const authedHandler = withMcpAuth(
       supabaseAdmin.from("integration_org_keys").select("integration_id, api_key").eq("organization_id", organizationId).eq("enabled", true),
       supabaseAdmin.from("proxy_user_keys").select("integration_id, api_key").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("team_members").select("team_id").eq("user_id", apiKey.user_id),
+      supabaseAdmin
+        .from("integration_access_scopes")
+        .select("integration_id, integration_scope_users(user_id)")
+        .eq("organization_id", organizationId),
     ]);
 
     // Deny deactivated users (before any decryption work)
@@ -940,6 +955,12 @@ const authedHandler = withMcpAuth(
 
     const teamIds = (teamMemberships ?? []).map((m) => m.team_id);
 
+    const integrationScopes: Record<string, Set<string>> = {};
+    for (const scope of rawScopes ?? []) {
+      const users = (scope.integration_scope_users ?? []) as Array<{ user_id: string }>;
+      integrationScopes[scope.integration_id] = new Set(users.map((u) => u.user_id));
+    }
+
     return {
       token: bearerToken,
       clientId: apiKey.user_id,
@@ -960,6 +981,7 @@ const authedHandler = withMcpAuth(
         apiKeyScope: apiKey.scope ?? "full",
         discoveryMode: profile.discovery_mode ?? false,
         keyExpired,
+        integrationScopes,
       },
     };
   },
