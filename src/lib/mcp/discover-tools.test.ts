@@ -157,6 +157,60 @@ describe("registerDiscoverTools", () => {
     expect(browseIntegrations).toHaveBeenCalledOnce();
   });
 
+  it("discovery mode: integration tools are still visible inside discover_tools", async () => {
+    const server = createMockServer();
+    const toolMeta = makeToolMeta([
+      ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+      ["slack_send_message", { integrationId: "slack", orgId: null }],
+    ]);
+    const searchIndex: ToolIndexEntry[] = [];
+    const registeredTools = makeRegisteredTools(["google_calendar_list_events", "slack_send_message"]);
+
+    vi.mocked(searchToolsWithEmbeddings).mockResolvedValue([]);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerDiscoverTools(server as any, toolMeta, searchIndex, registeredTools);
+
+    const handler = server._registeredTools["discover_tools"].handler;
+    // User has discoveryMode ON — this is the bug scenario
+    await handler(
+      { query: "calendar", limit: 10 },
+      makeExtra({ discoveryMode: true, connections: [{ integrationId: "google-calendar" }, { integrationId: "slack" }] }),
+    );
+
+    // The visible names passed to search should include integration tools, not just platform tools
+    const visibleNames = vi.mocked(searchToolsWithEmbeddings).mock.calls[0][2] as Set<string>;
+    expect(visibleNames.has("google_calendar_list_events")).toBe(true);
+    expect(visibleNames.has("slack_send_message")).toBe(true);
+  });
+
+  it("discovery mode: browse mode returns integrations even with discoveryMode on", async () => {
+    const server = createMockServer();
+    const toolMeta = makeToolMeta([
+      ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+    ]);
+    const searchIndex: ToolIndexEntry[] = [];
+    const registeredTools = makeRegisteredTools(["google_calendar_list_events"]);
+
+    const mockIntegrations = [
+      { id: "google-calendar", name: "Google Calendar", category: "calendar", toolCount: 5, tools: [] },
+    ];
+    vi.mocked(browseIntegrations).mockReturnValue(mockIntegrations);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerDiscoverTools(server as any, toolMeta, searchIndex, registeredTools);
+
+    const handler = server._registeredTools["discover_tools"].handler;
+    await handler(
+      { limit: 10 },
+      makeExtra({ discoveryMode: true, connections: [{ integrationId: "google-calendar" }] }),
+    );
+
+    // browseIntegrations should receive a visibleToolNames set that includes integration tools
+    const visibleNames = vi.mocked(browseIntegrations).mock.calls[0][1] as Set<string>;
+    expect(visibleNames.has("google_calendar_list_events")).toBe(true);
+  });
+
   it("applies user filtering — tools not visible to user are excluded from search", async () => {
     const server = createMockServer();
     const toolMeta = makeToolMeta([
