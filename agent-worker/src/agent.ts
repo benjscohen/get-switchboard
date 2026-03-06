@@ -296,9 +296,6 @@ export async function processMessage(
     }
 
     // 12. Pull user files for local read context
-    let tempDir: string | null = null;
-    let claudeMdContent: string | null = null;
-
     try {
       const userFiles = await fetchUserFiles(lookup.agentKey);
       if (userFiles) {
