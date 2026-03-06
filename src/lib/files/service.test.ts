@@ -197,7 +197,7 @@ describe("writeFile — version error logging", () => {
     };
 
     // ensureParentFolders returns early for root parent (no DB call).
-    // So: call 1 = existing check (maybeSingle → null), call 2 = upsert (single → fileRow)
+    // So: call 1 = existing check (maybeSingle → null), call 2 = insert (single → fileRow)
     let filesCallCount = 0;
     mockFrom.mockImplementation((table: string) => {
       if (table === "files") {
@@ -206,7 +206,7 @@ describe("writeFile — version error logging", () => {
           // existing file check — no existing file
           return chainMock({ data: null, error: null });
         }
-        // upsert — return the created file
+        // insert — return the created file
         return chainMock({ data: fileRow, error: null });
       }
       if (table === "file_versions") {

@@ -179,24 +179,21 @@ async function ensureParentFolders(auth: FileAuth, path: string): Promise<void> 
   // Recursively ensure grandparent
   await ensureParentFolders(auth, parent);
 
-  // Create parent folder
+  // Create parent folder (insert only — we already checked it doesn't exist)
   const folderName = getFileName(parent);
   const folderParent = getParentPath(parent);
-  await supabaseAdmin.from("files").upsert(
-    {
-      user_id: auth.userId,
-      organization_id: auth.organizationId ?? null,
-      path: parent,
-      name: folderName,
-      parent_path: folderParent,
-      is_folder: true,
-      content: null,
-      metadata: {},
-      current_version: 1,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id,organization_id,path" }
-  );
+  await supabaseAdmin.from("files").insert({
+    user_id: auth.userId,
+    organization_id: auth.organizationId ?? null,
+    path: parent,
+    name: folderName,
+    parent_path: folderParent,
+    is_folder: true,
+    content: null,
+    metadata: {},
+    current_version: 1,
+    updated_at: new Date().toISOString(),
+  });
 }
 
 // ── Service Functions ──
@@ -273,13 +270,29 @@ export async function writeFile(
     updated_at: new Date().toISOString(),
   };
 
-  const { data, error } = await supabaseAdmin
-    .from("files")
-    .upsert(row, { onConflict: "user_id,organization_id,path" })
-    .select("*")
-    .single();
+  let data: Record<string, unknown>;
+  let error: { message: string } | null;
 
-  if (error) return { ok: false, error: error.message, status: 500 };
+  if (isCreate) {
+    const result = await supabaseAdmin
+      .from("files")
+      .insert(row)
+      .select("*")
+      .single();
+    data = result.data;
+    error = result.error;
+  } else {
+    const result = await supabaseAdmin
+      .from("files")
+      .update(row)
+      .eq("id", existing.id)
+      .select("*")
+      .single();
+    data = result.data;
+    error = result.error;
+  }
+
+  if (error || !data) return { ok: false, error: error?.message ?? "Write failed", status: 500 };
 
   // Record version
   const { error: versionError } = await supabaseAdmin.from("file_versions").insert({
@@ -540,6 +553,18 @@ export async function createFolder(
   const pathError = validatePath(normalized);
   if (pathError) return { ok: false, error: pathError, status: 400 };
 
+  // Check if folder already exists
+  let existQ = supabaseAdmin
+    .from("files")
+    .select("*")
+    .eq("user_id", auth.userId)
+    .eq("path", normalized)
+    .eq("is_folder", true);
+  existQ = orgFilter(existQ, auth);
+  const { data: existing } = await existQ.maybeSingle();
+
+  if (existing) return { ok: true, data: formatFile(existing) };
+
   await ensureParentFolders(auth, normalized);
 
   const row = {
@@ -557,7 +582,7 @@ export async function createFolder(
 
   const { data, error } = await supabaseAdmin
     .from("files")
-    .upsert(row, { onConflict: "user_id,organization_id,path" })
+    .insert(row)
     .select("*")
     .single();
 
@@ -823,9 +848,12 @@ export async function bulkWriteFiles(
     await ensureParentFolders(auth, parent + "/_");
   }
 
-  const rows = normalizedEntries.map((e) => {
+  const insertRows: Array<Record<string, unknown>> = [];
+  const updateEntries: Array<{ id: string; row: Record<string, unknown> }> = [];
+
+  for (const e of normalizedEntries) {
     const existing = existingMap.get(e.path);
-    return {
+    const row = {
       user_id: auth.userId,
       organization_id: auth.organizationId ?? null,
       path: e.path,
@@ -837,14 +865,38 @@ export async function bulkWriteFiles(
       current_version: existing ? existing.current_version + 1 : 1,
       updated_at: now,
     };
-  });
+    if (existing) {
+      updateEntries.push({ id: existing.id, row });
+    } else {
+      insertRows.push(row);
+    }
+  }
 
-  const { data: upserted, error } = await supabaseAdmin
-    .from("files")
-    .upsert(rows, { onConflict: "user_id,organization_id,path" })
-    .select("id, path, name, content, metadata, current_version");
+  const results: Array<Record<string, unknown>> = [];
 
-  if (error) return { ok: false, error: error.message, status: 500 };
+  // Batch insert new files
+  if (insertRows.length > 0) {
+    const { data: inserted, error: insertError } = await supabaseAdmin
+      .from("files")
+      .insert(insertRows)
+      .select("id, path, name, content, metadata, current_version");
+    if (insertError) return { ok: false, error: insertError.message, status: 500 };
+    if (inserted) results.push(...inserted);
+  }
+
+  // Update existing files one by one (each needs its own .eq("id", ...))
+  for (const { id, row } of updateEntries) {
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from("files")
+      .update(row)
+      .eq("id", id)
+      .select("id, path, name, content, metadata, current_version")
+      .single();
+    if (updateError) return { ok: false, error: updateError.message, status: 500 };
+    if (updated) results.push(updated);
+  }
+
+  const upserted = results;
 
   // Batch-insert version rows
   if (upserted && upserted.length > 0) {
@@ -862,7 +914,7 @@ export async function bulkWriteFiles(
     if (batchVersionError) console.error("Failed to record file versions:", batchVersionError.message);
   }
 
-  return { ok: true, data: { upserted: rows.length, paths: rows.map((r) => r.path) } };
+  return { ok: true, data: { upserted: upserted.length, paths: upserted.map((r) => r.path as string) } };
 }
 
 // ── Markdown Formatting (for /api/fs export) ──
