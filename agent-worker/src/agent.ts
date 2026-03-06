@@ -156,7 +156,7 @@ export async function processMessage(
   if (!lookup) {
     await slack.postMessage(
       channelId,
-      "I don't recognize your Slack account. Please connect Slack in your Switchboard dashboard first: https://app.get-switchboard.com/connections",
+      "I don't recognize your Slack account. Please connect Slack in your Switchboard dashboard first: https://www.get-switchboard.com/connections",
       threadTs || messageTs,
     );
     return;
