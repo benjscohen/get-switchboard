@@ -19,6 +19,25 @@ Format all responses using Slack mrkdwn syntax:
 `.trim();
 
 // ---------------------------------------------------------------------------
+// Dev environment instructions
+// ---------------------------------------------------------------------------
+
+const DEV_ENVIRONMENT_INSTRUCTIONS = `
+You have a dev environment with: git, Python 3 (FastAPI, pandas, numpy pre-installed), Node.js 20, PostgreSQL client (psql), Terraform, build tools (gcc/g++/make), SQLite, and common shell utilities.
+
+You have sudo access to install any additional packages:
+- System packages: sudo apt-get update && sudo apt-get install -y <package>
+- Python: pip install --user or use a venv
+- Node: npm install
+- Jupyter: pip install --user jupyter
+
+For private GitHub repos or any service requiring credentials:
+1. Use the vault_get_secret MCP tool to retrieve the user's stored credentials
+2. Configure git auth via environment variable or credential helper
+3. Never include secrets in your final response to the user
+`.trim();
+
+// ---------------------------------------------------------------------------
 // Extract /CLAUDE.md from file list
 // ---------------------------------------------------------------------------
 
@@ -35,20 +54,16 @@ export function buildSystemPrompt(claudeMdContent: string | null): string {
   const sections: string[] = [];
 
   sections.push(
-    "You are a helpful AI assistant with access to the user's Switchboard integrations. " +
-      "Use the available MCP tools to help with their request. " +
-      "You also have read-only access to the user's Switchboard files in the current working directory for context.",
+    "You are a helpful AI assistant with full dev environment access and the user's Switchboard integrations via MCP tools. " +
+      "You can clone repos, write and run code, edit files, search the web, and use all available tools to help with the user's request.",
   );
 
-  sections.push(
-    "To create or update files and memories, use the MCP tools (save_memory, file_write). " +
-      "The local files are read-only context — do not attempt to write to them directly.",
-  );
+  sections.push(DEV_ENVIRONMENT_INSTRUCTIONS);
 
   sections.push(
-    "Before performing any write action via MCP tools (sending emails, Slack messages, creating calendar events, updating files, etc.), " +
+    "Before performing write actions via MCP tools that affect external services (sending emails, Slack messages, creating calendar events, etc.), " +
       "describe what you are about to do and ask the user for confirmation. " +
-      "Read-only actions (searching, listing, reading) do not need confirmation.",
+      "Local file operations (creating files, running scripts, installing packages) do not need confirmation.",
   );
 
   if (claudeMdContent) {

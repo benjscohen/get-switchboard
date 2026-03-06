@@ -331,7 +331,6 @@ export async function processMessage(
               },
             },
           },
-          allowedTools: ["mcp__switchboard__*"],
           permissionMode: "bypassPermissions",
           maxTurns: MAX_TURNS,
           abortController,
