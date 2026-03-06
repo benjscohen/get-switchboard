@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { Container } from "@/components/ui/container";
-import { IntegrationList, isUserKeyConnected, type UserKeyItem } from "@/components/dashboard/integration-list";
+import { IntegrationList, type UserKeyItem } from "@/components/dashboard/integration-list";
 import { ConnectCard } from "@/components/dashboard/connect-card";
 import { DashboardToasts } from "@/components/dashboard/dashboard-toasts";
 import { DiscoveryModeToggle } from "@/components/dashboard/discovery-mode-toggle";
@@ -318,7 +318,14 @@ export default async function DashboardPage() {
           connectionStats={{
             connected: integrations.filter(i => i.connected).length
               + proxyIntegrations.filter(i => i.connected).length
-              + userKeyIntegrations.filter(i => isUserKeyConnected(i)).length,
+              + userKeyIntegrations.filter(i => {
+                if (i.hasPersonalKey) return true;
+                if (i.type === "proxy") return false;
+                if (i.keyMode === "per_user") return false;
+                if (i.hasSharedKey) return true;
+                if (i.authType === "bearer" || i.authType === "custom_headers") return false;
+                return true;
+              }).length,
             total: integrations.length + proxyIntegrations.length + userKeyIntegrations.length,
           }}
         />
