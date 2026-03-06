@@ -286,12 +286,24 @@ export const manageExportsSchema = z.object({
     .string()
     .optional()
     .describe("Export ID (for get)"),
+  export_type: z
+    .enum(["VIEW", "LIST"])
+    .optional()
+    .describe("Export type (for start)"),
+  format: z
+    .enum(["CSV", "XLSX", "XLS"])
+    .optional()
+    .describe("File format (for start, default CSV)"),
   object_type: z
     .string()
     .optional()
-    .describe("Object type to export (for start)"),
-  properties: jsonParamOptional("Array of property names to export (for start)"),
-  filter: jsonParamOptional("Filter criteria object (for start)"),
+    .describe("CRM object type to export (for start)"),
+  object_properties: jsonParamOptional("Array of property names to export (for start)"),
+  public_crm_search_request: jsonParamOptional("Search filter object (for VIEW exports)"),
+  list_id: z
+    .string()
+    .optional()
+    .describe("List ID (for LIST exports)"),
 });
 
 // ── Specialized (5) ──
@@ -317,6 +329,14 @@ export const manageMarketingEventsSchema = z.object({
     .string()
     .optional()
     .describe("Marketing event ID (for get/update/delete)"),
+  external_event_id: z
+    .string()
+    .optional()
+    .describe("External event ID (REQUIRED for create)"),
+  external_account_id: z
+    .string()
+    .optional()
+    .describe("External account ID (REQUIRED for create)"),
   event_name: z
     .string()
     .optional()
@@ -371,11 +391,12 @@ export const manageForecastsSchema = z.object({
 // ── Marketing & Automation (2) ──
 
 export const manageCampaignsSchema = z.object({
-  operation: z.enum(["list", "get", "get_revenue"]),
+  operation: z.enum(["list", "get"]),
   campaign_id: z
     .string()
     .optional()
-    .describe("Campaign ID (for get/get_revenue)"),
+    .describe("Campaign ID (for get)"),
+  properties: propertiesField,
   ...paginationFields,
 });
 
@@ -392,6 +413,10 @@ export const manageSequencesSchema = z.object({
   sender_email: z
     .string()
     .optional()
-    .describe("Sender email address for enrollment (for enroll, optional)"),
+    .describe("Sender email address (REQUIRED for enroll)"),
+  user_id: z
+    .string()
+    .optional()
+    .describe("HubSpot user ID (REQUIRED for list/get)"),
   ...paginationFields,
 });

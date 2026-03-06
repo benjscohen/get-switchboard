@@ -661,12 +661,46 @@ describe("manageExportsSchema", () => {
   it("accepts start fields", () => {
     const result = manageExportsSchema.parse({
       operation: "start",
+      export_type: "VIEW",
+      format: "CSV",
       object_type: "contacts",
-      properties: '["firstname","lastname","email"]',
-      filter: '{"propertyName":"createdate","operator":"GTE","value":"2024-01-01"}',
+      object_properties: '["firstname","lastname","email"]',
+      public_crm_search_request: '{"filters":[]}',
+      list_id: "list1",
     });
+    expect(result.export_type).toBe("VIEW");
+    expect(result.format).toBe("CSV");
     expect(result.object_type).toBe("contacts");
+    expect(result.list_id).toBe("list1");
   });
+
+  it.each(["VIEW", "LIST"] as const)(
+    "accepts export_type '%s'",
+    (export_type) => {
+      const result = manageExportsSchema.parse({
+        operation: "start",
+        export_type,
+      });
+      expect(result.export_type).toBe(export_type);
+    }
+  );
+
+  it("rejects invalid export_type", () => {
+    expect(() =>
+      manageExportsSchema.parse({ operation: "start", export_type: "JSON" })
+    ).toThrow();
+  });
+
+  it.each(["CSV", "XLSX", "XLS"] as const)(
+    "accepts format '%s'",
+    (format) => {
+      const result = manageExportsSchema.parse({
+        operation: "start",
+        format,
+      });
+      expect(result.format).toBe(format);
+    }
+  );
 });
 
 // ── Manage Deal Splits ──
@@ -763,6 +797,8 @@ describe("manageMarketingEventsSchema", () => {
   it("accepts create fields", () => {
     const result = manageMarketingEventsSchema.parse({
       operation: "create",
+      external_event_id: "ext-123",
+      external_account_id: "acct-456",
       event_name: "Webinar 2024",
       event_type: "WEBINAR",
       start_date_time: "2024-06-01T10:00:00Z",
@@ -771,6 +807,8 @@ describe("manageMarketingEventsSchema", () => {
       event_description: "Monthly webinar",
       custom_properties: '{"topic":"AI"}',
     });
+    expect(result.external_event_id).toBe("ext-123");
+    expect(result.external_account_id).toBe("acct-456");
     expect(result.event_name).toBe("Webinar 2024");
   });
 });
@@ -862,7 +900,7 @@ describe("manageCampaignsSchema", () => {
     expect(() => manageCampaignsSchema.parse({})).toThrow();
   });
 
-  it.each(["list", "get", "get_revenue"] as const)(
+  it.each(["list", "get"] as const)(
     "accepts operation '%s'",
     (operation) => {
       const result = manageCampaignsSchema.parse({ operation });
@@ -876,12 +914,20 @@ describe("manageCampaignsSchema", () => {
     ).toThrow();
   });
 
-  it("accepts get with campaign_id", () => {
+  it("rejects get_revenue operation", () => {
+    expect(() =>
+      manageCampaignsSchema.parse({ operation: "get_revenue" })
+    ).toThrow();
+  });
+
+  it("accepts get with campaign_id and properties", () => {
     const result = manageCampaignsSchema.parse({
       operation: "get",
       campaign_id: "c1",
+      properties: "name,budget,revenue",
     });
     expect(result.campaign_id).toBe("c1");
+    expect(result.properties).toBe("name,budget,revenue");
   });
 
   it("accepts pagination fields", () => {
@@ -926,6 +972,14 @@ describe("manageSequencesSchema", () => {
     expect(result.sequence_id).toBe("seq1");
     expect(result.contact_id).toBe("c1");
     expect(result.sender_email).toBe("user@example.com");
+  });
+
+  it("accepts user_id for list/get", () => {
+    const result = manageSequencesSchema.parse({
+      operation: "list",
+      user_id: "u1",
+    });
+    expect(result.user_id).toBe("u1");
   });
 
   it("accepts pagination fields", () => {

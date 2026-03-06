@@ -21,9 +21,7 @@ export function jsonParamOptional(description: string) {
  * - object/array → pass through
  * - nullish → undefined
  */
-export function flexParse<T = unknown>(
-  value: string | Record<string, unknown> | unknown[] | undefined | null
-): T | undefined {
+export function flexParse<T = unknown>(value: unknown): T | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value === "string") {
     if (value === "") return undefined;
@@ -33,5 +31,6 @@ export function flexParse<T = unknown>(
       throw new Error("Invalid JSON string");
     }
   }
-  return value as T;
+  if (typeof value === "object") return value as T;
+  return undefined;
 }
