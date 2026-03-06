@@ -313,31 +313,24 @@ describe("Targeting schemas", () => {
     expect(() => s.getTargetingFacetsSchema.parse({})).toThrow();
   });
 
-  it("searchTargetingEntitiesSchema requires all fields", () => {
+  it("searchTargetingEntitiesSchema requires ad_account_id and facet_urn", () => {
     expect(() =>
       s.searchTargetingEntitiesSchema.parse({ ad_account_id: "123" })
     ).toThrow();
     const valid = {
       ad_account_id: "123",
       facet_urn: "urn:li:adTargetingFacet:locations",
-      query: "San Francisco",
     };
     expect(s.searchTargetingEntitiesSchema.parse(valid)).toEqual(valid);
   });
 
-  it("getTargetingEntitiesSchema requires entity_urns array", () => {
-    expect(() =>
-      s.getTargetingEntitiesSchema.parse({
-        ad_account_id: "123",
-        facet_urn: "urn:li:adTargetingFacet:locations",
-      })
-    ).toThrow();
+  it("searchTargetingEntitiesSchema accepts optional query", () => {
     const valid = {
       ad_account_id: "123",
       facet_urn: "urn:li:adTargetingFacet:locations",
-      entity_urns: ["urn:li:geo:123"],
+      query: "San Francisco",
     };
-    expect(s.getTargetingEntitiesSchema.parse(valid)).toEqual(valid);
+    expect(s.searchTargetingEntitiesSchema.parse(valid)).toEqual(valid);
   });
 });
 
@@ -439,30 +432,11 @@ describe("Conversion schemas", () => {
   });
 });
 
-// ── 9. Lead Gen Forms ──
-
-describe("Lead Gen Form schemas", () => {
-  it("searchLeadGenFormsSchema requires ad_account_id", () => {
-    expect(() => s.searchLeadGenFormsSchema.parse({})).toThrow();
-  });
-
-  it("getLeadGenFormResponsesSchema requires both IDs", () => {
-    expect(() =>
-      s.getLeadGenFormResponsesSchema.parse({ ad_account_id: "123" })
-    ).toThrow();
-    const valid = {
-      ad_account_id: "123",
-      lead_gen_form_id: "456",
-    };
-    expect(s.getLeadGenFormResponsesSchema.parse(valid)).toEqual(valid);
-  });
-});
-
 // ── Tool count ──
 
 describe("LINKEDIN_ADS_TOOLS", () => {
-  it("has exactly 28 tools", () => {
-    expect(LINKEDIN_ADS_TOOLS).toHaveLength(28);
+  it("has exactly 25 tools", () => {
+    expect(LINKEDIN_ADS_TOOLS).toHaveLength(25);
   });
 
   it("all tools have unique names", () => {

@@ -14,7 +14,8 @@ export type LinkedInAdsClient = {
 async function linkedinGet(
   client: LinkedInAdsClient,
   path: string,
-  params?: Record<string, string>
+  params?: Record<string, string>,
+  extraHeaders?: Record<string, string>
 ): Promise<unknown> {
   // Build query string manually to preserve REST.li special characters
   // (parentheses, colons, commas) that URL.searchParams would percent-encode
@@ -29,12 +30,30 @@ async function linkedinGet(
   }
   const res = await fetch(url, {
     method: "GET",
-    headers: client.headers,
+    headers: { ...client.headers, ...extraHeaders },
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`LinkedIn API ${res.status}: ${text}`);
   }
+  return res.json();
+}
+
+async function linkedinPut(
+  client: LinkedInAdsClient,
+  path: string,
+  body: unknown
+): Promise<unknown> {
+  const res = await fetch(`${client.baseUrl}${path}`, {
+    method: "PUT",
+    headers: client.headers,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`LinkedIn API ${res.status}: ${text}`);
+  }
+  if (res.status === 204) return { success: true };
   return res.json();
 }
 
@@ -427,23 +446,22 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
     description: "Search LinkedIn creatives with optional status filters",
     schema: s.searchCreativesSchema,
     execute: async (args, client) => {
-      const search: Record<string, string[]> = {};
-      if (args.status) search.intendedStatus = [args.status as string];
-      if (args.campaign_id) {
-        search.campaign = [
-          `urn:li:sponsoredCampaign:${args.campaign_id}`,
-        ];
-      }
-      const searchStr = buildSearchParams(search);
       const params: Record<string, string> = {
-        q: "search",
+        q: "criteria",
         ...buildPaginationParams(
           args.page_size as number | undefined,
           args.page_token as string | undefined
         ),
       };
-      const path = `/adAccounts/${args.ad_account_id}/creatives${searchStr ? `?${searchStr}` : ""}`;
-      return linkedinGet(client, path, params);
+      if (args.status) params.intendedStatuses = `List(${args.status})`;
+      if (args.campaign_id)
+        params.campaigns = `List(urn:li:sponsoredCampaign:${args.campaign_id})`;
+      return linkedinGet(
+        client,
+        `/adAccounts/${args.ad_account_id}/creatives`,
+        params,
+        { "X-RestLi-Method": "FINDER" }
+      );
     },
   },
 
@@ -452,9 +470,13 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
     description: "Get a single LinkedIn creative by ID",
     schema: s.getCreativeSchema,
     execute: async (args, client) => {
+      const creativeId = String(args.creative_id);
+      const creativeKey = creativeId.startsWith("urn:")
+        ? encodeURIComponent(creativeId)
+        : `urn%3Ali%3AsponsoredCreative%3A${creativeId}`;
       return linkedinGet(
         client,
-        `/adAccounts/${args.ad_account_id}/creatives/${args.creative_id}`
+        `/adAccounts/${args.ad_account_id}/creatives/${creativeKey}`
       );
     },
   },
@@ -504,17 +526,14 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
     description: "List users with access to a LinkedIn ad account",
     schema: s.searchAccountUsersSchema,
     execute: async (args, client) => {
-      return linkedinGet(
-        client,
-        `/adAccounts/${args.ad_account_id}/adAccountUsers`,
-        {
-          q: "account",
-          ...buildPaginationParams(
-            args.page_size as number | undefined,
-            args.page_token as string | undefined
-          ),
-        }
-      );
+      return linkedinGet(client, "/adAccountUsers", {
+        q: "accounts",
+        accounts: `urn:li:sponsoredAccount:${args.ad_account_id}`,
+        ...buildPaginationParams(
+          args.page_size as number | undefined,
+          args.page_token as string | undefined
+        ),
+      });
     },
   },
 
@@ -523,16 +542,12 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
     description: "Grant a user access to a LinkedIn ad account",
     schema: s.createAccountUserSchema,
     execute: async (args, client) => {
-      const body = {
+      const key = `(account:urn:li:sponsoredAccount:${args.ad_account_id},user:urn:li:person:${args.user_person_id})`;
+      return linkedinPut(client, `/adAccountUsers/${key}`, {
         account: `urn:li:sponsoredAccount:${args.ad_account_id}`,
         user: `urn:li:person:${args.user_person_id}`,
         role: args.role,
-      };
-      return linkedinPost(
-        client,
-        `/adAccounts/${args.ad_account_id}/adAccountUsers`,
-        body
-      );
+      });
     },
   },
 
@@ -541,10 +556,8 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
     description: "Revoke a user's access to a LinkedIn ad account",
     schema: s.removeAccountUserSchema,
     execute: async (args, client) => {
-      return linkedinDelete(
-        client,
-        `/adAccounts/${args.ad_account_id}/adAccountUsers/${args.user_person_id}`
-      );
+      const key = `(account:urn:li:sponsoredAccount:${args.ad_account_id},user:urn:li:person:${args.user_person_id})`;
+      return linkedinDelete(client, `/adAccountUsers/${key}`);
     },
   },
 
@@ -556,11 +569,8 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
     name: "linkedin_ads_get_targeting_facets",
     description: "List available LinkedIn targeting facets for an ad account",
     schema: s.getTargetingFacetsSchema,
-    execute: async (args, client) => {
-      return linkedinGet(client, "/adTargetingFacets", {
-        q: "adAccount",
-        adAccount: `urn:li:sponsoredAccount:${args.ad_account_id}`,
-      });
+    execute: async (_args, client) => {
+      return linkedinGet(client, "/adTargetingFacets");
     },
   },
 
@@ -571,26 +581,13 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
     schema: s.searchTargetingEntitiesSchema,
     execute: async (args, client) => {
       return linkedinGet(client, "/adTargetingEntities", {
-        q: "adAccount",
-        adAccount: `urn:li:sponsoredAccount:${args.ad_account_id}`,
+        q: "adTargetingFacet",
+        queryVersion: "QUERY_USES_URNS",
         facet: args.facet_urn as string,
-        queryTerm: args.query as string,
+        ...(args.query ? { queryTerm: args.query as string } : {}),
         ...(args.page_size
           ? { pageSize: String(args.page_size) }
           : {}),
-      });
-    },
-  },
-
-  {
-    name: "linkedin_ads_get_targeting_entities",
-    description: "Get LinkedIn targeting entities by their URNs",
-    schema: s.getTargetingEntitiesSchema,
-    execute: async (args, client) => {
-      const urns = args.entity_urns as string[];
-      return linkedinGet(client, "/adTargetingEntities", {
-        q: "urns",
-        urns: `List(${urns.join(",")})`,
       });
     },
   },
@@ -699,10 +696,6 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
       return linkedinGet(client, "/conversions", {
         q: "account",
         account: `urn:li:sponsoredAccount:${args.ad_account_id}`,
-        ...buildPaginationParams(
-          args.page_size as number | undefined,
-          args.page_token as string | undefined
-        ),
       });
     },
   },
@@ -729,42 +722,4 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
     },
   },
 
-  // ═══════════════════════════════════════════
-  // Lead Gen Forms (2)
-  // ═══════════════════════════════════════════
-
-  {
-    name: "linkedin_ads_search_lead_gen_forms",
-    description: "List lead gen forms for a LinkedIn ad account",
-    schema: s.searchLeadGenFormsSchema,
-    execute: async (args, client) => {
-      return linkedinGet(
-        client,
-        `/adAccounts/${args.ad_account_id}/adForms`,
-        {
-          q: "account",
-          ...buildPaginationParams(
-            args.page_size as number | undefined,
-            args.page_token as string | undefined
-          ),
-        }
-      );
-    },
-  },
-
-  {
-    name: "linkedin_ads_get_lead_gen_form_responses",
-    description: "Get responses/leads for a LinkedIn lead gen form",
-    schema: s.getLeadGenFormResponsesSchema,
-    execute: async (args, client) => {
-      return linkedinGet(
-        client,
-        `/adAccounts/${args.ad_account_id}/adForms/${args.lead_gen_form_id}/responses`,
-        buildPaginationParams(
-          args.page_size as number | undefined,
-          args.page_token as string | undefined
-        )
-      );
-    },
-  },
 ];

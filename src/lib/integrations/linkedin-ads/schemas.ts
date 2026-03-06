@@ -290,18 +290,8 @@ export const searchTargetingEntitiesSchema = z.object({
     .describe(
       "Targeting facet URN (e.g. urn:li:adTargetingFacet:locations)"
     ),
-  query: z.string().describe("Typeahead search query"),
+  query: z.string().optional().describe("Typeahead search query"),
   page_size: pageSize,
-});
-
-export const getTargetingEntitiesSchema = z.object({
-  ad_account_id: adAccountId,
-  facet_urn: z
-    .string()
-    .describe("Targeting facet URN"),
-  entity_urns: z
-    .array(z.string())
-    .describe("Array of entity URNs to retrieve"),
 });
 
 // ── 7. Analytics / Reporting ──
@@ -343,8 +333,6 @@ export const getAccountAnalyticsSchema = z.object({
 
 export const searchConversionsSchema = z.object({
   ad_account_id: adAccountId,
-  page_size: pageSize,
-  page_token: pageToken,
 });
 
 export const createConversionSchema = z.object({
@@ -369,17 +357,3 @@ export const createConversionSchema = z.object({
     .describe("View-through attribution window in days (default 7)"),
 });
 
-// ── 9. Lead Gen Forms ──
-
-export const searchLeadGenFormsSchema = z.object({
-  ad_account_id: adAccountId,
-  page_size: pageSize,
-  page_token: pageToken,
-});
-
-export const getLeadGenFormResponsesSchema = z.object({
-  ad_account_id: adAccountId,
-  lead_gen_form_id: z.string().describe("Lead gen form ID"),
-  page_size: pageSize,
-  page_token: pageToken,
-});

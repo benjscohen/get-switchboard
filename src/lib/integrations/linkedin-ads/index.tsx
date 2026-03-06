@@ -32,7 +32,7 @@ export const linkedinAdsIntegration: IntegrationConfig = {
     tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",
     clientIdEnvVar: "LINKEDIN_ADS_CLIENT_ID",
     clientSecretEnvVar: "LINKEDIN_ADS_CLIENT_SECRET",
-    scopes: ["r_ads", "rw_ads", "r_basicprofile"],
+    scopes: ["r_ads", "rw_ads", "r_basicprofile", "r_ads_reporting"],
     extraAuthParams: { response_type: "code" },
   },
   createClient(tokens) {
