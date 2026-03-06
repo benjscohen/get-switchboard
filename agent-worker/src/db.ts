@@ -190,6 +190,33 @@ export async function createMessage(data: MessageRow): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Thread session lookup: find the last completed session for a thread
+// ---------------------------------------------------------------------------
+
+export async function getThreadSession(
+  channelId: string,
+  threadTs: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("agent_sessions")
+    .select("claude_session_id")
+    .eq("slack_channel_id", channelId)
+    .eq("slack_thread_ts", threadTs)
+    .eq("status", "completed")
+    .not("claude_session_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Error looking up thread session:", error);
+    return null;
+  }
+
+  return (data?.claude_session_id as string) ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // Crash recovery: find sessions that were running when the worker died
 // ---------------------------------------------------------------------------
 

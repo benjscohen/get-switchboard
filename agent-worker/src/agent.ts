@@ -182,25 +182,22 @@ export async function processMessage(
     return;
   }
 
-  // 5. Fetch thread context if replying in a thread
-  let threadContext = "";
+  // 5. Look up previous Claude session for this thread (for resume)
+  let resumeSessionId: string | null = null;
   if (threadTs) {
     try {
-      const history = await slack.fetchThreadHistory(channelId, threadTs, messageTs);
-      if (history.length > 0) {
-        threadContext = "Here is the conversation so far in this thread:\n\n" +
-          history.map((m) => `[${m.role === "assistant" ? "You" : "User"}]: ${m.text}`).join("\n\n") +
-          "\n\n---\n\nNow the user says:\n\n";
+      resumeSessionId = await db.getThreadSession(channelId, threadTs);
+      if (resumeSessionId) {
+        console.log(`[thread] Resuming Claude session ${resumeSessionId}`);
       }
     } catch (err) {
-      console.error("Failed to fetch thread history:", err);
+      console.error("Failed to look up thread session:", err);
     }
   }
 
   // 6. Download and format file attachments
   const fileContent = await formatFiles(files);
-  const userMessage = fileContent ? `${text}\n${fileContent}` : text;
-  const fullPrompt = threadContext + userMessage;
+  const fullPrompt = fileContent ? `${text}\n${fileContent}` : text;
 
   // 6. Create session row
   let sessionId: string;
@@ -288,18 +285,22 @@ export async function processMessage(
           permissionMode: "bypassPermissions",
           maxTurns: MAX_TURNS,
           abortController,
+          ...(resumeSessionId ? { resume: resumeSessionId } : {}),
           stderr: (data: string) => {
-            // Redact sensitive info (API keys, tokens) from logs
             if (data.includes("Bearer") || data.includes("sk_live_")) return;
             console.error("[claude-code stderr]", data);
           },
         },
       });
 
-      // Iterate the async generator — the last 'result' message has the final text
+      // Iterate the async generator — capture session_id and final result
       resultText = "";
+      let claudeSessionId: string | null = null;
       for await (const message of conversation) {
-        console.log(`[claude-code] message type=${message.type}`);
+        // Capture session_id from any message
+        if ("session_id" in message && message.session_id && !claudeSessionId) {
+          claudeSessionId = message.session_id;
+        }
         if (message.type === "result") {
           if (message.subtype === "success") {
             resultText = message.result;
@@ -308,6 +309,11 @@ export async function processMessage(
             console.error("[claude-code] error result:", JSON.stringify(message));
           }
         }
+      }
+
+      // Store claude session ID for future thread resumption
+      if (claudeSessionId) {
+        await db.updateSession(sessionId, { claude_session_id: claudeSessionId });
       }
 
       clearTimeout(timeoutId);
