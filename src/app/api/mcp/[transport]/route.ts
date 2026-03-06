@@ -722,6 +722,9 @@ function registerTools(server: McpServer) {
     );
   }
 
+}
+
+function buildAndRegisterDiscovery(server: McpServer) {
   // Build search index from all registered tool sources
   const toolEntries: Array<{ name: string; description: string; integrationId: string; integrationName: string }> = [];
   for (const integration of allIntegrations) {
@@ -729,21 +732,23 @@ function registerTools(server: McpServer) {
       toolEntries.push({ name: tool.name, description: tool.description, integrationId: integration.id, integrationName: integration.name });
     }
   }
+  const proxyTools = resolvedProxyTools?.tools ?? [];
   for (const tool of proxyTools) {
     const proxy = proxyIntegrationRegistry.get(tool.integrationId);
     toolEntries.push({ name: tool.name, description: tool.description, integrationId: tool.integrationId, integrationName: proxy?.name ?? tool.integrationId });
   }
+  const customTools = resolvedCustomTools ?? [];
   for (const ct of customTools) {
     const srv = ct.custom_mcp_servers as { id: string; slug: string; name: string };
     const namespacedName = `${srv.slug}__${ct.tool_name}`;
     toolEntries.push({ name: namespacedName, description: ct.description, integrationId: `custom:${srv.id}`, integrationName: srv.name });
   }
-  // Platform and vault tools
+  // Platform, vault, and admin tools — now includes ALL tools registered by registerSkills/registerAdminTools/registerVaultTools
   for (const [name, meta] of toolMeta.entries()) {
-    if ((meta.integrationId === "platform" || meta.integrationId === "vault") && !toolEntries.some((e) => e.name === name)) {
+    if (!toolEntries.some((e) => e.name === name)) {
       const regTool = (server as unknown as { _registeredTools: Record<string, { description?: string }> })._registeredTools[name];
       if (regTool) {
-        const displayName = meta.integrationId === "vault" ? "Vault" : "Switchboard";
+        const displayName = meta.integrationId === "vault" ? "Vault" : meta.integrationId === "admin" ? "Admin" : "Switchboard";
         toolEntries.push({ name, description: regTool.description ?? "", integrationId: meta.integrationId, integrationName: displayName });
       }
     }
@@ -837,6 +842,8 @@ async function mcpHandler(req: Request): Promise<Response> {
   registerSkills(server);
   registerAdminTools(server, toolMeta);
   registerVaultTools(server, toolMeta);
+  // Build search index AFTER all tools are registered so discover_tools sees everything
+  buildAndRegisterDiscovery(server);
   await server.connect(transport);
 
   const authInfo = (req as Request & { auth?: unknown }).auth as
