@@ -597,10 +597,10 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
       const v2Url = "https://api.linkedin.com/v2/adTargetingEntities";
       const params: Record<string, string> = {
         q: "typeahead",
-        facet: args.facet_urn as string,
+        facet: encodeUrn(args.facet_urn as string),
         queryVersion: "QUERY_USES_URNS",
       };
-      if (args.query) params.queryTerm = args.query as string;
+      if (args.query) params.query = args.query as string;
       if (args.page_size) params.count = String(args.page_size);
       const parts = Object.entries(params)
         .map(([k, v]) => `${k}=${v}`)
