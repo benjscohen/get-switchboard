@@ -272,7 +272,11 @@ export async function processMessage(
           permissionMode: "bypassPermissions",
           maxTurns: MAX_TURNS,
           abortController,
-          stderr: (data: string) => console.error("[claude-code stderr]", data),
+          stderr: (data: string) => {
+            // Redact sensitive info (API keys, tokens) from logs
+            if (data.includes("Bearer") || data.includes("sk_live_")) return;
+            console.error("[claude-code stderr]", data);
+          },
         },
       });
 
