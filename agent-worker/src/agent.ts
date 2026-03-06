@@ -1,6 +1,8 @@
 import { query } from "@anthropic-ai/claude-code";
 import * as slack from "./slack.js";
 import * as db from "./db.js";
+import { fetchUserFiles, writeFilesToDisk, cleanupTempDir } from "./files.js";
+import { extractClaudeMd, buildSystemPrompt } from "./prompt.js";
 import type { SlackFile, UserLookup } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -156,7 +158,7 @@ export async function processMessage(
   if (!lookup) {
     await slack.postMessage(
       channelId,
-      "I don't recognize your Slack account. Please connect Slack in your Switchboard dashboard first: https://www.get-switchboard.com/connections",
+      "I don't recognize your Slack account. Please connect Slack in your Switchboard dashboard first: https://www.get-switchboard.com",
       threadTs || messageTs,
     );
     return;
@@ -241,6 +243,9 @@ export async function processMessage(
 
   const replyThread = threadTs || messageTs;
 
+  let tempDir: string | null = null;
+  let claudeMdContent: string | null = null;
+
   try {
     // 9. Update session to running
     await db.updateSession(sessionId, { status: "running" });
@@ -290,7 +295,22 @@ export async function processMessage(
       console.error("[mcp-preflight] Network error:", err);
     }
 
-    // 12. Set up timeout via AbortController
+    // 12. Pull user files for local read context
+    let tempDir: string | null = null;
+    let claudeMdContent: string | null = null;
+
+    try {
+      const userFiles = await fetchUserFiles(lookup.agentKey);
+      if (userFiles) {
+        tempDir = await writeFilesToDisk(userFiles);
+        claudeMdContent = extractClaudeMd(userFiles);
+        console.log(`[files] Wrote ${userFiles.length} file(s) to ${tempDir}`);
+      }
+    } catch (err) {
+      console.error("[files] Failed to pull user files:", err);
+    }
+
+    // 13. Set up timeout via AbortController
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), TIMEOUT_MS);
 
@@ -303,8 +323,8 @@ export async function processMessage(
         prompt: fullPrompt,
         options: {
           model: lookup.model,
-          customSystemPrompt:
-            "You are a helpful AI assistant with access to the user's Switchboard integrations. Use the available MCP tools to help with their request.",
+          customSystemPrompt: buildSystemPrompt(claudeMdContent),
+          ...(tempDir ? { cwd: tempDir } : {}),
           mcpServers: {
             switchboard: {
               type: "http",
@@ -453,6 +473,11 @@ export async function processMessage(
   } finally {
     activeSessions.delete(lookup.userId);
     activeCount--;
+    if (tempDir) {
+      cleanupTempDir(tempDir).catch((err) =>
+        console.error("[files] Cleanup failed:", err),
+      );
+    }
   }
 }
 
