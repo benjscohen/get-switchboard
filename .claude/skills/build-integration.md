@@ -32,6 +32,8 @@ src/lib/integrations/{provider}-{service}/
 Plus registration in:
 - `src/lib/integrations/registry.ts` — add to the `integrations` array
 - `src/lib/integrations/registry.test.ts` — update the length assertion
+- `src/lib/mcp/tool-risk.ts` — classify every tool as `read`, `write`, or `destructive`
+- `src/lib/mcp/tool-search.ts` — add to `CATEGORY_MAP` (and optionally `CATEGORY_SYNONYMS` / `SEARCH_ENRICHMENTS`)
 
 ### Naming Conventions
 
@@ -93,7 +95,8 @@ export const searchSchema = z.object({
 4. **Use `z.enum()`** for constrained string values — never use bare `.string()` when the set is known
 5. **Use `.optional()`** for optional fields — never make a field required if the API doesn't require it
 6. **Zod v4 gotcha**: `z.record()` needs 2 args: `z.record(z.string(), z.unknown())`
-7. **Shared composition objects** for groups of related fields (see Gmail's `compositionFields` pattern):
+7. **Use `jsonParam()` / `jsonParamOptional()`** from `../shared/json-params` for parameters that accept JSON data (objects/arrays) — these handle both native objects from MCP clients and JSON-encoded strings from manual input
+8. **Shared composition objects** for groups of related fields (see Gmail's `compositionFields` pattern):
    ```typescript
    export const compositionFields = {
      to: z.string().describe("Recipient email(s), comma-separated"),
@@ -117,6 +120,7 @@ Define tool implementations with typed clients.
 
 ```typescript
 import type { IntegrationToolDef } from "../types";
+import { flexParse } from "../shared/json-params";
 import * as s from "./schemas";
 
 // Narrow the client type for this integration
@@ -157,12 +161,13 @@ export const NOTION_TOOLS: NotionToolDef[] = [
 
 1. **Type the tool def** — create a `XToolDef` type that narrows `client: unknown` to your typed client
 2. **Helper functions at top** — parsing, formatting, conversions
-3. **Category comments** match schemas: `// ── Category (count) ──`
-4. **Cast args** — `a.fieldName as string`, `a.fieldName as number`, etc.
-5. **Clean return objects** — never dump raw API responses. Pick the fields that matter.
-6. **`switch/case` for multi-action tools** with `default: throw new Error(\`Unknown operation: ${op}\`)`. The discriminator field MUST be named `operation` (not `action`). This is consistent across all integrations (Sheets, Docs, Gmail).
-7. **No error handling in tools** — the MCP handler catches all errors and returns safe messages. Tools should throw on failure.
-8. **No token refresh in tools** — `getValidTokens()` handles this before `execute()` is called.
+3. **Use `flexParse()`** from `../shared/json-params` to parse JSON parameters that may arrive as strings or objects (especially for REST API integrations)
+4. **Category comments** match schemas: `// ── Category (count) ──`
+5. **Cast args** — `a.fieldName as string`, `a.fieldName as number`, etc.
+6. **Clean return objects** — never dump raw API responses. Pick the fields that matter.
+7. **`switch/case` for multi-action tools** with `default: throw new Error(\`Unknown operation: ${op}\`)`. The discriminator field MUST be named `operation` (not `action`). This is consistent across all integrations (Sheets, Docs, Gmail).
+8. **No error handling in tools** — the MCP handler catches all errors and returns safe messages. Tools should throw on failure.
+9. **No token refresh in tools** — `getValidTokens()` handles this before `execute()` is called.
 
 ---
 
@@ -221,8 +226,51 @@ export const notionPagesIntegration: IntegrationConfig = {
 2. **Tool mapping**: `.map()` over the typed tools array, cast `client as TypedClient` in the execute wrapper
 3. **OAuth config**: use env var *names* (not values) for `clientIdEnvVar` / `clientSecretEnvVar`
 4. **`extraAuthParams`**: include `{ access_type: "offline", prompt: "consent" }` for Google integrations to get refresh tokens. Other providers may need different params.
-5. **`createClient`**: receives per-user `{ accessToken, refreshToken? }` — build the typed API client from these tokens
+5. **`createClient`**: receives per-user `{ accessToken, refreshToken? }` and optional `orgKey` — build the typed API client from these tokens
 6. **Export**: `camelCase` name + `Integration` suffix, typed as `IntegrationConfig`
+
+### Optional Config: `orgKeyRequired`
+
+If the integration requires an org-level key before users can connect (e.g., HubSpot developer token):
+
+```typescript
+orgKeyRequired: {
+  label: "Developer Token",
+  helpText: "Create a private app in HubSpot → Settings → Integrations → Private Apps. Copy the access token.",
+},
+createClient(tokens, orgKey) {
+  // orgKey is passed to createClient when orgKeyRequired is set
+  return { accessToken: tokens.accessToken, baseUrl: "https://api.hubapi.com" };
+},
+```
+
+### Optional Config: `optionalScopes`
+
+Some providers (e.g., HubSpot) require non-essential scopes to be sent via a separate `optional_scope` parameter:
+
+```typescript
+oauth: {
+  scopes: ["crm.objects.contacts.read", "crm.objects.contacts.write"],
+  optionalScopes: ["crm.objects.deals.read", "crm.objects.deals.write"],
+},
+```
+
+### Optional Config: `toolGroups`
+
+For integrations with many tools, define selectable groups so users can enable only the categories they need:
+
+```typescript
+toolGroups: {
+  objects: {
+    description: "Contacts, companies, deals, tickets, and custom objects",
+    tools: ["hubspot_crm_manage_objects", "hubspot_crm_search_objects", "hubspot_crm_batch_objects"],
+  },
+  pipelines: {
+    description: "Deal and ticket pipelines and stages",
+    tools: ["hubspot_crm_manage_pipelines", "hubspot_crm_manage_pipeline_stages"],
+  },
+},
+```
 
 ### Google Integration Specifics
 
@@ -333,7 +381,38 @@ describe("all schemas reject empty object", () => {
 
 ---
 
-## Step 5: Register in Tool Search
+## Step 5: Register Tool Risk Classifications
+
+Add every tool to the static risk map in `src/lib/mcp/tool-risk.ts`.
+
+### Pattern
+
+```typescript
+const toolRiskMap: Record<string, ToolRiskLevel> = {
+  // ... existing entries
+
+  // ── Notion ──
+  notion_pages_get: "read",
+  notion_pages_search: "read",
+  notion_pages_create: "write",
+  notion_pages_update: "write",
+  notion_pages_delete: "destructive",
+};
+```
+
+### Risk Level Guidelines
+
+| Level | Use for |
+|-------|---------|
+| `read` | list, get, search, read, find, about, export, download, info, status, count, history |
+| `write` | create, update, send, manage, format, modify, import, copy, move |
+| `destructive` | delete, trash, clear, remove, unshare, purge, merge, send_message (email/chat), manage_permissions, manage_vacation, manage_filters |
+
+The fallback heuristic uses pattern matching on tool names, but **always add explicit entries** for builtin tools — the heuristic is only for custom/unknown tools.
+
+---
+
+## Step 6: Register in Tool Search
 
 Add the new integration to the search maps in `src/lib/mcp/tool-search.ts` so `discover_tools` can find it via synonyms and category filters.
 
@@ -347,6 +426,8 @@ export const CATEGORY_MAP: Record<string, string> = {
   "notion-pages": "documents",  // ← use an existing category if it fits
 };
 ```
+
+Existing categories: `calendar`, `email`, `documents`, `spreadsheets`, `files`, `presentations`, `advertising`, `tasks`, `support`, `crm`, `messaging`, `project-management`, `web-scraping`, `meetings`.
 
 If no existing category fits, create a new one (e.g. `"design"`, `"analytics"`).
 
@@ -363,9 +444,25 @@ export const CATEGORY_SYNONYMS: Record<string, string[]> = {
 
 Think about what a user might type when looking for this integration — short words like "chat", "todo", "CRM" are the most important since they rely on synonyms to match.
 
+### `SEARCH_ENRICHMENTS` (Optional)
+
+For high-value tools (the 3-5 most commonly used tools in the integration), add hand-written search enrichments:
+
+```typescript
+export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: string }> = {
+  // ... existing entries
+  notion_pages_create: {
+    useWhen: "User wants to create a new Notion page, add a page, or make a new document in Notion",
+    aliases: "new page, create doc, add to notion, new notion page",
+  },
+};
+```
+
+These dramatically improve search recall for natural-language queries like "create a doc in Notion".
+
 ---
 
-## Step 6: Register the Integration
+## Step 7: Register the Integration
 
 ### `src/lib/integrations/registry.ts`
 
@@ -396,12 +493,13 @@ it("is an array containing notion-pages", () => {
 
 ---
 
-## Step 7: Environment Variables
+## Step 8: Environment Variables
 
 Document the required env vars for the new integration:
 
 - **Google integrations**: share `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` (already configured)
 - **Other OAuth providers**: need `{PROVIDER}_CLIENT_ID` and `{PROVIDER}_CLIENT_SECRET`
+- **Org-key integrations**: users don't need env vars; org admin provides the key in the dashboard
 
 Tell the user which env vars to add to `.env.local` and Vercel.
 
@@ -431,6 +529,10 @@ For long-lived access, always request offline/refresh tokens:
 extraAuthParams: { access_type: "offline", prompt: "consent" }
 ```
 Other providers may use different params (e.g., Notion doesn't need this). Check the provider's OAuth docs.
+
+### When Org-Level Keys Are Needed
+
+Some providers (e.g., HubSpot) require an org-level key (developer token, private app token) in addition to per-user OAuth. Use `orgKeyRequired` to prompt org admins for this key. The key is passed to `createClient(tokens, orgKey)`.
 
 ### When Shared Keys Are Acceptable
 
@@ -465,6 +567,15 @@ type ProviderToolDef = Omit<IntegrationToolDef, "execute"> & {
     args: Record<string, unknown>,
     client: ApiClient
   ) => Promise<unknown>;
+};
+```
+
+For providers that need an org-level key (like HubSpot):
+
+```typescript
+export type ProviderClient = {
+  accessToken: string;
+  baseUrl: string;
 };
 ```
 
@@ -525,6 +636,7 @@ Before declaring the integration complete, verify every item:
 - [ ] Shared fragments extracted for fields used in 2+ schemas
 - [ ] `z.enum()` used for all constrained string values
 - [ ] Category divider comments with counts: `// ── Category (count) ──`
+- [ ] `jsonParam()` / `flexParse()` used for JSON object/array parameters
 
 ### Tools
 - [ ] `XToolDef` type alias narrows `client` to typed client
@@ -543,11 +655,19 @@ Before declaring the integration complete, verify every item:
 - [ ] `extraAuthParams` requests offline/refresh tokens where needed
 - [ ] `createClient` uses per-user tokens (not shared env vars)
 - [ ] Export follows `camelCaseIntegration` naming
+- [ ] `orgKeyRequired` set if provider needs an admin-provided key
+- [ ] `toolGroups` defined if integration has many tools in distinct categories
+- [ ] `optionalScopes` set if provider requires them separately
+
+### Tool Risk
+- [ ] Every tool classified in `src/lib/mcp/tool-risk.ts` static map
+- [ ] Risk levels follow guidelines: read for queries, write for mutations, destructive for deletions/sends
 
 ### Tool Search
 - [ ] Added to `CATEGORY_MAP` in `src/lib/mcp/tool-search.ts`
 - [ ] If new category: added entry to `CATEGORY_SYNONYMS` with short search terms users would type
 - [ ] If existing category: verified synonyms cover the new integration's common search terms
+- [ ] Top 3-5 tools have `SEARCH_ENRICHMENTS` entries with `useWhen` and `aliases`
 
 ### Tests & Registration
 - [ ] `schemas.test.ts` tests every schema (valid + invalid)
@@ -584,6 +704,9 @@ Before declaring the integration complete, verify every item:
 | Too many operations in one tool (>8) | Split into logical groupings (e.g. structural + formatting) |
 | Generic "An internal error occurred" | Surface API error messages — they help LLMs diagnose and retry |
 | Faking unsupported API operations | Omit the tool entirely — fake results are worse than no results |
+| Missing tool risk classification | Add every tool to `tool-risk.ts` — unclassified tools default to `write` |
+| Not adding search enrichments | High-value tools need `SEARCH_ENRICHMENTS` for natural-language discovery |
+| JSON params as plain `z.object()` | Use `jsonParam()` for params that may arrive as strings or objects |
 
 ---
 
@@ -598,7 +721,8 @@ export type IntegrationToolDef = {
   schema: z.ZodObject<z.ZodRawShape>;
   execute: (
     args: Record<string, unknown>,
-    client: unknown
+    client: unknown,
+    meta?: { senderName?: string | null }
   ) => Promise<unknown>;
 };
 
@@ -608,7 +732,13 @@ export type OAuthConfig = {
   clientIdEnvVar: string;
   clientSecretEnvVar: string;
   scopes: string[];
+  optionalScopes?: string[];
   extraAuthParams?: Record<string, string>;
+};
+
+export type OrgKeyConfig = {
+  label: string;
+  helpText: string;
 };
 
 export type IntegrationConfig = {
@@ -617,9 +747,11 @@ export type IntegrationConfig = {
   description: string;
   icon: () => ReactNode;
   oauth: OAuthConfig;
-  createClient: (tokens: { accessToken: string; refreshToken?: string }) => unknown;
+  createClient: (tokens: { accessToken: string; refreshToken?: string }, orgKey?: string) => unknown;
   tools: IntegrationToolDef[];
   toolCount: number;
+  orgKeyRequired?: OrgKeyConfig;
+  toolGroups?: Record<string, { description: string; tools: string[] }>;
 };
 ```
 
@@ -628,15 +760,17 @@ export type IntegrationConfig = {
 The MCP handler at `src/app/api/mcp/[transport]/route.ts` processes tool calls in this order:
 
 1. **Auth** — `withMcpAuth` validates the bearer token (API key), looks up the user, loads their profile, connections, and integration access rules
-2. **Rate limit** — 120 req/min per organization (`mcp:org:${organizationId}`)
+2. **Rate limit** — 120 req/min per organization (`mcp:org:${organizationId}`) + per-user risk-based limits (120r/30w/5d per min)
 3. **Tool registration** — iterates `allIntegrations`, registers each tool with `server.tool()`
-4. **Permission check** — `isToolAllowed()` checks `user_integration_access` rows
-5. **Connection lookup** — finds the user's `connections` row for this integration
-6. **Token refresh** — `getValidTokens()` refreshes expired tokens automatically
-7. **Execute** — calls `integration.createClient(tokens)` then `tool.execute(args, client)`
-8. **Log** — `logUsage()` records the call (fire-and-forget)
+4. **Tool filtering** — `filterToolsForUser()` checks connections, permissions, integration access scopes, tool group preferences, and discovery mode
+5. **Permission check** — `isToolAllowed()` checks `user_integration_access` rows
+6. **Connection lookup** — finds the user's `connections` row for this integration
+7. **Token refresh** — `getValidTokens()` refreshes expired tokens automatically
+8. **Execute** — calls `integration.createClient(tokens)` then `tool.execute(args, client)`
+9. **Risk check** — `isRiskAllowedByScope()` validates the tool's risk level against the API key scope
+10. **Log** — `logUsage()` records the call (fire-and-forget) with risk level
 
-Your integration plugs into step 3 (registration) and step 7 (execution). Everything else is handled by the framework.
+Your integration plugs into step 3 (registration) and step 8 (execution). Everything else is handled by the framework.
 
 ## Reference: OAuth Connect/Callback Flow
 
@@ -656,6 +790,7 @@ Use these as reference when building new ones:
 | `google-gmail/` | Shared composition fields (`compositionFields`), many tool variations |
 | `google-calendar/` | Comprehensive coverage, default values, clean returns |
 | `google-docs/` | Gold standard after quality review — hex colors, `operation`, convenience params, format_table split |
+| `hubspot-crm/` | Non-Google REST API pattern, `flexParse`, `orgKeyRequired`, `toolGroups`, `optionalScopes` |
 
 ---
 

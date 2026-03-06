@@ -2,7 +2,7 @@
 
 **One URL. Every tool.** The corporate app store for AI tools via MCP.
 
-Switchboard gives teams a single MCP endpoint that connects any AI agent to the tools they need — starting with deep Google Workspace integrations and expanding to Asana, Intercom, LinkedIn Ads, Slack, and more. Admins manage integrations, users connect their accounts, and AI agents call tools through a secure, stateless gateway.
+Switchboard gives teams a single MCP endpoint that connects any AI agent to the tools they need — starting with deep Google Workspace integrations and expanding to Asana, HubSpot CRM, Intercom, LinkedIn Ads, Slack, and more. Admins manage integrations, users connect their accounts, and AI agents call tools through a secure, stateless gateway.
 
 ---
 
@@ -70,7 +70,7 @@ switchboard/
 │   ├── components/
 │   │   ├── sections/                 # Marketing: Hero, Problem, HowItWorks, etc.
 │   │   ├── layout/                   # Navbar, Footer
-│   │   ├── dashboard/                # ConnectCard, IntegrationList, CustomMcpKeyForm
+│   │   ├── dashboard/                # ConnectCard, IntegrationList, DiscoveryModeToggle, etc.
 │   │   ├── skills/                   # SkillEditor, SkillList
 │   │   ├── vault/                    # VaultList, VaultForm
 │   │   ├── admin/                    # StatCard, UsageTable, PermissionsEditor, etc.
@@ -86,13 +86,14 @@ switchboard/
 │   │   │   ├── google-slides/        # 13 tools
 │   │   │   ├── google-ads/           # 25 tools
 │   │   │   ├── asana/                # 17 tools
+│   │   │   ├── hubspot-crm/          # 23 tools
 │   │   │   ├── intercom/             # 13 tools
 │   │   │   ├── linkedin-ads/         # 28 tools
 │   │   │   ├── firecrawl/            # Proxy integration config
 │   │   │   ├── granola/              # Proxy integration config
 │   │   │   ├── shortcut/             # Proxy integration config
 │   │   │   ├── slack/                # Proxy integration config
-│   │   │   ├── shared/               # Shared integration utilities
+│   │   │   ├── shared/               # Shared utilities (json-params, etc.)
 │   │   │   ├── registry.ts           # Integration registry
 │   │   │   ├── proxy-registry.ts     # Proxy integration registry
 │   │   │   ├── proxy-tools.ts        # Proxy tool discovery + execution
@@ -100,6 +101,17 @@ switchboard/
 │   │   │   ├── token-refresh.ts      # OAuth token refresh logic
 │   │   │   └── types.ts              # IntegrationConfig, ProxyIntegrationConfig, etc.
 │   │   ├── mcp/
+│   │   │   ├── discover-tools.ts     # discover_tools MCP tool (semantic search)
+│   │   │   ├── call-tool.ts          # call_tool meta-tool (discovery mode execution)
+│   │   │   ├── tool-search.ts        # Hybrid keyword + pgvector search engine
+│   │   │   ├── tool-filtering.ts     # Per-user tool visibility (connections, permissions, scopes)
+│   │   │   ├── tool-risk.ts          # Risk classification (read/write/destructive)
+│   │   │   ├── tool-logging.ts       # Usage logging wrapper for MCP tool handlers
+│   │   │   ├── admin-tools.ts        # Org admin + super admin MCP tools (10 tools)
+│   │   │   ├── vault-tools.ts        # Secrets vault MCP tools (5 tools)
+│   │   │   ├── skill-filtering.ts    # Per-user skill visibility + interpolation
+│   │   │   ├── schema-utils.ts       # Zod-to-JSON-Schema conversion
+│   │   │   ├── json-schema-to-zod.ts # JSON Schema to Zod conversion (custom MCP)
 │   │   │   └── proxy-client.ts       # Custom MCP server proxy (discover + call)
 │   │   ├── skills/                   # Skill service + template logic
 │   │   │   ├── service.ts
@@ -116,7 +128,7 @@ switchboard/
 │   └── test/
 │       └── setup.ts                  # Vitest setup
 ├── supabase/
-│   └── migrations/                   # 23 migration files
+│   └── migrations/                   # 25 migration files
 ├── .github/workflows/
 │   └── test.yml                      # CI: runs vitest on PRs
 ├── middleware.ts                      # Supabase SSR (cookie refresh + route protection)
@@ -141,7 +153,7 @@ switchboard/
 | **Google APIs** | Individual `@googleapis/*` packages (calendar, docs, gmail, sheets, drive, slides, etc.) |
 | **Validation** | Zod 4 |
 | **Encryption** | AES-256-GCM (application-level token encryption) |
-| **Search** | pgvector (semantic tool search via embeddings) |
+| **Search** | pgvector (semantic tool search via OpenAI `text-embedding-3-large`) |
 | **Testing** | Vitest 4, Testing Library |
 | **CI** | GitHub Actions (test on PR) |
 
@@ -165,18 +177,20 @@ switchboard/
 │  │  → Check API key scope + expiry (90-day default)           │  │
 │  │  → Load profile, permissions, connections, org context     │  │
 │  │  → Rate limit (120 req/min per org)                        │  │
+│  │  → Per-user risk-based rate limits (120r/30w/5d per min)   │  │
 │  │  → Decrypt stored OAuth tokens (AES-256-GCM)               │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
 │  │ createMcpHandler (per-request, stateless)                  │  │
 │  │                                                            │  │
-│  │  Builtin tools (193):                                      │  │
+│  │  Builtin tools (216):                                      │  │
 │  │    google_calendar_*  (33)   google_docs_*    (17)         │  │
 │  │    google_gmail_*     (17)   google_sheets_*  (16)         │  │
 │  │    google_drive_*     (14)   google_slides_*  (13)         │  │
 │  │    google_ads_*       (25)   asana_*          (17)         │  │
-│  │    intercom_*         (13)   linkedin_ads_*   (28)         │  │
+│  │    hubspot_crm_*      (23)   intercom_*       (13)        │  │
+│  │    linkedin_ads_*     (28)                                 │  │
 │  │                                                            │  │
 │  │  Proxy integration tools:                                  │  │
 │  │    firecrawl_*, granola_*, shortcut_*, slack_*              │  │
@@ -185,8 +199,19 @@ switchboard/
 │  │  Custom MCP proxy tools:                                   │  │
 │  │    {server_slug}__{tool_name}  (org-scoped)                │  │
 │  │                                                            │  │
-│  │  Skills:                                                   │  │
-│  │    manage_skills, create/get/update/delete/list_skill      │  │
+│  │  Platform tools:                                           │  │
+│  │    discover_tools, call_tool, manage_skills,               │  │
+│  │    submit_feedback                                         │  │
+│  │                                                            │  │
+│  │  Vault tools (5):                                          │  │
+│  │    vault_list/get/set/delete/search_secrets                │  │
+│  │                                                            │  │
+│  │  Admin tools (10):                                         │  │
+│  │    Org admin (6): admin_teams, admin_team_members,         │  │
+│  │      admin_org, admin_org_members, admin_org_domains,      │  │
+│  │      admin_org_integrations                                │  │
+│  │    Super admin (4): admin_users, admin_user_permissions,   │  │
+│  │      admin_usage, admin_mcp_servers                        │  │
 │  └────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
                     │                       │
@@ -198,12 +223,13 @@ switchboard/
 │  pgvector)   │  │              │  │ (proxied)    │
 │              │  │ - Google     │  └──────────────┘
 │ - profiles   │  │ - Asana      │
-│ - api_keys   │  │ - Intercom   │
-│ - connections│  │ - LinkedIn   │
-│ - orgs       │  │ - Firecrawl  │
-│ - teams      │  │ - Granola    │
-│ - skills     │  │ - Shortcut   │
-│ - vault      │  │ - Slack      │
+│ - api_keys   │  │ - HubSpot   │
+│ - connections│  │ - Intercom   │
+│ - orgs       │  │ - LinkedIn   │
+│ - teams      │  │ - Firecrawl  │
+│ - skills     │  │ - Granola    │
+│ - vault      │  │ - Shortcut   │
+│ - embeddings │  │ - Slack      │
 └──────────────┘  └──────────────┘
 ```
 
@@ -212,16 +238,75 @@ switchboard/
 1. AI agent sends `POST /api/mcp` with `Authorization: Bearer <api-key>`
 2. `withMcpAuth` hashes the key with SHA-256, looks up `api_keys` table
 3. Validates API key scope (`full`, `read_write`, `read_only`) and expiry
-4. Loads user profile (status, permissions), org context, and integration access rules
-5. Rate limiter checks per-org quota (120 req/min)
+4. Loads user profile (status, permissions, discovery mode), org context, and integration access rules
+5. Rate limiter checks per-org quota (120 req/min) and per-user risk-based limits
 6. Decrypts the user's stored OAuth tokens (AES-256-GCM)
 7. `createMcpHandler` routes the tool call to the appropriate integration handler
-8. Handler calls the external API (Google, Asana, Intercom, custom MCP server, etc.)
+8. Handler calls the external API (Google, Asana, HubSpot, Intercom, custom MCP server, etc.)
 9. Response returned via MCP protocol (Streamable HTTP transport)
 
 ---
 
-## Builtin Integrations — 193 Tools
+## Discovery Mode & Tool Search
+
+With 216 builtin tools + proxy integrations + custom MCP tools, token cost and tool-selection accuracy are real concerns — each tool definition is ~400-500 tokens, and LLMs lose accuracy past ~30 tools in a flat list.
+
+**Switchboard solves this with a two-layer discovery architecture:**
+
+### Discovery Mode (Server-Side)
+
+When a user enables **discovery mode** (toggle in the dashboard), the MCP endpoint exposes only 4 tools instead of 200+:
+
+| Tool | Purpose |
+|---|---|
+| `discover_tools` | Semantic search for tools — browse integrations or search by keyword/description |
+| `call_tool` | Execute any discovered tool by name + arguments (permission-checked) |
+| `manage_skills` | CRUD for org skills/prompts |
+| `submit_feedback` | Submit feedback about the platform |
+
+The AI agent uses `discover_tools` to find what it needs, then `call_tool` to execute. This keeps the tool list compact while giving access to everything.
+
+### Hybrid Search Engine
+
+`discover_tools` uses a hybrid search strategy:
+
+1. **pgvector semantic search** — Tool descriptions are embedded via OpenAI `text-embedding-3-large` (1536 dimensions) and stored in the `tool_embeddings` table. Query embeddings are LRU-cached. New/changed tools are auto-embedded on first request.
+2. **Keyword search** — Jaccard similarity + recall scoring over extracted keywords, with bonuses for exact tool name matches.
+3. **Search enrichments** — High-value tools (e.g., `google_calendar_create_event`) have hand-written `useWhen` and `aliases` metadata for better matching on natural-language queries like "schedule a meeting".
+4. **Category synonyms** — Category-level synonym maps (e.g., `calendar` → `schedule, meetings, appointments`) boost recall for short queries.
+5. **Hybrid scoring** — 60% semantic + 30% keyword + 10% name bonus, with graduated thresholds for short vs. long queries. Falls back to keyword-only when no OpenAI key is configured.
+
+### Browse Mode
+
+Calling `discover_tools` without a query returns an integration summary — grouped by category with tool counts and risk levels — so the agent can orient before searching.
+
+### Client-Side Discovery
+
+Claude Code already implements `ToolSearch` with deferred loading. The Claude API supports `defer_loading: true` per tool. As the MCP ecosystem matures, more clients will follow. Switchboard's discovery mode is complementary — it works with any MCP client, not just those with built-in deferred loading.
+
+---
+
+## Tool Risk Classification
+
+Every tool is classified into one of three risk levels:
+
+| Risk Level | Description | Examples |
+|---|---|---|
+| `read` | Read-only operations | list_events, get_message, search |
+| `write` | Creates or modifies data | create_event, update_task, send_message |
+| `destructive` | Deletes data or has high-impact side effects | delete_event, trash_message, manage_permissions |
+
+Risk levels power three features:
+
+1. **API key scopes** — `read_only` keys can only call `read` tools; `read_write` allows read + write; `full` allows everything including destructive.
+2. **Per-user risk-based rate limits** — 120 read/min, 30 write/min, 5 destructive/min (per user, in addition to the 120 req/min per-org limit).
+3. **Risk annotations** — Tools expose their risk level via MCP annotations for client-side safety UIs.
+
+Known builtin tools use a static classification map. Unknown/custom tools are classified by a pattern-based heuristic (e.g., tool names containing "delete" or "trash" → destructive, "list" or "get" → read, default → write).
+
+---
+
+## Builtin Integrations — 216 Tools
 
 ### Google Calendar (33 tools)
 
@@ -238,7 +323,7 @@ switchboard/
 
 ### Google Docs (17 tools)
 
-create_document, get_document, read_content, search, insert_text, replace_text, delete_content, format_text, format_paragraph, manage_tables, manage_sections, manage_headers_footers, manage_images, manage_named_ranges, manage_tabs, update_document_style, insert_special_element
+create_document, get_document, read_content, search, insert_text, replace_text, delete_content, format_text, format_paragraph, manage_tables, format_table, manage_sections, manage_headers_footers, manage_images, manage_named_ranges, manage_tabs, update_document_style
 
 ### Google Gmail (17 tools)
 
@@ -263,6 +348,10 @@ list_accounts, get_account, list_campaigns, get_campaign, create_campaign, updat
 ### Asana (17 tools)
 
 get_context, search_tasks, create_task, get_task, update_task, manage_subtasks, manage_stories, manage_attachments, manage_custom_fields, manage_goals, manage_portfolios, manage_projects, manage_sections, manage_tags, manage_task_dependencies, manage_task_relations, manage_templates
+
+### HubSpot CRM (23 tools)
+
+manage_objects, search_objects, batch_objects, manage_associations, merge_objects, manage_properties, manage_property_groups, manage_schemas, get_object_schema, manage_pipelines, manage_pipeline_stages, manage_owners, manage_users, manage_lists, manage_imports, manage_exports, manage_deal_splits, manage_calling_transcripts, manage_marketing_events, manage_feedback_submissions, manage_forecasts, manage_campaigns, manage_sequences
 
 ### Intercom (13 tools)
 
@@ -316,12 +405,13 @@ Switchboard uses domain-based organization routing:
 - API keys are org-scoped — they inherit the creating user's connections
 - Connections (OAuth tokens) are per-user
 - Teams provide sub-org grouping for skill and permission management
+- **Integration access scopes** — org admins can restrict specific integrations to a subset of users
 
 ---
 
 ## Database Schema
 
-Supabase Postgres with Row Level Security on all tables. 23 migration files.
+Supabase Postgres with Row Level Security on all tables. 25 migration files.
 
 ### Core Tables
 
@@ -330,8 +420,8 @@ Supabase Postgres with Row Level Security on all tables. 23 migration files.
 | `organizations` | Multi-tenant orgs | id, name, slug, is_personal |
 | `organization_domains` | Maps email domains to orgs | organization_id, domain, is_primary |
 | `personal_email_domains` | Lookup (gmail.com, etc.) | domain (PK) |
-| `profiles` | Users | id, email, name, role, status, permissions_mode, organization_id, org_role |
-| `connections` | Encrypted OAuth tokens (per-user) | user_id, integration_id, access_token, refresh_token, expires_at |
+| `profiles` | Users | id, email, name, role, status, permissions_mode, discovery_mode, organization_id, org_role |
+| `connections` | Encrypted OAuth tokens (per-user) | user_id, integration_id, access_token, refresh_token, expires_at, enabled_tool_groups |
 | `api_keys` | MCP auth (org-scoped) | user_id, organization_id, key_hash, key_prefix, name, scope, expires_at |
 | `usage_logs` | Tool usage tracking | user_id (text), tool_name, integration_id, status, duration_ms, risk_level, organization_id |
 | `user_integration_access` | Per-user tool permissions | user_id, integration_id, allowed_tools[] |
@@ -364,11 +454,13 @@ Supabase Postgres with Row Level Security on all tables. 23 migration files.
 | `vault_secret_fields` | Individual encrypted fields within a secret | secret_id, field_name, encrypted_value |
 | `agent_feedback` | Agent-submitted feedback | id, user_id, organization_id, content, metadata |
 
-### Search Tables
+### Search & Access Control Tables
 
 | Table | Purpose | Key Columns |
 |---|---|---|
-| `tool_embeddings` | pgvector semantic search for tools | tool_name, integration_id, embedding (vector) |
+| `tool_embeddings` | pgvector semantic search for tools | tool_name, integration_id, embedding (vector 1536), search_text |
+| `integration_access_scopes` | Restrict integrations to specific users | organization_id, integration_id |
+| `integration_scope_users` | Users allowed for scoped integrations | scope_id, user_id |
 
 ### Key Relationships
 
@@ -377,9 +469,11 @@ Supabase Postgres with Row Level Security on all tables. 23 migration files.
 - `api_keys.organization_id` → `organizations.id` (NOT NULL, org-scoped)
 - `api_keys.user_id` = creator (audit trail; their connections are used for tool calls)
 - `connections` are per-user (OAuth tokens are personal)
+- `connections.enabled_tool_groups` — JSON array of enabled tool group keys (null = all enabled)
 - `custom_mcp_servers.organization_id` nullable (null = global)
 - `teams.organization_id` → `organizations.id`
 - `skills.organization_id` → `organizations.id`; `skills.team_id` → `teams.id` (optional)
+- `integration_access_scopes` → restricts an integration to specific users within an org; org admins/owners bypass
 
 ---
 
@@ -393,7 +487,7 @@ Users sign in via Google OAuth through Supabase Auth. The OAuth callback at `/au
 
 ```
 User clicks "Connect" on an integration in the dashboard
-  → Redirect to provider OAuth consent screen (e.g., Google, Asana, Intercom)
+  → Redirect to provider OAuth consent screen (e.g., Google, Asana, HubSpot, Intercom)
   → Provider redirects back with authorization code
   → /api/integrations/callback exchanges code for tokens
   → Tokens encrypted with AES-256-GCM, stored in connections table
@@ -418,8 +512,10 @@ Admin generates API key in dashboard
 - **SHA-256 API key hashing** — Raw keys shown once, only hashes stored
 - **API key scopes** — `full`, `read_write`, `read_only` — controls what operations a key can perform
 - **API key expiry** — 90-day default expiration; expired keys are rejected
-- **Safety controls** — `risk_level` tracking on tool calls; `read_only` mode support
-- **Rate limiting** — 120 req/min per organization (in-memory)
+- **Tool risk classification** — Every tool classified as `read`, `write`, or `destructive` with scope-based enforcement
+- **Risk-based rate limiting** — Per-user limits by risk level (120 read, 30 write, 5 destructive per minute) + per-org limit (120 req/min)
+- **Integration access scopes** — Org admins can restrict specific integrations to a subset of users
+- **Tool group preferences** — Per-connection configurable tool categories (e.g., enable only "objects" and "pipelines" for HubSpot)
 - **Security headers** — X-Frame-Options DENY, HSTS, CSP, Permissions-Policy (no camera/mic/geo)
 - **Stateless MCP** — Per-request handler, no sticky sessions. Horizontally scalable.
 - **Token exchange, not passthrough** — MCP bearer token is never forwarded to external APIs. Separately stored OAuth credentials are used.
@@ -448,6 +544,9 @@ GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 
 TOKEN_ENCRYPTION_KEY=your-32-byte-base64-key
+
+# Optional: enables semantic search in discover_tools
+OPENAI_API_KEY=your-openai-api-key
 ```
 
 ### Local Development
@@ -488,18 +587,6 @@ npm test              # Run all tests
 npm run test:watch    # Watch mode
 npm run test:coverage # Coverage report (src/lib + src/app/api)
 ```
-
----
-
-## Progressive Disclosure of Tools
-
-With 193 builtin tools + proxy integrations + custom MCP tools, token cost and tool-selection accuracy are real concerns — each tool definition is ~400-500 tokens, and LLMs lose accuracy past ~30 tools in a flat list.
-
-**Switchboard addresses this on two fronts:**
-
-1. **Client-side:** Claude Code already implements `ToolSearch` with deferred loading. The Claude API supports `defer_loading: true` per tool. As the MCP ecosystem matures, more clients will follow.
-
-2. **Server-side:** Switchboard has **pgvector-powered semantic search** via `tool_embeddings`. Tool definitions are embedded and stored as vectors, enabling similarity search when clients request tool discovery. This powers accurate tool selection even at scale.
 
 ---
 
