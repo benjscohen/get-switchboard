@@ -31,7 +31,7 @@ export function registerDiscoverTools(
       const ctx = getFilterContext(extra);
 
       // Compute which tools this user can actually see
-      const visibleList = filterToolsForUser(registeredTools, toolMeta, ctx);
+      const visibleList = filterToolsForUser(registeredTools, toolMeta, { ...ctx, discoveryMode: false });
       const visibleToolNames = new Set(visibleList.map((t) => t.name));
 
       if (args.query) {
