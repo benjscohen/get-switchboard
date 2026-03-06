@@ -253,52 +253,38 @@ export async function processMessage(
     let totalTurns = 0;
 
     try {
-      const messages = await query({
+      const conversation = query({
         prompt: fullPrompt,
-        model: lookup.model,
-        systemPrompt:
-          "You are a helpful AI assistant with access to the user's Switchboard integrations. Use the available MCP tools to help with their request.",
-        mcpServers: [
-          {
-            name: "switchboard",
-            type: "http",
-            url: process.env.SWITCHBOARD_MCP_URL!,
-            headers: {
-              Authorization: `Bearer ${lookup.agentKey}`,
+        options: {
+          model: lookup.model,
+          customSystemPrompt:
+            "You are a helpful AI assistant with access to the user's Switchboard integrations. Use the available MCP tools to help with their request.",
+          mcpServers: {
+            switchboard: {
+              type: "http",
+              url: process.env.SWITCHBOARD_MCP_URL!,
+              headers: {
+                Authorization: `Bearer ${lookup.agentKey}`,
+              },
             },
           },
-        ],
-        allowedTools: ["mcp__switchboard__*"],
-        permissionMode: "bypassPermissions",
-        maxTurns: MAX_TURNS,
-        abortController,
+          allowedTools: ["mcp__switchboard__*"],
+          permissionMode: "bypassPermissions",
+          maxTurns: MAX_TURNS,
+          abortController,
+        },
       });
 
-      clearTimeout(timeoutId);
-
-      // Extract the last assistant text message from the conversation
+      // Iterate the async generator — the last 'result' message has the final text
       resultText = "";
-      totalTurns = messages.length;
-
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const msg = messages[i];
-        if (msg.role === "assistant") {
-          if (typeof msg.content === "string") {
-            resultText = msg.content;
-            break;
-          }
-          if (Array.isArray(msg.content)) {
-            const textBlock = msg.content.find(
-              (block: { type: string; text?: string }) =>
-                block.type === "text" && block.text,
-            );
-            if (textBlock && "text" in textBlock) {
-              resultText = textBlock.text as string;
-              break;
-            }
-          }
+      for await (const message of conversation) {
+        if (message.type === "result" && message.subtype === "success") {
+          resultText = message.result;
+          totalTurns = message.num_turns;
         }
       }
+
+      clearTimeout(timeoutId);
 
       if (!resultText) {
         resultText = "(No response generated)";
