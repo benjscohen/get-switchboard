@@ -593,14 +593,15 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
       "Search LinkedIn targeting entities by facet (typeahead lookup)",
     schema: s.searchTargetingEntitiesSchema,
     execute: async (args, client) => {
-      // adTargetingEntities lives on the v2 API, not versioned /rest
+      // adTargetingEntities uses the v2 API with typeahead finder
       const v2Url = "https://api.linkedin.com/v2/adTargetingEntities";
       const params: Record<string, string> = {
-        q: "adTargetingFacet",
+        q: "typeahead",
         facet: args.facet_urn as string,
+        queryVersion: "QUERY_USES_URNS",
       };
       if (args.query) params.queryTerm = args.query as string;
-      if (args.page_size) params.pageSize = String(args.page_size);
+      if (args.page_size) params.count = String(args.page_size);
       const parts = Object.entries(params)
         .map(([k, v]) => `${k}=${v}`)
         .join("&");
