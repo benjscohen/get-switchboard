@@ -129,15 +129,28 @@ function buildPaginationParams(
   return params;
 }
 
-function dateRangeParam(dr: {
+// v202306+ requires unwrapped dot-notation for dateRange params
+function dateRangeParams(dr: {
   start_year: number;
   start_month: number;
   start_day: number;
   end_year: number;
   end_month: number;
   end_day: number;
-}): string {
-  return `dateRange=(start:(year:${dr.start_year},month:${dr.start_month},day:${dr.start_day}),end:(year:${dr.end_year},month:${dr.end_month},day:${dr.end_day}))`;
+}): Record<string, string> {
+  return {
+    "dateRange.start.year": String(dr.start_year),
+    "dateRange.start.month": String(dr.start_month),
+    "dateRange.start.day": String(dr.start_day),
+    "dateRange.end.year": String(dr.end_year),
+    "dateRange.end.month": String(dr.end_month),
+    "dateRange.end.day": String(dr.end_day),
+  };
+}
+
+// Percent-encode URN colons for use inside List() query params
+function encodeUrn(urn: string): string {
+  return urn.replace(/:/g, "%3A");
 }
 
 // ── Typed tool def ──
@@ -528,7 +541,7 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
     execute: async (args, client) => {
       return linkedinGet(client, "/adAccountUsers", {
         q: "accounts",
-        accounts: `urn:li:sponsoredAccount:${args.ad_account_id}`,
+        accounts: `List(${encodeUrn(`urn:li:sponsoredAccount:${args.ad_account_id}`)})`,
         ...buildPaginationParams(
           args.page_size as number | undefined,
           args.page_token as string | undefined
@@ -580,15 +593,29 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
       "Search LinkedIn targeting entities by facet (typeahead lookup)",
     schema: s.searchTargetingEntitiesSchema,
     execute: async (args, client) => {
-      return linkedinGet(client, "/adTargetingEntities", {
+      // adTargetingEntities lives on the v2 API, not versioned /rest
+      const v2Url = "https://api.linkedin.com/v2/adTargetingEntities";
+      const params: Record<string, string> = {
         q: "adTargetingFacet",
-        queryVersion: "QUERY_USES_URNS",
         facet: args.facet_urn as string,
-        ...(args.query ? { queryTerm: args.query as string } : {}),
-        ...(args.page_size
-          ? { pageSize: String(args.page_size) }
-          : {}),
+      };
+      if (args.query) params.queryTerm = args.query as string;
+      if (args.page_size) params.pageSize = String(args.page_size);
+      const parts = Object.entries(params)
+        .map(([k, v]) => `${k}=${v}`)
+        .join("&");
+      const res = await fetch(`${v2Url}?${parts}`, {
+        method: "GET",
+        headers: {
+          Authorization: client.headers["Authorization"],
+          "X-Restli-Protocol-Version": "2.0.0",
+        },
       });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`LinkedIn API ${res.status}: ${text}`);
+      }
+      return res.json();
     },
   },
 
@@ -612,17 +639,16 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
         end_day: number;
       };
       const campaigns = campaignIds
-        .map((id) => `urn:li:sponsoredCampaign:${id}`)
+        .map((id) => encodeUrn(`urn:li:sponsoredCampaign:${id}`))
         .join(",");
-      const restliParams = [
-        dateRangeParam(dr),
-        `campaigns=List(${campaigns})`,
-        `accounts=List(urn:li:sponsoredAccount:${args.ad_account_id})`,
-      ].join("&");
-      return linkedinGet(client, `/adAnalytics?${restliParams}`, {
+      return linkedinGet(client, "/adAnalytics", {
         q: "analytics",
-        pivot: "CAMPAIGN",
-        timeGranularity: (args.time_granularity as string) || "ALL",
+        "pivot.value": "CAMPAIGN",
+        "timeGranularity.value":
+          (args.time_granularity as string) || "ALL",
+        ...dateRangeParams(dr),
+        campaigns: `List(${campaigns})`,
+        accounts: `List(${encodeUrn(`urn:li:sponsoredAccount:${args.ad_account_id}`)})`,
       });
     },
   },
@@ -643,17 +669,16 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
         end_day: number;
       };
       const creatives = creativeIds
-        .map((id) => `urn:li:sponsoredCreative:${id}`)
+        .map((id) => encodeUrn(`urn:li:sponsoredCreative:${id}`))
         .join(",");
-      const restliParams = [
-        dateRangeParam(dr),
-        `creatives=List(${creatives})`,
-        `accounts=List(urn:li:sponsoredAccount:${args.ad_account_id})`,
-      ].join("&");
-      return linkedinGet(client, `/adAnalytics?${restliParams}`, {
+      return linkedinGet(client, "/adAnalytics", {
         q: "analytics",
-        pivot: "CREATIVE",
-        timeGranularity: (args.time_granularity as string) || "ALL",
+        "pivot.value": "CREATIVE",
+        "timeGranularity.value":
+          (args.time_granularity as string) || "ALL",
+        ...dateRangeParams(dr),
+        creatives: `List(${creatives})`,
+        accounts: `List(${encodeUrn(`urn:li:sponsoredAccount:${args.ad_account_id}`)})`,
       });
     },
   },
@@ -672,14 +697,13 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
         end_month: number;
         end_day: number;
       };
-      const restliParams = [
-        dateRangeParam(dr),
-        `accounts=List(urn:li:sponsoredAccount:${args.ad_account_id})`,
-      ].join("&");
-      return linkedinGet(client, `/adAnalytics?${restliParams}`, {
+      return linkedinGet(client, "/adAnalytics", {
         q: "analytics",
-        pivot: "ACCOUNT",
-        timeGranularity: (args.time_granularity as string) || "ALL",
+        "pivot.value": "ACCOUNT",
+        "timeGranularity.value":
+          (args.time_granularity as string) || "ALL",
+        ...dateRangeParams(dr),
+        accounts: `List(${encodeUrn(`urn:li:sponsoredAccount:${args.ad_account_id}`)})`,
       });
     },
   },
@@ -695,7 +719,7 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
     execute: async (args, client) => {
       return linkedinGet(client, "/conversions", {
         q: "account",
-        account: `urn:li:sponsoredAccount:${args.ad_account_id}`,
+        account: encodeUrn(`urn:li:sponsoredAccount:${args.ad_account_id}`),
       });
     },
   },
