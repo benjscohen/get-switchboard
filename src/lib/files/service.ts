@@ -907,7 +907,7 @@ export async function bulkWriteFiles(
       name: f.name,
       content: f.content,
       metadata: f.metadata ?? {},
-      change_type: existingMap.has(f.path) ? "updated" : "created",
+      change_type: existingMap.has(f.path as string) ? "updated" : "created",
       changed_by: auth.userId,
     }));
     const { error: batchVersionError } = await supabaseAdmin.from("file_versions").insert(versionRows);
