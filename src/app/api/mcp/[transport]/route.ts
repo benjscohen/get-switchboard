@@ -30,7 +30,7 @@ import { registerVaultTools } from "@/lib/mcp/vault-tools";
 import { registerDiscoverTools } from "@/lib/mcp/discover-tools";
 import { registerCallTool } from "@/lib/mcp/call-tool";
 import { withToolLogging } from "@/lib/mcp/tool-logging";
-import { buildToolIndex, ensureToolEmbeddings, type ToolIndexEntry } from "@/lib/mcp/tool-search";
+import { buildToolIndex, buildIntegrationSummaryLine, ensureToolEmbeddings, type ToolIndexEntry } from "@/lib/mcp/tool-search";
 import {
   createSkill,
   updateSkill,
@@ -781,7 +781,7 @@ function buildAndRegisterDiscovery(server: McpServer) {
   registerCallTool(server, toolMeta, registeredTools, integrationNames);
 
   server.server.setRequestHandler(ListToolsRequestSchema, (_request, extra) => {
-    const tools = filterToolsForUser(registeredTools, toolMeta, {
+    const authCtx = {
       connections: extra.authInfo?.extra?.connections as
         | Array<{ integrationId: string }>
         | undefined,
@@ -802,7 +802,23 @@ function buildAndRegisterDiscovery(server: McpServer) {
       discoveryMode: extra.authInfo?.extra?.discoveryMode as boolean | undefined,
       integrationScopes: extra.authInfo?.extra?.integrationScopes as Record<string, Set<string>> | undefined,
       userId: extra.authInfo?.extra?.userId as string | undefined,
-    });
+    };
+
+    const tools = filterToolsForUser(registeredTools, toolMeta, authCtx);
+
+    // Enrich discover_tools description with available integrations in discovery mode
+    if (authCtx.discoveryMode) {
+      const realTools = filterToolsForUser(registeredTools, toolMeta, { ...authCtx, discoveryMode: false });
+      const visibleNames = new Set(realTools.map((t) => t.name));
+      const summaryLine = buildIntegrationSummaryLine(searchIndex, visibleNames);
+      if (summaryLine) {
+        const dt = tools.find((t) => t.name === "discover_tools");
+        if (dt) {
+          dt.description =
+            `${dt.description}\n\nAvailable integrations: ${summaryLine}\n\nUse discover_tools with a query like "send message" or filter by category/integration.`;
+        }
+      }
+    }
 
     return { tools };
   });

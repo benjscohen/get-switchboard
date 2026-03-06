@@ -550,6 +550,42 @@ export function browseIntegrations(
   return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// ── Integration summary for discovery mode ──
+
+/**
+ * Build a compact one-liner summarizing available integrations for enriching
+ * the discover_tools description in discovery mode.
+ */
+export function buildIntegrationSummaryLine(
+  fullIndex: ToolIndexEntry[],
+  visibleToolNames: Set<string>
+): string {
+  const summaries = browseIntegrations(fullIndex, visibleToolNames);
+  if (summaries.length === 0) return "";
+
+  // Group by category for compact display
+  const byCategory = new Map<string, { names: string[]; tools: number }>();
+  for (const s of summaries) {
+    const cat = s.category || "other";
+    const existing = byCategory.get(cat);
+    if (existing) {
+      existing.names.push(s.name);
+      existing.tools += s.toolCount;
+    } else {
+      byCategory.set(cat, { names: [s.name], tools: s.toolCount });
+    }
+  }
+
+  const parts: string[] = [];
+  for (const [cat, { names, tools }] of byCategory) {
+    parts.push(`${names.join(", ")} (${cat}, ${tools} tools)`);
+  }
+
+  let line = parts.join("; ");
+  if (line.length > 400) line = line.slice(0, 397) + "...";
+  return line;
+}
+
 // ── Embedding support ──
 
 export const EMBEDDING_MODEL = "text-embedding-3-large";
