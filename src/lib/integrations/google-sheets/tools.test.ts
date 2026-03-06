@@ -85,6 +85,11 @@ function mockSheets() {
 
 type MockSheets = ReturnType<typeof mockSheets>;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function batchUpdateCall(s: MockSheets): any {
+  return (s.spreadsheets.batchUpdate.mock.calls as unknown as any[][])[0][0];
+}
+
 // Helper to find a tool by name
 function tool(name: string) {
   const t = SHEETS_TOOLS.find((t) => t.name === name);
@@ -193,13 +198,18 @@ describe("metadata & discovery tools", () => {
       // Mock get for sheet list
       sheets.spreadsheets.get.mockResolvedValueOnce({
         data: {
-          sheets: [{ properties: { title: "Sheet1" } }],
+          spreadsheetId: "ss1",
+          spreadsheetUrl: "https://docs.google.com/spreadsheets/d/ss1",
+          properties: { title: "Test Sheet" },
+          sheets: [{ properties: { sheetId: 0, title: "Sheet1", gridProperties: { rowCount: 100, columnCount: 26 } } }],
+          namedRanges: [],
         },
       });
 
       // Mock values.get for the sheet data
       sheets.spreadsheets.values.get.mockResolvedValueOnce({
         data: {
+          range: "'Sheet1'",
           values: [
             ["Name", "Revenue"],
             ["Alice", "1000"],
@@ -227,15 +237,19 @@ describe("metadata & discovery tools", () => {
 
       sheets.spreadsheets.get.mockResolvedValueOnce({
         data: {
+          spreadsheetId: "ss1",
+          spreadsheetUrl: "https://docs.google.com/spreadsheets/d/ss1",
+          properties: { title: "Test Sheet" },
           sheets: [
-            { properties: { title: "Sheet1" } },
-            { properties: { title: "Sheet2" } },
+            { properties: { sheetId: 0, title: "Sheet1", gridProperties: { rowCount: 100, columnCount: 26 } } },
+            { properties: { sheetId: 1, title: "Sheet2", gridProperties: { rowCount: 100, columnCount: 26 } } },
           ],
+          namedRanges: [],
         },
       });
 
       sheets.spreadsheets.values.get.mockResolvedValueOnce({
-        data: { values: [["match"]] },
+        data: { range: "'Sheet1'", values: [["match"]] },
       });
 
       const result = (await t.execute(
@@ -257,10 +271,16 @@ describe("metadata & discovery tools", () => {
       const t = tool("google_sheets_search");
 
       sheets.spreadsheets.get.mockResolvedValueOnce({
-        data: { sheets: [{ properties: { title: "Sheet1" } }] },
+        data: {
+          spreadsheetId: "ss1",
+          spreadsheetUrl: "https://docs.google.com/spreadsheets/d/ss1",
+          properties: { title: "Test Sheet" },
+          sheets: [{ properties: { sheetId: 0, title: "Sheet1", gridProperties: { rowCount: 100, columnCount: 26 } } }],
+          namedRanges: [],
+        },
       });
       sheets.spreadsheets.values.get.mockResolvedValueOnce({
-        data: { values: [["No", "Match"]] },
+        data: { range: "'Sheet1'", values: [["No", "Match"]] },
       });
 
       const result = (await t.execute(
@@ -443,7 +463,7 @@ describe("sort & filter tool", () => {
       sheets as any
     );
 
-    const call = sheets.spreadsheets.batchUpdate.mock.calls[0][0];
+    const call = batchUpdateCall(sheets);
     expect(call.requestBody.requests[0].sortRange).toBeDefined();
     expect(call.requestBody.requests[0].sortRange.sortSpecs).toEqual([
       { dimensionIndex: 1, sortOrder: "DESCENDING" },
@@ -464,7 +484,7 @@ describe("sort & filter tool", () => {
     );
 
     const specs =
-      sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0]
+      batchUpdateCall(sheets).requestBody.requests[0]
         .sortRange.sortSpecs;
     expect(specs).toHaveLength(2);
     expect(specs[0].dimensionIndex).toBe(0);
@@ -485,7 +505,7 @@ describe("sort & filter tool", () => {
     );
 
     const req =
-      sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+      batchUpdateCall(sheets).requestBody.requests[0];
     expect(req.setBasicFilter).toBeDefined();
     expect(req.setBasicFilter.filter.range).toEqual({
       sheetId: 0,
@@ -505,7 +525,7 @@ describe("sort & filter tool", () => {
     );
 
     const req =
-      sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+      batchUpdateCall(sheets).requestBody.requests[0];
     expect(req.clearBasicFilter).toEqual({ sheetId: 0 });
   });
 });
@@ -529,7 +549,7 @@ describe("structure tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.addSheet.properties.title).toBe("NewTab");
     });
 
@@ -542,7 +562,7 @@ describe("structure tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.deleteSheet.sheetId).toBe(0);
     });
 
@@ -560,7 +580,7 @@ describe("structure tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.updateSheetProperties.properties.title).toBe("Renamed");
       expect(req.updateSheetProperties.fields).toBe("title");
     });
@@ -579,7 +599,7 @@ describe("structure tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.duplicateSheet.sourceSheetId).toBe(0);
       expect(req.duplicateSheet.newSheetName).toBe("Copy");
     });
@@ -629,7 +649,7 @@ describe("structure tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.insertDimension.range).toEqual({
         sheetId: 0,
         dimension: "ROWS",
@@ -653,7 +673,7 @@ describe("structure tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.insertDimension.range.dimension).toBe("COLUMNS");
     });
 
@@ -672,7 +692,7 @@ describe("structure tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.deleteDimension.range.dimension).toBe("ROWS");
     });
 
@@ -691,7 +711,7 @@ describe("structure tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.deleteDimension.range.dimension).toBe("COLUMNS");
     });
 
@@ -710,7 +730,7 @@ describe("structure tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.updateSheetProperties.properties.gridProperties).toEqual({
         frozenRowCount: 1,
         frozenColumnCount: 2,
@@ -735,7 +755,7 @@ describe("structure tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.autoResizeDimensions.dimensions).toEqual({
         sheetId: 0,
         dimension: "COLUMNS",
@@ -783,7 +803,7 @@ describe("formatting tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.repeatCell).toBeDefined();
       expect(req.repeatCell.cell.userEnteredFormat.textFormat.bold).toBe(true);
       expect(req.repeatCell.cell.userEnteredFormat.textFormat.fontSize).toBe(14);
@@ -811,7 +831,7 @@ describe("formatting tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       const bg = req.repeatCell.cell.userEnteredFormat.backgroundColorStyle.rgbColor;
       expect(bg.red).toBe(1);
       expect(bg.green).toBe(0);
@@ -835,7 +855,7 @@ describe("formatting tools", () => {
       );
 
       const fmt =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0]
+        batchUpdateCall(sheets).requestBody.requests[0]
           .repeatCell.cell.userEnteredFormat;
       expect(fmt.horizontalAlignment).toBe("CENTER");
       expect(fmt.verticalAlignment).toBe("MIDDLE");
@@ -857,7 +877,7 @@ describe("formatting tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.mergeCells).toBeDefined();
       expect(req.mergeCells.mergeType).toBe("MERGE_ALL");
     });
@@ -876,7 +896,7 @@ describe("formatting tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.unmergeCells).toBeDefined();
     });
 
@@ -895,7 +915,7 @@ describe("formatting tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.updateCells).toBeDefined();
       expect(req.updateCells.rows[0].values[0].note).toBe("Important cell");
     });
@@ -915,7 +935,7 @@ describe("formatting tools", () => {
       );
 
       const fmt =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0]
+        batchUpdateCall(sheets).requestBody.requests[0]
           .repeatCell.cell.userEnteredFormat;
       expect(fmt.numberFormat.pattern).toBe("#,##0.00");
     });
@@ -939,7 +959,7 @@ describe("formatting tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.addConditionalFormatRule).toBeDefined();
       const rule = req.addConditionalFormatRule.rule;
       expect(rule.booleanRule.condition.type).toBe("NUMBER_GREATER");
@@ -967,7 +987,7 @@ describe("formatting tools", () => {
       );
 
       const rule =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0]
+        batchUpdateCall(sheets).requestBody.requests[0]
           .addConditionalFormatRule.rule;
       expect(rule.booleanRule.condition.type).toBe("CUSTOM_FORMULA");
       expect(rule.booleanRule.condition.values[0].userEnteredValue).toBe("=A1>100");
@@ -988,7 +1008,7 @@ describe("formatting tools", () => {
       );
 
       const req =
-        sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+        batchUpdateCall(sheets).requestBody.requests[0];
       expect(req.deleteConditionalFormatRule).toEqual({
         sheetId: 0,
         index: 2,
@@ -1023,7 +1043,7 @@ describe("validation tool", () => {
     );
 
     const req =
-      sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+      batchUpdateCall(sheets).requestBody.requests[0];
     const rule = req.setDataValidation.rule;
     expect(rule.condition.type).toBe("ONE_OF_LIST");
     expect(rule.condition.values).toEqual([
@@ -1051,7 +1071,7 @@ describe("validation tool", () => {
     );
 
     const rule =
-      sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0]
+      batchUpdateCall(sheets).requestBody.requests[0]
         .setDataValidation.rule;
     expect(rule.condition.type).toBe("CUSTOM_FORMULA");
     expect(rule.condition.values[0].userEnteredValue).toBe("=A1>0");
@@ -1071,7 +1091,7 @@ describe("validation tool", () => {
     );
 
     const req =
-      sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+      batchUpdateCall(sheets).requestBody.requests[0];
     expect(req.setDataValidation.range).toBeDefined();
     // No rule when clearing
     expect(req.setDataValidation.rule).toBeUndefined();
@@ -1105,7 +1125,7 @@ describe("charts tool", () => {
     );
 
     const req =
-      sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+      batchUpdateCall(sheets).requestBody.requests[0];
     expect(req.addChart).toBeDefined();
     expect(req.addChart.chart.spec.title).toBe("Revenue");
     expect(req.addChart.chart.spec.basicChart.chartType).toBe("BAR");
@@ -1130,7 +1150,7 @@ describe("charts tool", () => {
     );
 
     const req =
-      sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+      batchUpdateCall(sheets).requestBody.requests[0];
     expect(req.updateChartSpec).toBeDefined();
     expect(req.updateChartSpec.chartId).toBe(123);
     expect(req.updateChartSpec.spec.title).toBe("Updated Chart");
@@ -1145,7 +1165,7 @@ describe("charts tool", () => {
     );
 
     const req =
-      sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+      batchUpdateCall(sheets).requestBody.requests[0];
     expect(req.deleteEmbeddedObject.objectId).toBe(456);
   });
 });
@@ -1174,7 +1194,7 @@ describe("named ranges tool", () => {
     );
 
     const req =
-      sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+      batchUpdateCall(sheets).requestBody.requests[0];
     expect(req.addNamedRange.namedRange.name).toBe("TotalRevenue");
     expect(req.addNamedRange.namedRange.range).toEqual({
       sheetId: 0,
@@ -1198,7 +1218,7 @@ describe("named ranges tool", () => {
     );
 
     const req =
-      sheets.spreadsheets.batchUpdate.mock.calls[0][0].requestBody.requests[0];
+      batchUpdateCall(sheets).requestBody.requests[0];
     expect(req.deleteNamedRange.namedRangeId).toBe("nr-abc");
   });
 });

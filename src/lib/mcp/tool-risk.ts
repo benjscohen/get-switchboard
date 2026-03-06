@@ -200,6 +200,9 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   vault_set_secret: "write",
   vault_delete_secret: "destructive",
   vault_search_secrets: "read",
+  vault_share_secret: "write",
+  vault_unshare_secret: "write",
+  vault_list_shares: "read",
 
   // ── File system tools ──
   file_read: "read",

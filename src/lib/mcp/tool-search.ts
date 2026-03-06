@@ -288,6 +288,21 @@ export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: stri
     aliases: "remember, recall, get memories, load context, what do I know",
   },
 
+  // Files
+  file_read: {
+    useWhen: "Read a file, load a document, view file contents or metadata",
+    aliases: "read file, open file, view document, get file contents",
+  },
+  file_write: {
+    useWhen: "Create or update a file, save a document, write content to a file",
+    aliases: "write file, create file, save document, update file",
+  },
+  file_search: {
+    useWhen: "Search for files by name or content, find a document",
+    aliases: "find file, search files, locate document, look up file",
+  },
+
+
   // Platform
   submit_feedback: {
     useWhen: "User wants to submit feedback, report an issue, or share suggestions about Switchboard",

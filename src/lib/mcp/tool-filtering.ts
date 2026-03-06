@@ -44,6 +44,7 @@ export function filterToolsForUser(
     const DISCOVERY_VISIBLE = new Set([
       "discover_tools", "call_tool", "submit_feedback", "manage_skills",
       "save_memory", "recall_memories",
+      "file_read", "file_write", "file_search",
     ]);
     return Object.entries(registeredTools)
       .filter(([name, tool]) => tool.enabled && DISCOVERY_VISIBLE.has(name))

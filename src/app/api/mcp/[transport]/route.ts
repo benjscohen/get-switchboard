@@ -907,14 +907,32 @@ async function mcpHandler(req: Request): Promise<Response> {
     { name: "switchboard", version: "1.0.0" },
     {
       capabilities: { prompts: {} },
-      instructions: `Switchboard is your persistent workspace. It connects you to integrations and gives you:
+      instructions: `Switchboard is your persistent workspace. It connects you to integrations and provides:
 
-- **Memory**: Use save_memory / recall_memories to persist important context across conversations — user preferences, project decisions, workflow patterns, learnings.
-- **Files**: Use file_read / file_write for documents, configs, and structured data the user asks you to manage.
+- **Files & Memory**: A versioned file system for documents and persistent memory.
 - **Skills**: Reusable prompt templates (manage_skills).
-- **Vault**: Encrypted secrets storage.
+- **Vault**: Encrypted secrets storage. Share with teammates, teams, or the org.
 
-Proactively save memories when you learn something worth remembering. Recall memories at the start of conversations for continuity.`,
+## Memory Conventions
+
+You have a durable memory system. Follow these conventions:
+
+### MEMORY.md — Your Core Memory
+- \`/memories/MEMORY.md\` is your central memory file. It holds user preferences, project conventions, key decisions, and important learnings.
+- **Read it at the start of every conversation** using recall_memories (with no query) — this loads MEMORY.md plus recent daily logs automatically.
+- When you learn something important, use save_memory with key "MEMORY" to update it. Read it first, add the new info under the right section, write it back.
+- Keep it organized with clear markdown headings. Remove outdated entries.
+- If it doesn't exist yet, create it with sections: User Preferences, Project Context, Key Decisions, Workflow Patterns.
+
+### Daily Logs — Activity Journal
+- Use save_memory with key "daily/YYYY-MM-DD" to write daily notes (e.g. key: "daily/2026-03-06").
+- Daily logs are append-only — read the existing content first, append new entries at the end.
+- Use them for: task progress, conversation summaries, decisions made, follow-ups.
+
+### When to Write Memory
+- Proactively save to MEMORY.md when you learn preferences, patterns, or decisions worth keeping.
+- Before ending a long conversation, write a summary to today's daily log.
+- Use recall_memories with a query to search across all memory files when needed.`,
     },
   );
   registerTools(server);

@@ -10,7 +10,10 @@ export async function GET(
   if (!auth.authenticated) return auth.response;
 
   const { id } = await params;
-  const result = await getSecret({ userId: auth.userId }, id);
+  const result = await getSecret(
+    { userId: auth.userId, organizationId: auth.organizationId, orgRole: auth.orgRole },
+    id
+  );
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
   return NextResponse.json(result.data);
 }

@@ -4,7 +4,6 @@ import {
   writeFile,
   deleteFile,
   searchFiles,
-  listDirectory,
   readFile,
 } from "@/lib/files/service";
 import type { ToolMeta } from "@/lib/mcp/tool-filtering";
@@ -50,9 +49,9 @@ export function registerMemoryTools(
   // recall_memories
   server.tool(
     "recall_memories",
-    "Search and retrieve saved memories. Use at the start of conversations to load relevant context, or when the user references something you should know. Without a query, lists all memories.",
+    "Search and retrieve saved memories. Without a query, loads session context: MEMORY.md (core memory) + today's and yesterday's daily logs. With a query, searches across all memory files.",
     {
-      query: z.string().optional().describe("Search term to find specific memories. Omit to list all."),
+      query: z.string().optional().describe("Search term to find specific memories. Omit to load session context (MEMORY.md + recent daily logs)."),
     },
     withToolLogging("recall_memories", "platform", async (args, extra) => {
       const auth = getMcpAuth(extra);
@@ -79,30 +78,29 @@ export function registerMemoryTools(
         return { content: [{ type: "text" as const, text: JSON.stringify(memories, null, 2) }] };
       }
 
-      // No query — list all memories
-      const listResult = await listDirectory(auth, MEMORIES_DIR, { recursive: true });
-      if (!listResult.ok) {
-        // If folder doesn't exist yet, that's fine
-        if (listResult.error.includes("not found")) {
-          return { content: [{ type: "text" as const, text: "No memories saved yet." }] };
+      // No query — load session context (MEMORY.md + today/yesterday daily logs)
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const fmt = (d: Date) => d.toISOString().split("T")[0]; // YYYY-MM-DD
+
+      const filesToLoad = [
+        { label: "MEMORY.md (core memory)", path: `${MEMORIES_DIR}/MEMORY.md` },
+        { label: `Daily log: ${fmt(today)}`, path: `${MEMORIES_DIR}/daily/${fmt(today)}.md` },
+        { label: `Daily log: ${fmt(yesterday)}`, path: `${MEMORIES_DIR}/daily/${fmt(yesterday)}.md` },
+      ];
+
+      const sections: string[] = [];
+      for (const { label, path } of filesToLoad) {
+        const read = await readFile(auth, path);
+        if (read.ok) {
+          sections.push(`## ${label}\n\n${read.data.content}`);
+        } else {
+          sections.push(`## ${label}\n\n(not created yet)`);
         }
-        return { content: [{ type: "text" as const, text: listResult.error }], isError: true };
       }
 
-      const files = listResult.data.filter((f) => !f.isFolder).slice(0, 10);
-      if (files.length === 0) return { content: [{ type: "text" as const, text: "No memories saved yet." }] };
-
-      // Fetch content for each
-      const memories = await Promise.all(
-        files.map(async (f: { path: string }) => {
-          const read = await readFile(auth, f.path);
-          return {
-            key: f.path.replace(`${MEMORIES_DIR}/`, "").replace(/\.md$/, ""),
-            ...(read.ok ? { content: read.data.content, metadata: read.data.metadata } : { error: read.error }),
-          };
-        }),
-      );
-      return { content: [{ type: "text" as const, text: JSON.stringify(memories, null, 2) }] };
+      return { content: [{ type: "text" as const, text: sections.join("\n\n---\n\n") }] };
     }),
   );
   toolMeta.set("recall_memories", { integrationId: "platform", orgId: null });

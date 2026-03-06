@@ -5,6 +5,7 @@ import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
 import { VaultList } from "@/components/vault/vault-list";
 import { VaultForm } from "@/components/vault/vault-form";
+import { VaultShareModal } from "@/components/vault/vault-share-modal";
 
 interface SecretFieldMeta {
   name: string;
@@ -20,6 +21,8 @@ export interface VaultSecret {
   fieldNames: SecretFieldMeta[];
   createdAt: string;
   updatedAt: string;
+  ownership?: "owned" | "shared";
+  sharedBy?: string;
 }
 
 export interface VaultSecretDetail extends VaultSecret {
@@ -31,9 +34,10 @@ export default function VaultPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<VaultSecretDetail | null>(null);
   const [creating, setCreating] = useState(false);
+  const [sharing, setSharing] = useState<{ id: string; name: string } | null>(null);
 
   const fetchSecrets = useCallback(async () => {
-    const res = await fetch("/api/vault");
+    const res = await fetch("/api/vault?include=all");
     if (res.ok) setSecrets(await res.json());
   }, []);
 
@@ -76,6 +80,10 @@ export default function VaultPage() {
     fetchSecrets();
   }
 
+  function handleShare(id: string, name: string) {
+    setSharing({ id, name });
+  }
+
   return (
     <Container className="py-10">
       <div className="mb-2 flex items-center justify-between">
@@ -85,7 +93,7 @@ export default function VaultPage() {
         </Button>
       </div>
       <p className="mb-8 text-sm text-text-secondary">
-        Securely store API keys, credentials, and sensitive data. Accessible via MCP tools.
+        Securely store API keys, credentials, and sensitive data. Share with teammates, teams, or the org.
       </p>
 
       {loading && (
@@ -109,6 +117,7 @@ export default function VaultPage() {
           secrets={secrets}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onShare={handleShare}
         />
       )}
 
@@ -119,6 +128,17 @@ export default function VaultPage() {
           onClose={() => {
             setCreating(false);
             setEditing(null);
+          }}
+        />
+      )}
+
+      {sharing && (
+        <VaultShareModal
+          secretId={sharing.id}
+          secretName={sharing.name}
+          onClose={() => {
+            setSharing(null);
+            fetchSecrets();
           }}
         />
       )}

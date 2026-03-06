@@ -452,6 +452,11 @@ describe("filterToolsForUser", () => {
       ["discover_tools", { description: "Discover tools" }],
       ["submit_feedback", { description: "Submit feedback" }],
       ["manage_skills", { description: "Manage skills" }],
+      ["save_memory", { description: "Save a memory" }],
+      ["recall_memories", { description: "Recall memories" }],
+      ["file_read", { description: "Read a file" }],
+      ["file_write", { description: "Write a file" }],
+      ["file_search", { description: "Search files" }],
     ];
 
     const discoveryMeta: Array<[string, ToolMeta]> = [
@@ -460,6 +465,11 @@ describe("filterToolsForUser", () => {
       ["discover_tools", { integrationId: "platform", orgId: null }],
       ["submit_feedback", { integrationId: "platform", orgId: null }],
       ["manage_skills", { integrationId: "platform", orgId: null }],
+      ["save_memory", { integrationId: "platform", orgId: null }],
+      ["recall_memories", { integrationId: "platform", orgId: null }],
+      ["file_read", { integrationId: "platform", orgId: null }],
+      ["file_write", { integrationId: "platform", orgId: null }],
+      ["file_search", { integrationId: "platform", orgId: null }],
     ];
 
     it("returns only discovery-visible tools when discoveryMode is true", () => {
@@ -481,7 +491,12 @@ describe("filterToolsForUser", () => {
 
       expect(names).toEqual([
         "discover_tools",
+        "file_read",
+        "file_search",
+        "file_write",
         "manage_skills",
+        "recall_memories",
+        "save_memory",
         "submit_feedback",
       ]);
     });
