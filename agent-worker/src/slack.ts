@@ -1,6 +1,6 @@
 import { WebClient } from "@slack/web-api";
 
-const client = new WebClient(process.env.SLACK_APP_TOKEN);
+const client = new WebClient(process.env.SLACK_BOT_TOKEN);
 
 /**
  * Post a message to a Slack channel or thread. Returns the message timestamp.
@@ -64,9 +64,9 @@ export async function addReaction(
 export async function downloadFile(
   urlPrivate: string,
 ): Promise<{ content: string; filename: string; mimeType: string }> {
-  const token = process.env.SLACK_APP_TOKEN;
+  const token = process.env.SLACK_BOT_TOKEN;
   if (!token) {
-    throw new Error("SLACK_APP_TOKEN is not set");
+    throw new Error("SLACK_BOT_TOKEN is not set");
   }
 
   const response = await fetch(urlPrivate, {
