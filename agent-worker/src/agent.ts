@@ -272,15 +272,21 @@ export async function processMessage(
           permissionMode: "bypassPermissions",
           maxTurns: MAX_TURNS,
           abortController,
+          stderr: (data: string) => console.error("[claude-code stderr]", data),
         },
       });
 
       // Iterate the async generator — the last 'result' message has the final text
       resultText = "";
       for await (const message of conversation) {
-        if (message.type === "result" && message.subtype === "success") {
-          resultText = message.result;
-          totalTurns = message.num_turns;
+        console.log(`[claude-code] message type=${message.type}`);
+        if (message.type === "result") {
+          if (message.subtype === "success") {
+            resultText = message.result;
+            totalTurns = message.num_turns;
+          } else {
+            console.error("[claude-code] error result:", JSON.stringify(message));
+          }
         }
       }
 
