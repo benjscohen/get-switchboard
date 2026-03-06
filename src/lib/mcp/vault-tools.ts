@@ -10,6 +10,7 @@ import {
   searchSecrets,
 } from "@/lib/vault/service";
 import type { ToolMeta } from "@/lib/mcp/tool-filtering";
+import { withToolLogging } from "@/lib/mcp/tool-logging";
 
 type McpAuthExtra = { authInfo?: { extra?: Record<string, unknown> } };
 
@@ -32,14 +33,14 @@ export function registerVaultTools(
     "vault_list_secrets",
     "List all secrets in your vault (names, categories, tags, field names — no values)",
     {},
-    async (_args, extra) => {
+    withToolLogging("vault_list_secrets", "platform", async (_args, extra) => {
       const auth = getVaultAuth(extra);
       if (!auth) return unauthorized();
 
       const result = await listSecrets(auth);
       if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
       return { content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }] };
-    }
+    })
   );
   toolMeta.set("vault_list_secrets", { integrationId: "platform", orgId: null });
 
@@ -51,7 +52,7 @@ export function registerVaultTools(
       name: z.string().optional().describe("Secret name (use this or id)"),
       id: z.string().optional().describe("Secret UUID (use this or name)"),
     },
-    async (args, extra) => {
+    withToolLogging("vault_get_secret", "platform", async (args, extra) => {
       const auth = getVaultAuth(extra);
       if (!auth) return unauthorized();
 
@@ -65,7 +66,7 @@ export function registerVaultTools(
 
       if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
       return { content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }] };
-    }
+    })
   );
   toolMeta.set("vault_get_secret", { integrationId: "platform", orgId: null });
 
@@ -84,7 +85,7 @@ export function registerVaultTools(
         sensitive: z.boolean().optional().describe("Whether to mask in UI (default: true)"),
       })).describe("Secret fields"),
     },
-    async (args, extra) => {
+    withToolLogging("vault_set_secret", "platform", async (args, extra) => {
       const auth = getVaultAuth(extra);
       if (!auth) return unauthorized();
 
@@ -110,7 +111,7 @@ export function registerVaultTools(
       });
       if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
       return { content: [{ type: "text" as const, text: `Secret "${args.name}" created.\n\n${JSON.stringify(result.data, null, 2)}` }] };
-    }
+    })
   );
   toolMeta.set("vault_set_secret", { integrationId: "platform", orgId: null });
 
@@ -122,7 +123,7 @@ export function registerVaultTools(
       name: z.string().optional().describe("Secret name (use this or id)"),
       id: z.string().optional().describe("Secret UUID (use this or name)"),
     },
-    async (args, extra) => {
+    withToolLogging("vault_delete_secret", "platform", async (args, extra) => {
       const auth = getVaultAuth(extra);
       if (!auth) return unauthorized();
 
@@ -139,7 +140,7 @@ export function registerVaultTools(
       const result = await deleteSecret(auth, secretId);
       if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
       return { content: [{ type: "text" as const, text: "Secret deleted successfully." }] };
-    }
+    })
   );
   toolMeta.set("vault_delete_secret", { integrationId: "platform", orgId: null });
 
@@ -152,7 +153,7 @@ export function registerVaultTools(
       category: z.enum(["api_key", "credential", "payment", "note", "other"]).optional().describe("Filter by category"),
       tags: z.array(z.string()).optional().describe("Filter by tags (any match)"),
     },
-    async (args, extra) => {
+    withToolLogging("vault_search_secrets", "platform", async (args, extra) => {
       const auth = getVaultAuth(extra);
       if (!auth) return unauthorized();
 
@@ -163,7 +164,7 @@ export function registerVaultTools(
       });
       if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
       return { content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }] };
-    }
+    })
   );
   toolMeta.set("vault_search_secrets", { integrationId: "platform", orgId: null });
 }

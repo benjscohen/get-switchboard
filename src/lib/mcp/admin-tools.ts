@@ -7,6 +7,7 @@ import { validatePermissionsPayload } from "@/lib/permissions";
 import { getFullCatalog } from "@/lib/integrations/catalog";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 import type { ToolMeta } from "@/lib/mcp/tool-filtering";
+import { withToolLogging } from "@/lib/mcp/tool-logging";
 
 // ── Auth helpers ──
 
@@ -82,7 +83,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
       team_id: z.string().optional().describe("Required for get/update/delete"),
       name: z.string().optional().describe("Required for create/update"),
     },
-    async (args, extra) => {
+    withToolLogging("admin_teams", "admin:org", async (args, extra) => {
       const auth = requireOrgAdminMcp(extra);
       if (isError(auth)) return auth;
 
@@ -181,7 +182,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
           return ok({ ok: true });
         }
       }
-    }
+    })
   );
   toolMeta.set("admin_teams", { integrationId: "admin:org", orgId: null });
 
@@ -195,7 +196,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
       user_id: z.string().optional().describe("Required for add/update/remove"),
       role: z.enum(["lead", "member"]).optional().describe("Required for add/update"),
     },
-    async (args, extra) => {
+    withToolLogging("admin_team_members", "admin:org", async (args, extra) => {
       const auth = requireOrgAdminMcp(extra);
       if (isError(auth)) return auth;
 
@@ -264,7 +265,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
           return ok({ ok: true });
         }
       }
-    }
+    })
   );
   toolMeta.set("admin_team_members", { integrationId: "admin:org", orgId: null });
 
@@ -276,7 +277,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
       action: z.enum(["get", "update"]),
       name: z.string().optional().describe("New org name (for update)"),
     },
-    async (args, extra) => {
+    withToolLogging("admin_org", "admin:org", async (args, extra) => {
       const auth = requireOrgAdminMcp(extra);
       if (isError(auth)) return auth;
 
@@ -306,7 +307,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
           return ok({ ok: true });
         }
       }
-    }
+    })
   );
   toolMeta.set("admin_org", { integrationId: "admin:org", orgId: null });
 
@@ -317,7 +318,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
     {
       action: z.enum(["list"]),
     },
-    async (_args, extra) => {
+    withToolLogging("admin_org_members", "admin:org", async (_args, extra) => {
       const auth = requireOrgAdminMcp(extra);
       if (isError(auth)) return auth;
 
@@ -330,7 +331,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
       return ok((members ?? []).map((m) => ({
         id: m.id, name: m.name, role: m.org_role,
       })));
-    }
+    })
   );
   toolMeta.set("admin_org_members", { integrationId: "admin:org", orgId: null });
 
@@ -343,7 +344,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
       domain: z.string().optional().describe("Domain to add (for add action)"),
       domain_id: z.string().optional().describe("Domain ID to remove (for remove action)"),
     },
-    async (args, extra) => {
+    withToolLogging("admin_org_domains", "admin:org", async (args, extra) => {
       const auth = requireOrgAdminMcp(extra);
       if (isError(auth)) return auth;
 
@@ -397,7 +398,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
           return ok({ ok: true });
         }
       }
-    }
+    })
   );
   toolMeta.set("admin_org_domains", { integrationId: "admin:org", orgId: null });
 
@@ -411,7 +412,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
       api_key: z.string().optional().describe("API key to set (for configure)"),
       enabled: z.boolean().optional().describe("Enable/disable toggle (for configure)"),
     },
-    async (args, extra) => {
+    withToolLogging("admin_org_integrations", "admin:org", async (args, extra) => {
       const auth = requireOrgAdminMcp(extra);
       if (isError(auth)) return auth;
 
@@ -484,7 +485,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
           return ok({ ok: true });
         }
       }
-    }
+    })
   );
   toolMeta.set("admin_org_integrations", { integrationId: "admin:org", orgId: null });
 
@@ -506,7 +507,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
       org_role: z.string().optional().describe("Org role: owner/admin/member (for update)"),
       remove_from_org: z.boolean().optional().describe("Move user to personal org (for update)"),
     },
-    async (args, extra) => {
+    withToolLogging("admin_users", "admin:super", async (args, extra) => {
       const auth = requireSuperAdminMcp(extra);
       if (isError(auth)) return auth;
 
@@ -610,7 +611,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
           return ok({ ok: true });
         }
       }
-    }
+    })
   );
   toolMeta.set("admin_users", { integrationId: "admin:super", orgId: null });
 
@@ -627,7 +628,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
         allowedTools: z.array(z.string()),
       })).optional().describe("Integration access rules (for set with custom mode)"),
     },
-    async (args, extra) => {
+    withToolLogging("admin_user_permissions", "admin:super", async (args, extra) => {
       const auth = requireSuperAdminMcp(extra);
       if (isError(auth)) return auth;
 
@@ -679,7 +680,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
           return ok({ permissionsMode: "custom", integrations });
         }
       }
-    }
+    })
   );
   toolMeta.set("admin_user_permissions", { integrationId: "admin:super", orgId: null });
 
@@ -697,7 +698,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
       user_id: z.string().optional().describe("Filter logs by user ID"),
       risk_level: z.string().optional().describe("Filter logs by risk level"),
     },
-    async (args, extra) => {
+    withToolLogging("admin_usage", "admin:super", async (args, extra) => {
       const auth = requireSuperAdminMcp(extra);
       if (isError(auth)) return auth;
 
@@ -754,7 +755,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
           });
         }
       }
-    }
+    })
   );
   toolMeta.set("admin_usage", { integrationId: "admin:super", orgId: null });
 
@@ -779,7 +780,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
         enabled: z.boolean(),
       })).optional().describe("Tools to toggle (for toggle_tools)"),
     },
-    async (args, extra) => {
+    withToolLogging("admin_mcp_servers", "admin:super", async (args, extra) => {
       const auth = requireSuperAdminMcp(extra);
       if (isError(auth)) return auth;
 
@@ -949,7 +950,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
           return ok({ ok: true, updated: args.tools.length });
         }
       }
-    }
+    })
   );
   toolMeta.set("admin_mcp_servers", { integrationId: "admin:super", orgId: null });
 }

@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { filterToolsForUser, type ToolMeta, type RegisteredTool } from "./tool-filtering";
 import { zodToJsonSchema } from "./schema-utils";
+import { withToolLogging } from "./tool-logging";
 
 /**
  * Registers the `call_tool` meta-tool that lets discovery-mode users
@@ -20,7 +21,7 @@ export function registerCallTool(
       tool_name: z.string().describe("The name of the tool to call (from discover_tools results)"),
       arguments: z.record(z.string(), z.unknown()).optional().default({}).describe("Arguments to pass to the tool"),
     },
-    async (args, extra) => {
+    withToolLogging("call_tool", "platform", async (args, extra) => {
       const connections = extra.authInfo?.extra?.connections as
         | Array<{ integrationId: string }>
         | undefined;
@@ -131,7 +132,7 @@ export function registerCallTool(
           }],
         };
       }
-    }
+    })
   );
 
   toolMeta.set("call_tool", { integrationId: "platform", orgId: null });

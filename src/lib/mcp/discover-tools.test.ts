@@ -5,6 +5,11 @@ vi.mock("@/lib/supabase/admin", () => ({
   supabaseAdmin: {},
 }));
 
+// Mock usage logging so tool-logging wrapper doesn't hit DB
+vi.mock("@/lib/usage-log", () => ({
+  logUsage: vi.fn(),
+}));
+
 // Mock the tool-search module
 vi.mock("./tool-search", () => ({
   searchToolsWithEmbeddings: vi.fn(),

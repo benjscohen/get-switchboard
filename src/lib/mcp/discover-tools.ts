@@ -3,6 +3,7 @@ import { z } from "zod";
 import { filterToolsForUser, type ToolMeta, type RegisteredTool } from "./tool-filtering";
 import { searchToolsWithEmbeddings, browseIntegrations, type ToolIndexEntry } from "./tool-search";
 import { zodToJsonSchema } from "./schema-utils";
+import { withToolLogging } from "./tool-logging";
 
 /**
  * Registers the `discover_tools` MCP tool on the server.
@@ -25,7 +26,7 @@ export function registerDiscoverTools(
       action: z.string().optional().describe("Filter by action type (e.g. 'read', 'create', 'delete')"),
       limit: z.number().optional().default(10).describe("Maximum number of results to return (default 10)"),
     },
-    async (args, extra) => {
+    withToolLogging("discover_tools", "platform", async (args, extra) => {
       const connections = extra.authInfo?.extra?.connections as
         | Array<{ integrationId: string }>
         | undefined;
@@ -105,7 +106,7 @@ export function registerDiscoverTools(
           }],
         };
       }
-    }
+    })
   );
 
   toolMeta.set("discover_tools", { integrationId: "platform", orgId: null });

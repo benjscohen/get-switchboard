@@ -29,6 +29,7 @@ import { registerAdminTools } from "@/lib/mcp/admin-tools";
 import { registerVaultTools } from "@/lib/mcp/vault-tools";
 import { registerDiscoverTools } from "@/lib/mcp/discover-tools";
 import { registerCallTool } from "@/lib/mcp/call-tool";
+import { withToolLogging } from "@/lib/mcp/tool-logging";
 import { buildToolIndex, ensureToolEmbeddings, type ToolIndexEntry } from "@/lib/mcp/tool-search";
 import {
   createSkill,
@@ -346,7 +347,7 @@ function registerSkills(server: McpServer) {
       enabled: z.boolean().optional()
         .describe("Enable or disable the skill (update only)"),
     },
-    async (args, extra) => {
+    withToolLogging("manage_skills", "platform", async (args, extra) => {
       switch (args.operation) {
         case "list": {
           const userId = extra.authInfo?.extra?.userId as string | undefined;
@@ -447,7 +448,7 @@ function registerSkills(server: McpServer) {
           };
         }
       }
-    }
+    })
   );
 
   // Override prompts/list to filter per-user
@@ -504,7 +505,7 @@ function registerTools(server: McpServer) {
       metadata: z.record(z.string(), z.unknown()).optional()
         .describe("Additional structured data (error codes, stack traces, etc.)"),
     },
-    async (args, extra) => {
+    withToolLogging("submit_feedback", "platform", async (args, extra) => {
       const userId = (extra.authInfo?.extra?.userId as string) ?? "unknown";
       const apiKeyId = extra.authInfo?.extra?.apiKeyId as string | undefined;
       const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
@@ -522,7 +523,7 @@ function registerTools(server: McpServer) {
       });
 
       return { content: [{ type: "text" as const, text: "Feedback received — thank you." }] };
-    }
+    })
   );
   toolMeta.set("submit_feedback", { integrationId: "platform", orgId: null });
 
