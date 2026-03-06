@@ -54,6 +54,7 @@ export const CATEGORY_SYNONYMS: Record<string, string[]> = {
   files: ["storage", "cloud storage", "file management"],
   advertising: ["ads", "campaigns", "marketing", "PPC"],
   crm: ["CRM", "sales", "contacts", "deals", "pipeline", "customer relationship", "leads", "accounts"],
+  documentation: ["docs", "library docs", "API reference", "code examples", "SDK docs", "package docs"],
   search: ["web search", "semantic search", "AI search", "research", "lookup", "internet search", "find information"],
 };
 
@@ -73,6 +74,7 @@ export const CATEGORY_MAP: Record<string, string> = {
   "google-ads": "advertising",
   "hubspot-crm": "crm",
   "linkedin-ads": "advertising",
+  context7: "documentation",
   exa: "search",
   platform: "platform",
   vault: "secrets",
@@ -264,6 +266,26 @@ export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: stri
   people_search_exa: {
     useWhen: "User wants to find a person, search professional profiles, or look up someone",
     aliases: "find person, professional search, who is, linkedin lookup, people finder",
+  },
+
+  // Context7
+  "resolve-library-id": {
+    useWhen: "User wants to find a library ID, look up a package, or search for library documentation",
+    aliases: "find library, search package, look up docs, library ID, package name",
+  },
+  "get-library-docs": {
+    useWhen: "User wants to read library documentation, get code examples, or look up API reference for a specific library",
+    aliases: "read docs, library documentation, code examples, API reference, SDK docs, package docs, how to use",
+  },
+
+  // Memory
+  save_memory: {
+    useWhen: "Remember something important, save context, persist a learning or preference",
+    aliases: "remember, note, save context, persist, store memory",
+  },
+  recall_memories: {
+    useWhen: "Load context from previous conversations, check what you know about the user",
+    aliases: "remember, recall, get memories, load context, what do I know",
   },
 
   // Platform

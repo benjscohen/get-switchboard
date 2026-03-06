@@ -43,6 +43,7 @@ export function filterToolsForUser(
   if (ctx.discoveryMode) {
     const DISCOVERY_VISIBLE = new Set([
       "discover_tools", "call_tool", "submit_feedback", "manage_skills",
+      "save_memory", "recall_memories",
     ]);
     return Object.entries(registeredTools)
       .filter(([name, tool]) => tool.enabled && DISCOVERY_VISIBLE.has(name))

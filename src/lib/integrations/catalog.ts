@@ -59,8 +59,11 @@ export async function getNativeProxyCatalog(): Promise<CatalogEntry[]> {
   const toolsByIntegration = await loadProxyToolsByIntegration();
 
   return allProxyIntegrations.map((i) => {
-    const tools = toolsByIntegration.get(i.id) ??
-      (i.fallbackTools ?? []).map((t) => ({ name: t.name, description: t.description }));
+    const dbTools = toolsByIntegration.get(i.id);
+    const fallbackCount = i.fallbackTools?.length ?? 0;
+    const tools = (dbTools && dbTools.length >= fallbackCount)
+      ? dbTools
+      : (i.fallbackTools ?? []).map((t) => ({ name: t.name, description: t.description }));
     return {
       id: `proxy:${i.id}`,
       name: i.name,

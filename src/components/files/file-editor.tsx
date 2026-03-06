@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface FileData {
   id?: string;
@@ -55,7 +56,7 @@ export function FileEditor({ file, currentPath, onSave, onClose }: FileEditorPro
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 flex max-h-[80vh] w-full max-w-xl flex-col rounded-xl border border-border bg-bg-primary shadow-xl">
+      <div className="mx-4 flex max-h-[80vh] w-full max-w-xl flex-col rounded-xl border border-border bg-bg-card shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <h2 className="text-lg font-semibold">
@@ -70,13 +71,13 @@ export function FileEditor({ file, currentPath, onSave, onClose }: FileEditorPro
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div>
             <label className="mb-1 block text-xs font-medium text-text-secondary">Path</label>
-            <input
+            <Input
               type="text"
               value={path}
               onChange={(e) => setPath(e.target.value)}
               readOnly={isEdit}
               placeholder="/projects/acme/notes.md"
-              className="w-full rounded-lg border border-border bg-bg-card px-3 py-2 text-sm font-mono placeholder:text-text-tertiary focus:border-accent focus:outline-none disabled:opacity-50"
+              className="font-mono"
               disabled={isEdit}
               required
             />

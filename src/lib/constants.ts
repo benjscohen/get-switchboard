@@ -65,74 +65,9 @@ export const howItWorksSteps = [
   },
 ];
 
-export const integrations = [
-  {
-    name: "Google Workspace",
-    description: "Gmail, Calendar, Drive, Docs — full suite access for your AI assistant.",
-    icon: "/integrations/google.svg",
-    available: true,
-  },
-  {
-    name: "HubSpot",
-    description: "CRM, marketing, and sales — manage contacts, deals, and campaigns.",
-    icon: "/integrations/hubspot.svg",
-    available: true,
-  },
-  {
-    name: "Slack",
-    description: "Send messages, search channels, manage workflows from any AI tool.",
-    icon: "/integrations/slack.svg",
-    available: true,
-  },
-  {
-    name: "Shortcut",
-    description: "Project management for software teams — stories, epics, and iterations.",
-    icon: "/integrations/shortcut.svg",
-    available: true,
-  },
-  {
-    name: "Asana",
-    description: "Track projects, manage tasks, and coordinate team workflows.",
-    icon: "/integrations/asana.svg",
-    available: true,
-  },
-  {
-    name: "Granola",
-    description: "AI meeting notes — automatic transcription, summaries, and action items.",
-    icon: "/integrations/granola.svg",
-    available: true,
-  },
-  {
-    name: "Gong",
-    description: "Revenue intelligence — call recordings, deal insights, and coaching.",
-    icon: "/integrations/gong.svg",
-    available: true,
-  },
-  {
-    name: "GitHub",
-    description: "Issues, PRs, code search, and repository management via natural language.",
-    icon: "/integrations/github.svg",
-    available: true,
-  },
-  {
-    name: "Notion",
-    description: "Create pages, query databases, and manage your team's knowledge base.",
-    icon: "/integrations/notion.svg",
-    available: false,
-  },
-  {
-    name: "Jira",
-    description: "Create and manage issues, track sprints, and update project boards.",
-    icon: "/integrations/jira.svg",
-    available: false,
-  },
-  {
-    name: "Salesforce",
-    description: "Access CRM data, update records, and automate sales workflows.",
-    icon: "/integrations/salesforce.svg",
-    available: false,
-  },
-];
+import { getMarketingIntegrations } from "@/lib/integrations/marketing-catalog";
+
+export const integrations = getMarketingIntegrations();
 
 export const skillExamples = [
   "Schedule a meeting with the design team",

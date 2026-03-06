@@ -8,6 +8,7 @@ import { FolderTree, buildFolderTree } from "@/components/files/folder-tree";
 import { FileList } from "@/components/files/file-list";
 import { FileEditor } from "@/components/files/file-editor";
 import { FileHistory } from "@/components/files/file-history";
+import { FolderDialog } from "@/components/files/folder-dialog";
 
 interface FileItem {
   id: string;
@@ -42,6 +43,7 @@ export default function FilesPage() {
   const [editing, setEditing] = useState<FileEntry | null>(null);
   const [creating, setCreating] = useState(false);
   const [viewingHistory, setViewingHistory] = useState<FileItem | null>(null);
+  const [creatingFolder, setCreatingFolder] = useState<string | null>(null);
 
   const fetchItems = useCallback(async (path: string) => {
     const res = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
@@ -109,15 +111,19 @@ export default function FilesPage() {
     }
   }
 
-  async function handleCreateFolder(parentPath: string) {
-    const name = prompt("Folder name:");
-    if (!name?.trim()) return;
-    const folderPath = parentPath === "/" ? `/${name.trim()}` : `${parentPath}/${name.trim()}`;
+  function handleCreateFolder(parentPath: string) {
+    setCreatingFolder(parentPath);
+  }
+
+  async function handleFolderSubmit(name: string) {
+    if (creatingFolder === null) return;
+    const folderPath = creatingFolder === "/" ? `/${name}` : `${creatingFolder}/${name}`;
     await fetch("/api/files/folder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: folderPath }),
     });
+    setCreatingFolder(null);
     await fetchItems(currentPath);
     await fetchFolders();
   }
@@ -213,6 +219,15 @@ export default function FilesPage() {
           )}
         </div>
       </div>
+
+      {/* Folder dialog */}
+      {creatingFolder !== null && (
+        <FolderDialog
+          parentPath={creatingFolder}
+          onSubmit={handleFolderSubmit}
+          onClose={() => setCreatingFolder(null)}
+        />
+      )}
 
       {/* Editor modal */}
       {(editing || creating) && (

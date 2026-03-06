@@ -22,32 +22,45 @@ export async function loadProxyTools(): Promise<{
     .select("integration_id, tool_name, description, input_schema")
     .eq("enabled", true);
 
-  const dbTools = (data ?? []).map((row) => ({
+  const allDbTools = (data ?? []).map((row) => ({
     integrationId: row.integration_id,
     name: row.tool_name,
     description: row.description,
     inputSchema: row.input_schema as Record<string, unknown>,
   }));
 
-  const dbIntegrationIds = new Set(dbTools.map((t) => t.integrationId));
+  // Group DB tools by integration
+  const dbToolsByIntegration = new Map<string, ProxyTool[]>();
+  for (const t of allDbTools) {
+    const existing = dbToolsByIntegration.get(t.integrationId) ?? [];
+    existing.push(t);
+    dbToolsByIntegration.set(t.integrationId, existing);
+  }
+
   const fallbackIntegrationIds = new Set<string>();
+  const tools: ProxyTool[] = [];
 
-  // Add fallback tools for integrations not yet in DB
-  const fallbackTools = allProxyIntegrations.flatMap((proxy) => {
-    if (dbIntegrationIds.has(proxy.id)) return [];
-    fallbackIntegrationIds.add(proxy.id);
-    return (proxy.fallbackTools ?? []).map((t) => ({
-      integrationId: proxy.id,
-      name: t.name,
-      description: t.description,
-      inputSchema: t.inputSchema,
-    }));
-  });
+  for (const proxy of allProxyIntegrations) {
+    const dbTools = dbToolsByIntegration.get(proxy.id);
+    const fallbackCount = proxy.fallbackTools?.length ?? 0;
 
-  return {
-    tools: [...dbTools, ...fallbackTools],
-    fallbackIntegrationIds,
-  };
+    // Use DB tools only when count >= fallback (stale partial discovery → use fallback)
+    if (dbTools && dbTools.length >= fallbackCount) {
+      tools.push(...dbTools);
+    } else {
+      fallbackIntegrationIds.add(proxy.id);
+      tools.push(
+        ...(proxy.fallbackTools ?? []).map((t) => ({
+          integrationId: proxy.id,
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema,
+        }))
+      );
+    }
+  }
+
+  return { tools, fallbackIntegrationIds };
 }
 
 /**

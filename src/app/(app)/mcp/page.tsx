@@ -145,11 +145,14 @@ export default async function DashboardPage() {
 
   function getProxyToolsForIntegration(p: typeof allProxyIntegrations[number]) {
     const dbTools = proxyToolsByIntegration.get(p.id);
-    if (dbTools && dbTools.length > 0) return dbTools;
+    const fallbackCount = p.fallbackTools?.length ?? 0;
+    if (dbTools && dbTools.length >= fallbackCount) return dbTools;
     return (p.fallbackTools ?? []).map((t) => ({ name: t.name, description: t.description }));
   }
 
-  const orgProxies = allProxyIntegrations.filter((p) => !p.oauth && p.keyMode === "org");
+  const orgProxies = allProxyIntegrations.filter(
+    (p) => !p.oauth && p.keyMode === "org" && orgKeyMap.get(p.id) === true
+  );
   const perUserProxies = allProxyIntegrations.filter((p) => !p.oauth && p.keyMode === "per_user");
   const oauthProxies = allProxyIntegrations.filter((p) => !!p.oauth);
 

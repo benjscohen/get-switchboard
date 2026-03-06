@@ -174,6 +174,10 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   hubspot_crm_manage_campaigns: "write",
   hubspot_crm_manage_sequences: "write",
 
+  // ── Context7 ──
+  "resolve-library-id": "read",
+  "get-library-docs": "read",
+
   // ── Exa Search ──
   web_search_exa: "read",
   web_search_advanced_exa: "read",
@@ -208,6 +212,11 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   file_rollback: "write",
   file_delete: "destructive",
   folder_delete: "destructive",
+
+  // ── Memory tools ──
+  save_memory: "write",
+  recall_memories: "read",
+  forget_memory: "destructive",
 
   // ── Platform tools ──
   submit_feedback: "write",

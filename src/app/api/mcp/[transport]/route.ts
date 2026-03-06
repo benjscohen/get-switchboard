@@ -28,6 +28,7 @@ import {
 import { registerAdminTools } from "@/lib/mcp/admin-tools";
 import { registerVaultTools } from "@/lib/mcp/vault-tools";
 import { registerFileTools } from "@/lib/mcp/file-tools";
+import { registerMemoryTools } from "@/lib/mcp/memory-tools";
 import { registerDiscoverTools } from "@/lib/mcp/discover-tools";
 import { registerCallTool } from "@/lib/mcp/call-tool";
 import { withToolLogging } from "@/lib/mcp/tool-logging";
@@ -882,6 +883,9 @@ async function mcpHandler(req: Request): Promise<Response> {
     for (const proxy of allProxyIntegrations) {
       // OAuth integrations can't discover without user tokens — skip them
       if (proxy.oauth) continue;
+      // Org-key integrations require a bearer token for accurate discovery;
+      // skip here and let on-demand discovery (line ~748) handle them
+      if (proxy.keyMode === "org") continue;
       discoverAndCacheProxyTools(proxy.id, proxy.serverUrl)
         .then(() => {
           // Reload from DB after successful discovery
@@ -901,13 +905,24 @@ async function mcpHandler(req: Request): Promise<Response> {
   });
   const server = new McpServer(
     { name: "switchboard", version: "1.0.0" },
-    { capabilities: { prompts: {} } },
+    {
+      capabilities: { prompts: {} },
+      instructions: `Switchboard is your persistent workspace. It connects you to integrations and gives you:
+
+- **Memory**: Use save_memory / recall_memories to persist important context across conversations — user preferences, project decisions, workflow patterns, learnings.
+- **Files**: Use file_read / file_write for documents, configs, and structured data the user asks you to manage.
+- **Skills**: Reusable prompt templates (manage_skills).
+- **Vault**: Encrypted secrets storage.
+
+Proactively save memories when you learn something worth remembering. Recall memories at the start of conversations for continuity.`,
+    },
   );
   registerTools(server);
   registerSkills(server);
   registerAdminTools(server, toolMeta);
   registerVaultTools(server, toolMeta);
   registerFileTools(server, toolMeta);
+  registerMemoryTools(server, toolMeta);
   // Build search index AFTER all tools are registered so discover_tools sees everything
   buildAndRegisterDiscovery(server);
   await server.connect(transport);
