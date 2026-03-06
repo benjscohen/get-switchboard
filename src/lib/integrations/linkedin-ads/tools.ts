@@ -16,13 +16,18 @@ async function linkedinGet(
   path: string,
   params?: Record<string, string>
 ): Promise<unknown> {
-  const url = new URL(`${client.baseUrl}${path}`);
+  // Build query string manually to preserve REST.li special characters
+  // (parentheses, colons, commas) that URL.searchParams would percent-encode
+  let url = `${client.baseUrl}${path}`;
   if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") url.searchParams.set(k, v);
+    const parts = Object.entries(params)
+      .filter(([, v]) => v !== undefined && v !== "")
+      .map(([k, v]) => `${k}=${v}`);
+    if (parts.length > 0) {
+      url += (url.includes("?") ? "&" : "?") + parts.join("&");
     }
   }
-  const res = await fetch(url.toString(), {
+  const res = await fetch(url, {
     method: "GET",
     headers: client.headers,
   });
@@ -612,12 +617,14 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
       const campaigns = campaignIds
         .map((id) => `urn:li:sponsoredCampaign:${id}`)
         .join(",");
-      return linkedinGet(client, "/adAnalytics", {
+      const restliParams = [
+        dateRangeParam(dr),
+        `campaigns=List(${campaigns})`,
+        `accounts=List(urn:li:sponsoredAccount:${args.ad_account_id})`,
+      ].join("&");
+      return linkedinGet(client, `/adAnalytics?${restliParams}`, {
         q: "analytics",
         pivot: "CAMPAIGN",
-        [dateRangeParam(dr)]: "",
-        campaigns: `List(${campaigns})`,
-        accounts: `List(urn:li:sponsoredAccount:${args.ad_account_id})`,
         timeGranularity: (args.time_granularity as string) || "ALL",
       });
     },
@@ -641,12 +648,14 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
       const creatives = creativeIds
         .map((id) => `urn:li:sponsoredCreative:${id}`)
         .join(",");
-      return linkedinGet(client, "/adAnalytics", {
+      const restliParams = [
+        dateRangeParam(dr),
+        `creatives=List(${creatives})`,
+        `accounts=List(urn:li:sponsoredAccount:${args.ad_account_id})`,
+      ].join("&");
+      return linkedinGet(client, `/adAnalytics?${restliParams}`, {
         q: "analytics",
         pivot: "CREATIVE",
-        [dateRangeParam(dr)]: "",
-        creatives: `List(${creatives})`,
-        accounts: `List(urn:li:sponsoredAccount:${args.ad_account_id})`,
         timeGranularity: (args.time_granularity as string) || "ALL",
       });
     },
@@ -666,11 +675,13 @@ export const LINKEDIN_ADS_TOOLS: LinkedInAdsToolDef[] = [
         end_month: number;
         end_day: number;
       };
-      return linkedinGet(client, "/adAnalytics", {
+      const restliParams = [
+        dateRangeParam(dr),
+        `accounts=List(urn:li:sponsoredAccount:${args.ad_account_id})`,
+      ].join("&");
+      return linkedinGet(client, `/adAnalytics?${restliParams}`, {
         q: "analytics",
         pivot: "ACCOUNT",
-        [dateRangeParam(dr)]: "",
-        accounts: `List(urn:li:sponsoredAccount:${args.ad_account_id})`,
         timeGranularity: (args.time_granularity as string) || "ALL",
       });
     },

@@ -584,7 +584,7 @@ function registerTools(server: McpServer) {
                   const apiMsg = (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
                   return apiMsg || message;
                 }
-                return "An internal error occurred";
+                return message;
               },
             },
           );
