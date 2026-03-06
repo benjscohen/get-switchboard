@@ -54,6 +54,7 @@ export const CATEGORY_SYNONYMS: Record<string, string[]> = {
   files: ["storage", "cloud storage", "file management"],
   advertising: ["ads", "campaigns", "marketing", "PPC"],
   crm: ["CRM", "sales", "contacts", "deals", "pipeline", "customer relationship", "leads", "accounts"],
+  search: ["web search", "semantic search", "AI search", "research", "lookup", "internet search", "find information"],
 };
 
 export const CATEGORY_MAP: Record<string, string> = {
@@ -72,6 +73,7 @@ export const CATEGORY_MAP: Record<string, string> = {
   "google-ads": "advertising",
   "hubspot-crm": "crm",
   "linkedin-ads": "advertising",
+  exa: "search",
   platform: "platform",
   vault: "secrets",
 };
@@ -240,6 +242,28 @@ export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: stri
   slack_search_public: {
     useWhen: "User wants to search Slack, find a message, or look up something in Slack",
     aliases: "search slack, find message, look up in slack, search channels",
+  },
+
+  // Exa Search
+  web_search_exa: {
+    useWhen: "User wants to search the web, find information online, or look something up",
+    aliases: "web search, find info online, look up, search internet, google",
+  },
+  deep_search_exa: {
+    useWhen: "User wants an in-depth answer synthesized from multiple web sources",
+    aliases: "in-depth answer, synthesize, comprehensive research, deep search",
+  },
+  find_similar_exa: {
+    useWhen: "User wants to find pages similar to a URL or discover related content",
+    aliases: "similar pages, related content, find like, competitors, alternatives",
+  },
+  company_research_exa: {
+    useWhen: "User wants to research a company, find business information, or look up an organization",
+    aliases: "company info, business research, org lookup, company details",
+  },
+  people_search_exa: {
+    useWhen: "User wants to find a person, search professional profiles, or look up someone",
+    aliases: "find person, professional search, who is, linkedin lookup, people finder",
   },
 
   // Platform

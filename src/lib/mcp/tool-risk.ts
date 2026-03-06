@@ -174,6 +174,19 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   hubspot_crm_manage_campaigns: "write",
   hubspot_crm_manage_sequences: "write",
 
+  // ── Exa Search ──
+  web_search_exa: "read",
+  web_search_advanced_exa: "read",
+  deep_search_exa: "read",
+  find_similar_exa: "read",
+  get_contents_exa: "read",
+  crawling_exa: "read",
+  company_research_exa: "read",
+  people_search_exa: "read",
+  get_code_context_exa: "read",
+  deep_researcher_start: "write",
+  deep_researcher_check: "read",
+
   // ── Skill tools ──
   manage_skills: "write",
 
