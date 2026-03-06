@@ -137,6 +137,10 @@ export function IntegrationAccessScopes() {
     setSaving(false);
   }
 
+  const hasEmptySpecific = Array.from(edits.values()).some(
+    (edit) => edit.state === "specific" && edit.userIds.size === 0
+  );
+
   if (loading) {
     return <p className="text-text-tertiary">Loading access scopes...</p>;
   }
@@ -193,9 +197,14 @@ export function IntegrationAccessScopes() {
       </div>
 
       <div className="flex items-center gap-3">
-        <Button size="sm" onClick={handleSave} disabled={saving}>
+        <Button size="sm" onClick={handleSave} disabled={saving || hasEmptySpecific}>
           {saving ? "Saving..." : "Save access scopes"}
         </Button>
+        {hasEmptySpecific && (
+          <span className="text-sm text-yellow-500">
+            Select at least one user for each &quot;Specific users&quot; integration, or set back to &quot;Everyone.&quot;
+          </span>
+        )}
         {success && <span className="text-sm text-green-500">{success}</span>}
         {error && <span className="text-sm text-red-500">{error}</span>}
       </div>
