@@ -51,7 +51,27 @@ export function generateSnippet(
 
   switch (clientId) {
     case "claude-desktop":
-      return buildJsonConfig(url, apiKey);
+      return JSON.stringify(
+        {
+          mcpServers: {
+            switchboard: {
+              command: "npx",
+              args: [
+                "-y",
+                "mcp-remote",
+                url,
+                "--header",
+                "Authorization:${AUTH_HEADER}",
+              ],
+              env: {
+                AUTH_HEADER: `Bearer ${apiKey}`,
+              },
+            },
+          },
+        },
+        null,
+        2
+      );
 
     case "claude-code":
       return `claude mcp add --transport http switchboard ${url} --header "Authorization: Bearer ${apiKey}"`;

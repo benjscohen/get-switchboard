@@ -11,17 +11,10 @@ import {
 } from "@/lib/vault/service";
 import type { ToolMeta } from "@/lib/mcp/tool-filtering";
 import { withToolLogging } from "@/lib/mcp/tool-logging";
+import { getMcpAuth, unauthorized } from "@/lib/mcp/types";
 
-type McpAuthExtra = { authInfo?: { extra?: Record<string, unknown> } };
-
-function getVaultAuth(extra: McpAuthExtra): { userId: string } | null {
-  const userId = extra.authInfo?.extra?.userId as string | undefined;
-  if (!userId) return null;
-  return { userId };
-}
-
-function unauthorized() {
-  return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+function getVaultAuth(extra: Parameters<typeof getMcpAuth>[0]): { userId: string } | null {
+  return getMcpAuth(extra);
 }
 
 export function registerVaultTools(

@@ -13,9 +13,25 @@ export interface SkillRow {
   team_id: string | null;
   user_id: string | null;
   enabled: boolean;
+  current_version: number;
   created_by: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface SkillVersionRow {
+  id: string;
+  skill_id: string;
+  version: number;
+  name: string;
+  description: string | null;
+  content: string;
+  arguments: Array<{ name: string; description: string; required: boolean }>;
+  enabled: boolean;
+  change_type: "created" | "updated" | "rolled_back";
+  changed_by: string;
+  change_summary: string | null;
+  created_at: string;
 }
 
 export interface SkillAuth {
@@ -63,9 +79,27 @@ export function formatSkill(s: SkillRow) {
     teamId: s.team_id,
     userId: s.user_id,
     enabled: s.enabled,
+    currentVersion: s.current_version,
     createdBy: s.created_by,
     createdAt: s.created_at,
     updatedAt: s.updated_at,
+  };
+}
+
+export function formatVersion(v: SkillVersionRow) {
+  return {
+    id: v.id,
+    skillId: v.skill_id,
+    version: v.version,
+    name: v.name,
+    description: v.description,
+    content: v.content,
+    arguments: v.arguments,
+    enabled: v.enabled,
+    changeType: v.change_type,
+    changedBy: v.changed_by,
+    changeSummary: v.change_summary,
+    createdAt: v.created_at,
   };
 }
 
@@ -241,7 +275,22 @@ export async function createSkill(auth: SkillAuth, input: CreateSkillInput): Pro
     return { ok: false, error: error.message, status: 500 };
   }
 
-  return { ok: true, data: formatSkill(skill as SkillRow), status: 201 };
+  const s = skill as SkillRow;
+
+  // Record version 1
+  await supabaseAdmin.from("skill_versions").insert({
+    skill_id: s.id,
+    version: 1,
+    name: s.name,
+    description: s.description,
+    content: s.content,
+    arguments: s.arguments,
+    enabled: s.enabled,
+    change_type: "created",
+    changed_by: auth.userId,
+  });
+
+  return { ok: true, data: formatSkill(s), status: 201 };
 }
 
 export async function updateSkill(auth: SkillAuth, id: string, input: UpdateSkillInput): Promise<ServiceResult<ReturnType<typeof formatSkill>>> {
@@ -258,7 +307,11 @@ export async function updateSkill(auth: SkillAuth, id: string, input: UpdateSkil
     return { ok: false, error: "Forbidden", status: 403 };
   }
 
-  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const newVersion = s.current_version + 1;
+  const updates: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    current_version: newVersion,
+  };
   if (input.name !== undefined) updates.name = input.name.trim();
   if (input.description !== undefined) updates.description = input.description?.trim() || null;
   if (input.content !== undefined) updates.content = input.content.trim();
@@ -276,7 +329,22 @@ export async function updateSkill(auth: SkillAuth, id: string, input: UpdateSkil
     return { ok: false, error: error.message, status: 500 };
   }
 
-  return { ok: true, data: formatSkill(updated as SkillRow) };
+  const u = updated as SkillRow;
+
+  // Record new version
+  await supabaseAdmin.from("skill_versions").insert({
+    skill_id: id,
+    version: newVersion,
+    name: u.name,
+    description: u.description,
+    content: u.content,
+    arguments: u.arguments,
+    enabled: u.enabled,
+    change_type: "updated",
+    changed_by: auth.userId,
+  });
+
+  return { ok: true, data: formatSkill(u) };
 }
 
 export async function deleteSkill(auth: SkillAuth, id: string): Promise<ServiceResult<{ ok: true }>> {
@@ -299,4 +367,113 @@ export async function deleteSkill(auth: SkillAuth, id: string): Promise<ServiceR
   }
 
   return { ok: true, data: { ok: true } };
+}
+
+// ── Version / Audit Functions ──
+
+export async function listSkillVersions(
+  auth: SkillAuth,
+  skillId: string,
+): Promise<ServiceResult<ReturnType<typeof formatVersion>[]>> {
+  const { data: skill } = await supabaseAdmin.from("skills").select("*").eq("id", skillId).single();
+  if (!skill) return { ok: false, error: "Skill not found", status: 404 };
+
+  const s = skill as SkillRow;
+  if (!(await canEditSkill(auth, s))) {
+    return { ok: false, error: "Forbidden", status: 403 };
+  }
+
+  const { data: versions, error } = await supabaseAdmin
+    .from("skill_versions")
+    .select("*")
+    .eq("skill_id", skillId)
+    .order("version", { ascending: false });
+
+  if (error) return { ok: false, error: error.message, status: 500 };
+  return { ok: true, data: ((versions ?? []) as SkillVersionRow[]).map(formatVersion) };
+}
+
+export async function getSkillVersion(
+  auth: SkillAuth,
+  skillId: string,
+  version: number,
+): Promise<ServiceResult<ReturnType<typeof formatVersion>>> {
+  const { data: skill } = await supabaseAdmin.from("skills").select("*").eq("id", skillId).single();
+  if (!skill) return { ok: false, error: "Skill not found", status: 404 };
+
+  const s = skill as SkillRow;
+  if (!(await canEditSkill(auth, s))) {
+    return { ok: false, error: "Forbidden", status: 403 };
+  }
+
+  const { data: ver, error } = await supabaseAdmin
+    .from("skill_versions")
+    .select("*")
+    .eq("skill_id", skillId)
+    .eq("version", version)
+    .single();
+
+  if (error || !ver) return { ok: false, error: "Version not found", status: 404 };
+  return { ok: true, data: formatVersion(ver as SkillVersionRow) };
+}
+
+export async function rollbackSkill(
+  auth: SkillAuth,
+  skillId: string,
+  targetVersion: number,
+): Promise<ServiceResult<ReturnType<typeof formatSkill>>> {
+  const { data: skill } = await supabaseAdmin.from("skills").select("*").eq("id", skillId).single();
+  if (!skill) return { ok: false, error: "Skill not found", status: 404 };
+
+  const s = skill as SkillRow;
+  if (!(await canEditSkill(auth, s))) {
+    return { ok: false, error: "Forbidden", status: 403 };
+  }
+
+  if (targetVersion === s.current_version) {
+    return { ok: false, error: "Already at this version", status: 400 };
+  }
+
+  const { data: ver } = await supabaseAdmin
+    .from("skill_versions")
+    .select("*")
+    .eq("skill_id", skillId)
+    .eq("version", targetVersion)
+    .single();
+
+  if (!ver) return { ok: false, error: "Version not found", status: 404 };
+
+  const newVersion = s.current_version + 1;
+
+  const { data: updated, error } = await supabaseAdmin
+    .from("skills")
+    .update({
+      name: ver.name,
+      description: ver.description,
+      content: ver.content,
+      arguments: ver.arguments,
+      enabled: ver.enabled,
+      current_version: newVersion,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", skillId)
+    .select("*")
+    .single();
+
+  if (error) return { ok: false, error: error.message, status: 500 };
+
+  await supabaseAdmin.from("skill_versions").insert({
+    skill_id: skillId,
+    version: newVersion,
+    name: ver.name,
+    description: ver.description,
+    content: ver.content,
+    arguments: ver.arguments,
+    enabled: ver.enabled,
+    change_type: "rolled_back",
+    changed_by: auth.userId,
+    change_summary: `Rolled back to version ${targetVersion}`,
+  });
+
+  return { ok: true, data: formatSkill(updated as SkillRow) };
 }

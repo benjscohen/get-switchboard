@@ -11,7 +11,7 @@ import { withToolLogging } from "@/lib/mcp/tool-logging";
 
 // ── Auth helpers ──
 
-type McpAuthExtra = { authInfo?: { extra?: Record<string, unknown> } };
+import type { McpAuthExtra } from "@/lib/mcp/types";
 type McpErrorResult = { content: Array<{ type: "text"; text: string }>; isError: true };
 type OrgAdminCtx = { userId: string; organizationId: string; orgRole: string };
 type SuperAdminCtx = OrgAdminCtx & { role: string };

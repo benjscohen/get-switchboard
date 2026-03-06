@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SkillList } from "@/components/skills/skill-list";
 import { SkillEditor } from "@/components/skills/skill-editor";
+import { SkillHistory } from "@/components/skills/skill-history";
 import type { SkillTemplate } from "@/lib/skills/templates";
 
 interface SkillArgument {
@@ -48,6 +49,7 @@ export default function SkillsPage() {
   const [editing, setEditing] = useState<Skill | null>(null);
   const [creating, setCreating] = useState<"organization" | "team" | "user" | null>(null);
   const [orgRole, setOrgRole] = useState<string>("member");
+  const [viewingHistory, setViewingHistory] = useState<Skill | null>(null);
   const [addingTemplate, setAddingTemplate] = useState<string | null>(null);
   const [showAllTemplates, setShowAllTemplates] = useState(false);
 
@@ -139,6 +141,15 @@ export default function SkillsPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled }),
+    });
+    fetchSkills();
+  }
+
+  async function handleRollback(skillId: string, version: number) {
+    await fetch(`/api/skills/${skillId}/rollback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version }),
     });
     fetchSkills();
   }
@@ -313,6 +324,7 @@ export default function SkillsPage() {
             onEdit={setEditing}
             onDelete={handleDelete}
             onToggle={handleToggle}
+            onHistory={setViewingHistory}
           />
         </>
       )}
@@ -329,6 +341,15 @@ export default function SkillsPage() {
             setEditing(null);
             setCreating(null);
           }}
+        />
+      )}
+
+      {viewingHistory && (
+        <SkillHistory
+          skillId={viewingHistory.id}
+          skillName={viewingHistory.name}
+          onRollback={(version) => handleRollback(viewingHistory.id, version)}
+          onClose={() => setViewingHistory(null)}
         />
       )}
     </Container>

@@ -17,21 +17,7 @@ export const exaIntegration: ProxyIntegrationConfig = {
     "AI-powered web search, content extraction, company research, and deep research by Exa",
   icon: ExaIcon,
   serverUrl: "https://mcp.exa.ai/mcp",
-  keyMode: "per_user",
-  userKeyInstructions: (
-    <>
-      Enter your Exa API key.{" "}
-      <a
-        href="https://dashboard.exa.ai/api-keys"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="underline text-brand hover:text-brand/80"
-      >
-        Get one here
-      </a>
-      .
-    </>
-  ),
+  keyMode: "org",
   fallbackTools: [
     {
       name: "web_search_exa",

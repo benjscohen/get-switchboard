@@ -91,6 +91,12 @@ export default async function AppLayout({
               Skills
             </Link>
             <Link
+              href="/files"
+              className="text-sm text-text-secondary transition-colors hover:text-text-primary"
+            >
+              Files
+            </Link>
+            <Link
               href="/vault"
               className="text-sm text-text-secondary transition-colors hover:text-text-primary"
             >

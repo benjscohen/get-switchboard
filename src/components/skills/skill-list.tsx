@@ -29,6 +29,7 @@ interface SkillListProps {
   onEdit: (skill: Skill) => void;
   onDelete: (id: string) => void;
   onToggle: (id: string, enabled: boolean) => void;
+  onHistory: (skill: Skill) => void;
 }
 
 function scopeBadgeLabel(skill: Skill, teamNames: Record<string, string>): string {
@@ -50,6 +51,7 @@ export function SkillList({
   onEdit,
   onDelete,
   onToggle,
+  onHistory,
 }: SkillListProps) {
   if (skills.length === 0) {
     return null;
@@ -94,6 +96,9 @@ export function SkillList({
                     }`}
                   />
                 </button>
+                <Button size="sm" variant="ghost" onClick={() => onHistory(skill)}>
+                  History
+                </Button>
                 <Button size="sm" variant="ghost" onClick={() => onEdit(skill)}>
                   Edit
                 </Button>

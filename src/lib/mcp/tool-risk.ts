@@ -197,6 +197,18 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   vault_delete_secret: "destructive",
   vault_search_secrets: "read",
 
+  // ── File system tools ──
+  file_read: "read",
+  file_list: "read",
+  file_search: "read",
+  file_history: "read",
+  file_write: "write",
+  file_move: "write",
+  folder_create: "write",
+  file_rollback: "write",
+  file_delete: "destructive",
+  folder_delete: "destructive",
+
   // ── Platform tools ──
   submit_feedback: "write",
   discover_tools: "read",

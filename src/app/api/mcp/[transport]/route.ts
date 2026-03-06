@@ -27,16 +27,22 @@ import {
 } from "@/lib/mcp/skill-filtering";
 import { registerAdminTools } from "@/lib/mcp/admin-tools";
 import { registerVaultTools } from "@/lib/mcp/vault-tools";
+import { registerFileTools } from "@/lib/mcp/file-tools";
 import { registerDiscoverTools } from "@/lib/mcp/discover-tools";
 import { registerCallTool } from "@/lib/mcp/call-tool";
 import { withToolLogging } from "@/lib/mcp/tool-logging";
 import { buildToolIndex, buildIntegrationSummaryLine, ensureToolEmbeddings, type ToolIndexEntry } from "@/lib/mcp/tool-search";
 import {
+  listSkills,
   createSkill,
   updateSkill,
   deleteSkill as deleteSkillService,
+  listSkillVersions,
+  getSkillVersion,
+  rollbackSkill,
   type SkillAuth,
 } from "@/lib/skills/service";
+import { getFullMcpAuth } from "@/lib/mcp/types";
 import { z } from "zod";
 
 // Per-user rate limits by risk level
@@ -292,14 +298,7 @@ skillsPromise.then((skills) => {
   resolvedSkills = skills;
 });
 
-function mcpSkillAuth(extra: { authInfo?: { extra?: Record<string, unknown> } }): SkillAuth | null {
-  const userId = extra.authInfo?.extra?.userId as string | undefined;
-  const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
-  const orgRole = extra.authInfo?.extra?.orgRole as string | undefined;
-  const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
-  if (!userId || !organizationId) return null;
-  return { userId, organizationId, orgRole: orgRole ?? "member", teamIds };
-}
+const mcpSkillAuth = getFullMcpAuth;
 
 function registerSkills(server: McpServer) {
   const skills = resolvedSkills ?? [];
@@ -329,12 +328,12 @@ function registerSkills(server: McpServer) {
   // Register manage_skills tool (consolidated CRUD)
   server.tool(
     "manage_skills",
-    "List, get, create, update, or delete skills (prompt templates)",
+    "Manage skills (prompt templates). CRUD plus version history and rollback. Use 'history' to view the audit trail (requires write access).",
     {
-      operation: z.enum(["list", "get", "create", "update", "delete"])
+      operation: z.enum(["list", "get", "create", "update", "delete", "history", "version", "rollback"])
         .describe("Skill operation to perform"),
       id: z.string().optional()
-        .describe("Skill ID (required for update, delete)"),
+        .describe("Skill ID (required for update, delete, history, version, rollback)"),
       name: z.string().optional()
         .describe("Skill prompt name for 'get' (e.g. org:code-review), or display name for 'create'/'update'"),
       scope: z.enum(["user", "organization", "team"]).optional()
@@ -354,47 +353,48 @@ function registerSkills(server: McpServer) {
         .describe("Team ID (required when scope is 'team')"),
       enabled: z.boolean().optional()
         .describe("Enable or disable the skill (update only)"),
+      version: z.number().optional()
+        .describe("Version number (for 'version' to view a specific version, for 'rollback' as target)"),
     },
     withToolLogging("manage_skills", "platform", async (args, extra) => {
       switch (args.operation) {
         case "list": {
-          const userId = extra.authInfo?.extra?.userId as string | undefined;
-          const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
-          const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
+          const auth = mcpSkillAuth(extra);
+          if (!auth) return { content: [{ type: "text" as const, text: JSON.stringify([], null, 2) }] };
 
-          const visible = filterSkillsForUser(skills, { userId, organizationId, teamIds });
-          const list = visible.map((s) => ({
-            name: skillPromptName(s),
+          const result = await listSkills(auth);
+          if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
+
+          const all = [
+            ...result.data.organization,
+            ...result.data.team,
+            ...result.data.user,
+          ].map((s) => ({
+            id: s.id,
+            name: `${s.scope === "organization" ? "org" : s.scope}:${s.slug}`,
             description: s.description,
             argumentCount: s.arguments.length,
           }));
 
-          return {
-            content: [{ type: "text" as const, text: JSON.stringify(list, null, 2) }],
-          };
+          return { content: [{ type: "text" as const, text: JSON.stringify(all, null, 2) }] };
         }
 
         case "get": {
           if (!args.name) {
             return { content: [{ type: "text" as const, text: "Missing required field: name" }], isError: true };
           }
-          const userId = extra.authInfo?.extra?.userId as string | undefined;
-          const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
-          const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
 
-          const visible = filterSkillsForUser(skills, { userId, organizationId, teamIds });
-          const skill = visible.find((s) => skillPromptName(s) === args.name);
+          const auth = mcpSkillAuth(extra);
+          if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
 
-          if (!skill) {
-            return {
-              content: [{ type: "text" as const, text: `Skill "${args.name}" not found or not available` }],
-              isError: true,
-            };
-          }
+          const result = await listSkills(auth);
+          if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
 
-          return {
-            content: [{ type: "text" as const, text: skill.content }],
-          };
+          const all = [...result.data.organization, ...result.data.team, ...result.data.user];
+          const skill = all.find((s) => `${s.scope === "organization" ? "org" : s.scope}:${s.slug}` === args.name);
+
+          if (!skill) return { content: [{ type: "text" as const, text: `Skill "${args.name}" not found or not available` }], isError: true };
+          return { content: [{ type: "text" as const, text: skill.content }] };
         }
 
         case "create": {
@@ -453,6 +453,44 @@ function registerSkills(server: McpServer) {
           if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
           return {
             content: [{ type: "text" as const, text: "Skill deleted successfully." }],
+          };
+        }
+
+        case "history": {
+          const auth = mcpSkillAuth(extra);
+          if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+          if (!args.id) {
+            return { content: [{ type: "text" as const, text: "Missing required field: id" }], isError: true };
+          }
+
+          const result = await listSkillVersions(auth, args.id);
+          if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
+          return { content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }] };
+        }
+
+        case "version": {
+          const auth = mcpSkillAuth(extra);
+          if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+          if (!args.id || args.version === undefined) {
+            return { content: [{ type: "text" as const, text: "Missing required fields: id, version" }], isError: true };
+          }
+
+          const result = await getSkillVersion(auth, args.id, args.version);
+          if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
+          return { content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }] };
+        }
+
+        case "rollback": {
+          const auth = mcpSkillAuth(extra);
+          if (!auth) return { content: [{ type: "text" as const, text: "Unauthorized" }], isError: true };
+          if (!args.id || args.version === undefined) {
+            return { content: [{ type: "text" as const, text: "Missing required fields: id, version" }], isError: true };
+          }
+
+          const result = await rollbackSkill(auth, args.id, args.version);
+          if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) + "\n\nRollback applied. MCP prompt changes take effect after server restart." }],
           };
         }
       }
@@ -869,6 +907,7 @@ async function mcpHandler(req: Request): Promise<Response> {
   registerSkills(server);
   registerAdminTools(server, toolMeta);
   registerVaultTools(server, toolMeta);
+  registerFileTools(server, toolMeta);
   // Build search index AFTER all tools are registered so discover_tools sees everything
   buildAndRegisterDiscovery(server);
   await server.connect(transport);

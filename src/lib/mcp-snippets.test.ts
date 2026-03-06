@@ -18,13 +18,14 @@ describe("generateSnippet", () => {
   const origin = "https://example.com";
   const apiKey = "sk_live_test123";
 
-  it("claude-desktop returns valid JSON with mcpServers.switchboard.url and headers", () => {
+  it("claude-desktop returns valid JSON with mcpServers.switchboard using mcp-remote", () => {
     const snippet = generateSnippet(origin, apiKey, "claude-desktop");
     const parsed = JSON.parse(snippet);
-    expect(parsed.mcpServers.switchboard.url).toBe(`${origin}/api/mcp/http`);
-    expect(parsed.mcpServers.switchboard.headers.Authorization).toBe(
-      `Bearer ${apiKey}`
-    );
+    const server = parsed.mcpServers.switchboard;
+    expect(server.command).toBe("npx");
+    expect(server.args).toContain("mcp-remote");
+    expect(server.args).toContain(`${origin}/api/mcp/http`);
+    expect(server.env.AUTH_HEADER).toBe(`Bearer ${apiKey}`);
   });
 
   it("claude-code returns a CLI command string containing 'claude mcp add'", () => {
@@ -46,10 +47,10 @@ describe("generateSnippet", () => {
     expect(generateSnippet(origin, apiKey, "unknown")).toBe("");
   });
 
-  it("URL contains origin + /api/mcp/http", () => {
+  it("URL contains origin + /api/mcp/http in args", () => {
     const snippet = generateSnippet(origin, apiKey, "claude-desktop");
     const parsed = JSON.parse(snippet);
-    expect(parsed.mcpServers.switchboard.url).toBe(
+    expect(parsed.mcpServers.switchboard.args).toContain(
       "https://example.com/api/mcp/http"
     );
   });

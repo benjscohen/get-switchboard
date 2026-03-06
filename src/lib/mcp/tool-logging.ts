@@ -1,7 +1,7 @@
 import { logUsage } from "@/lib/usage-log";
 import { getToolRisk } from "@/lib/mcp/tool-risk";
 
-type McpAuthExtra = { authInfo?: { extra?: Record<string, unknown> } };
+import type { McpAuthExtra } from "@/lib/mcp/types";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type McpResult = { content: any[]; isError?: boolean; [key: string]: unknown };
 
