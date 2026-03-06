@@ -182,9 +182,25 @@ export async function processMessage(
     return;
   }
 
-  // 5. Download and format file attachments
+  // 5. Fetch thread context if replying in a thread
+  let threadContext = "";
+  if (threadTs) {
+    try {
+      const history = await slack.fetchThreadHistory(channelId, threadTs, messageTs);
+      if (history.length > 0) {
+        threadContext = "Here is the conversation so far in this thread:\n\n" +
+          history.map((m) => `[${m.role === "assistant" ? "You" : "User"}]: ${m.text}`).join("\n\n") +
+          "\n\n---\n\nNow the user says:\n\n";
+      }
+    } catch (err) {
+      console.error("Failed to fetch thread history:", err);
+    }
+  }
+
+  // 6. Download and format file attachments
   const fileContent = await formatFiles(files);
-  const fullPrompt = fileContent ? `${text}\n${fileContent}` : text;
+  const userMessage = fileContent ? `${text}\n${fileContent}` : text;
+  const fullPrompt = threadContext + userMessage;
 
   // 6. Create session row
   let sessionId: string;

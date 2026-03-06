@@ -57,6 +57,40 @@ export async function addReaction(
   }
 }
 
+export interface ThreadMessage {
+  role: "user" | "assistant";
+  text: string;
+  ts: string;
+}
+
+/**
+ * Fetch the full thread history for context when a user replies in a thread.
+ * Returns messages in chronological order, excluding the current message.
+ */
+export async function fetchThreadHistory(
+  channel: string,
+  threadTs: string,
+  excludeTs: string,
+): Promise<ThreadMessage[]> {
+  const result = await client.conversations.replies({
+    channel,
+    ts: threadTs,
+    limit: 100,
+  });
+
+  const messages: ThreadMessage[] = [];
+  for (const msg of result.messages ?? []) {
+    if (!msg.ts || msg.ts === excludeTs) continue;
+    // Bot messages are "assistant", user messages are "user"
+    const role = msg.bot_id ? "assistant" : "user";
+    const text = msg.text || "";
+    if (text) {
+      messages.push({ role, text, ts: msg.ts });
+    }
+  }
+  return messages;
+}
+
 /**
  * Download a file from Slack using the bot token for authentication.
  * Returns text content for text files, "[Binary file]" for others.
