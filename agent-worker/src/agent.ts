@@ -257,11 +257,44 @@ export async function processMessage(
       },
     });
 
-    // 11. Set up timeout via AbortController
+    // 11. Pre-flight MCP connectivity check
+    try {
+      const mcpUrl = process.env.SWITCHBOARD_MCP_URL!;
+      console.log(`[mcp-preflight] Testing ${mcpUrl} ...`);
+      const preflight = await fetch(mcpUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${lookup.agentKey}`,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-03-26",
+            capabilities: {},
+            clientInfo: { name: "switchboard-agent-preflight", version: "1.0.0" },
+          },
+        }),
+      });
+      console.log(`[mcp-preflight] status=${preflight.status} content-type=${preflight.headers.get("content-type")}`);
+      if (!preflight.ok) {
+        const body = await preflight.text();
+        console.error(`[mcp-preflight] FAILED: ${body}`);
+      } else {
+        const body = await preflight.text();
+        console.log(`[mcp-preflight] OK: ${body.slice(0, 500)}`);
+      }
+    } catch (err) {
+      console.error("[mcp-preflight] Network error:", err);
+    }
+
+    // 12. Set up timeout via AbortController
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), TIMEOUT_MS);
 
-    // 12. Run Claude Code SDK
+    // 13. Run Claude Code SDK
     let resultText: string;
     let totalTurns = 0;
 
@@ -287,8 +320,10 @@ export async function processMessage(
           abortController,
           ...(resumeSessionId ? { resume: resumeSessionId } : {}),
           stderr: (data: string) => {
-            if (data.includes("Bearer") || data.includes("sk_live_")) return;
-            console.error("[claude-code stderr]", data);
+            const redacted = data
+              .replace(/Bearer [^\s"']+/g, "Bearer [REDACTED]")
+              .replace(/sk_live_[^\s"']+/g, "sk_live_[REDACTED]");
+            console.error("[claude-code stderr]", redacted);
           },
         },
       });
