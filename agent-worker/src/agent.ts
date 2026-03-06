@@ -293,6 +293,14 @@ export async function processMessage(
         },
       });
 
+      // Check MCP server status
+      try {
+        const mcpStatus = await conversation.mcpServerStatus();
+        console.log("[mcp-status]", JSON.stringify(mcpStatus));
+      } catch {
+        console.log("[mcp-status] not available (non-streaming mode)");
+      }
+
       // Iterate the async generator — capture session_id and final result
       resultText = "";
       let claudeSessionId: string | null = null;
@@ -300,6 +308,10 @@ export async function processMessage(
         // Capture session_id from any message
         if ("session_id" in message && message.session_id && !claudeSessionId) {
           claudeSessionId = message.session_id;
+        }
+        // Log system messages (often contain MCP connection info)
+        if (message.type === "system") {
+          console.log("[claude-code system]", JSON.stringify(message));
         }
         if (message.type === "result") {
           if (message.subtype === "success") {

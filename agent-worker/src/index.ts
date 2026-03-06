@@ -75,6 +75,17 @@ app.message(async ({ message, body }) => {
 // ---------------------------------------------------------------------------
 
 async function start() {
+  // Verify required env vars
+  const required = ["SLACK_BOT_TOKEN", "SLACK_SOCKET_TOKEN", "ANTHROPIC_API_KEY", "SWITCHBOARD_MCP_URL", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "TOKEN_ENCRYPTION_KEY"];
+  for (const key of required) {
+    if (!process.env[key]) {
+      console.error(`Missing required env var: ${key}`);
+      process.exit(1);
+    }
+  }
+  console.log(`MCP URL: ${process.env.SWITCHBOARD_MCP_URL}`);
+  console.log(`Anthropic key: ${process.env.ANTHROPIC_API_KEY?.slice(0, 12)}...`);
+
   console.log("Recovering stale sessions from previous run...");
   await recoverStaleSessions();
 
