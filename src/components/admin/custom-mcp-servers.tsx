@@ -24,6 +24,7 @@ interface McpServer {
   hasSharedKey: boolean;
   keyMode: "shared" | "per_user";
   userKeyInstructions: string | null;
+  customHeaders: Array<{ key: string; hasValue: boolean }> | null;
   status: string;
   lastError: string | null;
   lastDiscoveredAt: string | null;
@@ -144,6 +145,7 @@ export function CustomMcpServers() {
               keyMode: server.keyMode,
               userKeyInstructions: server.userKeyInstructions,
               hasSharedKey: server.hasSharedKey,
+              customHeaders: server.customHeaders,
             };
             return (
               <Card key={server.id} hover={false} className="p-4">

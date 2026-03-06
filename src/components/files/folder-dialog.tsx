@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useEscapeKey } from "@/hooks/use-escape-key";
 
 interface FolderDialogProps {
   parentPath: string;
@@ -18,13 +19,7 @@ export function FolderDialog({ parentPath, onSubmit, onClose }: FolderDialogProp
     inputRef.current?.focus();
   }, []);
 
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

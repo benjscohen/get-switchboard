@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { MarkdownContent } from "@/components/ui/markdown-content";
+import { useEscapeKey } from "@/hooks/use-escape-key";
 
 interface SkillArgument {
   name: string;
@@ -65,6 +67,8 @@ export function SkillEditor({
   );
   const [teamId, setTeamId] = useState(skill?.teamId ?? teams[0]?.id ?? "");
   const [saving, setSaving] = useState(false);
+
+  useEscapeKey(onClose);
 
   useEffect(() => {
     if (autoSlug) setSlug(slugify(name));
@@ -251,8 +255,8 @@ export function SkillEditor({
           {content && (
             <div>
               <label className="mb-1 block text-sm font-medium text-text-secondary">Preview</label>
-              <div className="rounded-lg border border-border bg-bg p-3 text-sm text-text-secondary whitespace-pre-wrap font-mono">
-                {content.replace(/\{\{(\w+)\}\}/g, (_, argName) => `[${argName}]`)}
+              <div className="rounded-lg border border-border bg-bg p-3">
+                <MarkdownContent content={content} highlightArgs />
               </div>
             </div>
           )}

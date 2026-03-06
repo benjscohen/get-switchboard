@@ -604,15 +604,95 @@ describe("structure tools", () => {
       expect(req.duplicateSheet.newSheetName).toBe("Copy");
     });
 
+    it("hides a tab", async () => {
+      const t = tool("google_sheets_manage_tabs");
+      await t.execute(
+        { spreadsheetId: "ss1", operation: "hide", sheetId: 0 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        sheets as any
+      );
+
+      const req = batchUpdateCall(sheets).requestBody.requests[0];
+      expect(req.updateSheetProperties.properties).toEqual({
+        sheetId: 0,
+        hidden: true,
+      });
+      expect(req.updateSheetProperties.fields).toBe("hidden");
+    });
+
+    it("unhides a tab", async () => {
+      const t = tool("google_sheets_manage_tabs");
+      await t.execute(
+        { spreadsheetId: "ss1", operation: "unhide", sheetId: 0 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        sheets as any
+      );
+
+      const req = batchUpdateCall(sheets).requestBody.requests[0];
+      expect(req.updateSheetProperties.properties).toEqual({
+        sheetId: 0,
+        hidden: false,
+      });
+      expect(req.updateSheetProperties.fields).toBe("hidden");
+    });
+
+    it("moves a tab to a new position", async () => {
+      const t = tool("google_sheets_manage_tabs");
+      await t.execute(
+        { spreadsheetId: "ss1", operation: "move", sheetId: 0, position: 2 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        sheets as any
+      );
+
+      const req = batchUpdateCall(sheets).requestBody.requests[0];
+      expect(req.updateSheetProperties.properties).toEqual({
+        sheetId: 0,
+        index: 2,
+      });
+      expect(req.updateSheetProperties.fields).toBe("index");
+    });
+
+    it("sets tab color", async () => {
+      const t = tool("google_sheets_manage_tabs");
+      await t.execute(
+        { spreadsheetId: "ss1", operation: "color", sheetId: 0, tabColor: "#FF0000" },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        sheets as any
+      );
+
+      const req = batchUpdateCall(sheets).requestBody.requests[0];
+      expect(req.updateSheetProperties.properties.sheetId).toBe(0);
+      const rgb = req.updateSheetProperties.properties.tabColorStyle.rgbColor;
+      expect(rgb.red).toBe(1);
+      expect(rgb.green).toBe(0);
+      expect(rgb.blue).toBe(0);
+      expect(req.updateSheetProperties.fields).toBe("tabColorStyle");
+    });
+
+    it("clears tab color", async () => {
+      const t = tool("google_sheets_manage_tabs");
+      await t.execute(
+        { spreadsheetId: "ss1", operation: "color", sheetId: 0, tabColor: "clear" },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        sheets as any
+      );
+
+      const req = batchUpdateCall(sheets).requestBody.requests[0];
+      expect(req.updateSheetProperties.properties.tabColorStyle).toEqual({
+        rgbColor: {},
+      });
+      expect(req.updateSheetProperties.fields).toBe("tabColorStyle");
+    });
+
     it("throws on unknown operation", async () => {
       const t = tool("google_sheets_manage_tabs");
       await expect(
         t.execute(
-          { spreadsheetId: "ss1", operation: "move" },
+          { spreadsheetId: "ss1", operation: "unknown_op" },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           sheets as any
         )
-      ).rejects.toThrow("Unknown tab operation: move");
+      ).rejects.toThrow("Unknown tab operation: unknown_op");
     });
   });
 

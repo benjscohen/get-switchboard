@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { Container } from "@/components/ui/container";
-import { IntegrationList, type UserKeyItem } from "@/components/dashboard/integration-list";
+import { IntegrationList, isUserKeyConnected, type UserKeyItem } from "@/components/dashboard/integration-list";
 import { ConnectCard } from "@/components/dashboard/connect-card";
 import { DashboardToasts } from "@/components/dashboard/dashboard-toasts";
 import { DiscoveryModeToggle } from "@/components/dashboard/discovery-mode-toggle";
@@ -10,6 +10,8 @@ import { allIntegrations, isIntegrationConfigured } from "@/lib/integrations/reg
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 import { loadProxyToolsByIntegration } from "@/lib/integrations/catalog";
 import { chromeMcpIntegration } from "@/lib/integrations/chrome-mcp";
+import { loadIntegrationScopes } from "@/lib/integration-scopes";
+import { isUserInScope } from "@/lib/permissions";
 import { headers } from "next/headers";
 
 export default async function DashboardPage() {
@@ -21,7 +23,7 @@ export default async function DashboardPage() {
 
   // Phase 1: profile + connections in parallel (no orgId dependency)
   const [{ data: profile }, { data: connections }] = await Promise.all([
-    supabase.from("profiles").select("organization_id, role, org_role, discovery_mode").eq("id", user.id).single(),
+    supabase.from("profiles").select("organization_id, role, org_role, discovery_mode, preferred_agent_model").eq("id", user.id).single(),
     supabase.from("connections").select("integration_id").eq("user_id", user.id),
   ]);
 
@@ -36,7 +38,7 @@ export default async function DashboardPage() {
   // Load custom MCP servers filtered by org (global + org-specific)
   let customServersQuery = supabaseAdmin
     .from("custom_mcp_servers")
-    .select("id, name, slug, description, auth_type, shared_api_key, key_mode, user_key_instructions, organization_id, custom_mcp_tools(tool_name, description, enabled)")
+    .select("id, name, slug, description, auth_type, shared_api_key, key_mode, user_key_instructions, organization_id, custom_headers, custom_mcp_tools(tool_name, description, enabled)")
     .eq("status", "active");
 
   if (orgId) {
@@ -54,6 +56,7 @@ export default async function DashboardPage() {
     { data: orgKeysData },
     { data: apiKeys },
     { data: proxyUserKeysData },
+    integrationScopes,
   ] = await Promise.all([
     customServersQuery,
     supabaseAdmin.from("custom_mcp_user_keys").select("server_id").eq("user_id", user.id),
@@ -63,12 +66,15 @@ export default async function DashboardPage() {
     orgId
       ? supabaseAdmin
           .from("api_keys")
-          .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope, expires_at, permissions")
+          .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope, expires_at, permissions, is_agent_key")
           .eq("organization_id", orgId)
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
       : Promise.resolve({ data: [] as Array<{ id: string; name: string; key_prefix: string; last_used_at: string | null; created_at: string; user_id: string; revoked_at: string | null; scope: string; expires_at: string }> }),
     supabaseAdmin.from("proxy_user_keys").select("integration_id").eq("user_id", user.id),
+    orgId
+      ? loadIntegrationScopes(orgId)
+      : Promise.resolve({} as Record<string, Set<string>>),
   ]);
 
   const orgKeys = orgKeysData ?? [];
@@ -83,8 +89,11 @@ export default async function DashboardPage() {
       .map((k) => k.integration_id)
   );
 
+  const orgRole = profile?.org_role as string | undefined;
+
   const builtinIntegrations = allIntegrations
     .filter((i) => isIntegrationConfigured(i) && (!i.orgKeyRequired || orgKeyConfiguredIds.has(i.id)))
+    .filter((i) => isUserInScope(integrationScopes, user.id, orgRole, i.id))
     .map((i) => ({
       id: i.id,
       name: i.name,
@@ -106,11 +115,16 @@ export default async function DashboardPage() {
     scope: (k as { scope?: string }).scope ?? "full",
     expiresAt: (k as { expires_at?: string }).expires_at ?? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
     permissions: (k as { permissions?: Record<string, string[] | null> | null }).permissions ?? null,
+    isAgentKey: (k as { is_agent_key?: boolean }).is_agent_key ?? false,
   }));
+
+  const preferredAgentModel = profile?.preferred_agent_model ?? "claude-sonnet-4-6";
 
   const userKeySet = new Set((userKeys ?? []).map((k) => k.server_id));
 
-  const customMcpUserKeys: UserKeyItem[] = (customServers ?? []).map((s) => {
+  const customMcpUserKeys: UserKeyItem[] = (customServers ?? [])
+    .filter((s) => isUserInScope(integrationScopes, user.id, orgRole, `custom:${s.id}`))
+    .map((s) => {
     const enabledTools = (s.custom_mcp_tools ?? []).filter(
       (t: { enabled: boolean }) => t.enabled
     );
@@ -128,8 +142,16 @@ export default async function DashboardPage() {
       hasPersonalKey: userKeySet.has(s.id),
       userKeyInstructions: (s.user_key_instructions as string | null) ?? null,
       keyMode: (s.key_mode as "shared" | "per_user") ?? "shared",
-      hasSharedKey: !!s.shared_api_key,
+      hasSharedKey: !!s.shared_api_key || (
+        s.auth_type === "custom_headers"
+        && Array.isArray(s.custom_headers)
+        && (s.custom_headers as Array<{ key: string; value?: string }>).length > 0
+        && (s.custom_headers as Array<{ key: string; value?: string }>).every((h) => !!h.value)
+      ),
       authType: s.auth_type,
+      headerKeys: s.auth_type === "custom_headers" && Array.isArray(s.custom_headers)
+        ? (s.custom_headers as Array<{ key: string }>).map((h) => h.key)
+        : undefined,
     };
   });
 
@@ -153,9 +175,16 @@ export default async function DashboardPage() {
 
   const orgProxies = allProxyIntegrations.filter(
     (p) => !p.oauth && p.keyMode === "org" && orgKeyMap.get(p.id) === true
+      && isUserInScope(integrationScopes, user.id, orgRole, `proxy:${p.id}`)
   );
-  const perUserProxies = allProxyIntegrations.filter((p) => !p.oauth && p.keyMode === "per_user");
-  const oauthProxies = allProxyIntegrations.filter((p) => !!p.oauth);
+  const perUserProxies = allProxyIntegrations.filter(
+    (p) => !p.oauth && p.keyMode === "per_user"
+      && isUserInScope(integrationScopes, user.id, orgRole, `proxy:${p.id}`)
+  );
+  const oauthProxies = allProxyIntegrations.filter(
+    (p) => !!p.oauth
+      && isUserInScope(integrationScopes, user.id, orgRole, `proxy:${p.id}`)
+  );
 
   const proxyIntegrations = orgProxies.map((p) => {
     const tools = getProxyToolsForIntegration(p);
@@ -285,10 +314,11 @@ export default async function DashboardPage() {
           origin={origin}
           initialKeys={initialKeys}
           availableIntegrations={availableIntegrations}
+          preferredAgentModel={preferredAgentModel}
           connectionStats={{
             connected: integrations.filter(i => i.connected).length
               + proxyIntegrations.filter(i => i.connected).length
-              + userKeyIntegrations.filter(i => i.hasPersonalKey).length,
+              + userKeyIntegrations.filter(i => isUserKeyConnected(i)).length,
             total: integrations.length + proxyIntegrations.length + userKeyIntegrations.length,
           }}
         />

@@ -203,6 +203,54 @@ export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: stri
     useWhen: "User wants to add rows to a spreadsheet or append data",
     aliases: "add rows, append data, insert rows, add to sheet",
   },
+  google_sheets_get_info: {
+    useWhen: "User wants to see spreadsheet metadata, list tabs/sheets, get tab names or IDs, or check sheet properties",
+    aliases: "list tabs, sheet info, tab names, sheet metadata, list sheets, spreadsheet info, tab IDs",
+  },
+  google_sheets_search: {
+    useWhen: "User wants to find text in a spreadsheet, search across sheets, or locate a value in cells",
+    aliases: "find text, search cells, locate value, find in sheet, search spreadsheet",
+  },
+  google_sheets_clear: {
+    useWhen: "User wants to clear cell values, erase data from a range, or empty cells in a sheet",
+    aliases: "clear cells, erase data, empty range, clear values, wipe cells",
+  },
+  google_sheets_sort_filter: {
+    useWhen: "User wants to sort spreadsheet data by column, set a filter, or clear filters on a sheet",
+    aliases: "sort column, filter rows, auto filter, sort data, clear filter, sort spreadsheet",
+  },
+  google_sheets_manage_tabs: {
+    useWhen: "User wants to add a new tab, create a sheet, delete a tab, rename a sheet, duplicate a tab, hide or unhide a sheet, reorder tabs, or change tab color",
+    aliases: "create tab, new sheet, add worksheet, delete tab, remove sheet, rename tab, duplicate tab, hide tab, unhide tab, move tab, tab color, new tab, sheet tab",
+  },
+  google_sheets_copy_tab: {
+    useWhen: "User wants to copy a tab to another spreadsheet or duplicate a sheet across files",
+    aliases: "copy tab, copy sheet, duplicate to another spreadsheet, transfer tab",
+  },
+  google_sheets_modify_structure: {
+    useWhen: "User wants to insert or delete rows or columns, freeze panes, or auto-resize columns in a spreadsheet",
+    aliases: "insert rows, insert columns, delete rows, delete columns, freeze rows, freeze columns, auto resize, add row, add column",
+  },
+  google_sheets_format: {
+    useWhen: "User wants to format cells, apply bold or italic, change font color or background, merge cells, or add notes in a spreadsheet",
+    aliases: "bold, italic, font size, font color, background color, merge cells, unmerge, cell notes, number format, alignment, wrap text",
+  },
+  google_sheets_conditional_format: {
+    useWhen: "User wants to add or remove conditional formatting rules, highlight cells based on values, or apply color scales",
+    aliases: "conditional formatting, highlight cells, color scale, format rules, conditional rules",
+  },
+  google_sheets_validate: {
+    useWhen: "User wants to set data validation, create dropdown lists, or add input constraints to cells",
+    aliases: "dropdown, data validation, input validation, dropdown list, cell validation, restrict input",
+  },
+  google_sheets_manage_charts: {
+    useWhen: "User wants to create, update, or delete a chart in a spreadsheet",
+    aliases: "create chart, add chart, bar chart, line chart, pie chart, update chart, delete chart, graph",
+  },
+  google_sheets_manage_named_ranges: {
+    useWhen: "User wants to create or delete named ranges in a spreadsheet",
+    aliases: "named range, create named range, delete named range, name a range, range name",
+  },
 
   // Google Slides
   google_slides_create_presentation: {

@@ -52,4 +52,26 @@ export const googleSheetsIntegration: IntegrationConfig = {
   },
   tools,
   toolCount: tools.length,
+  toolGroups: {
+    data: {
+      description: "Read, write, append, clear, and search data",
+      tools: ["google_sheets_read", "google_sheets_write", "google_sheets_append", "google_sheets_clear", "google_sheets_search"],
+    },
+    metadata: {
+      description: "Spreadsheet info and creation",
+      tools: ["google_sheets_get_info", "google_sheets_create"],
+    },
+    structure: {
+      description: "Tab management and structural changes",
+      tools: ["google_sheets_manage_tabs", "google_sheets_copy_tab", "google_sheets_modify_structure", "google_sheets_sort_filter"],
+    },
+    formatting: {
+      description: "Cell formatting, conditional formatting, validation",
+      tools: ["google_sheets_format", "google_sheets_conditional_format", "google_sheets_validate"],
+    },
+    advanced: {
+      description: "Charts and named ranges",
+      tools: ["google_sheets_manage_charts", "google_sheets_manage_named_ranges"],
+    },
+  },
 };

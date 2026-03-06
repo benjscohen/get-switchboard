@@ -46,6 +46,7 @@ interface ApiKeyEntry {
   scope?: string;
   expiresAt: string;
   permissions?: Record<string, string[] | null> | null;
+  isAgentKey?: boolean;
 }
 
 type AvailableIntegration = {
@@ -78,15 +79,23 @@ const SCOPE_LABELS: Record<string, string> = {
   read_only: "Read only",
 };
 
+const AGENT_MODELS = [
+  { value: "claude-sonnet-4-6", label: "Sonnet 4.6" },
+  { value: "claude-opus-4-6", label: "Opus 4.6" },
+  { value: "claude-haiku-4-5", label: "Haiku 4.5" },
+] as const;
+
 export function ConnectCard({
   origin,
   initialKeys,
   availableIntegrations = [],
+  preferredAgentModel = "claude-sonnet-4-6",
   connectionStats,
 }: {
   origin: string;
   initialKeys: ApiKeyEntry[];
   availableIntegrations?: AvailableIntegration[];
+  preferredAgentModel?: string;
   connectionStats?: { connected: number; total: number };
 }) {
   const [keys, setKeys] = useState<ApiKeyEntry[]>(initialKeys);
@@ -98,6 +107,8 @@ export function ConnectCard({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [permMode, setPermMode] = useState<"all" | "specific">("all");
   const [permissions, setPermissions] = useState<Record<string, string[] | null>>({});
+  const [agentKeyLoading, setAgentKeyLoading] = useState(false);
+  const [agentModel, setAgentModel] = useState(preferredAgentModel);
 
   const advancedSection = availableIntegrations.length > 0 && (
     <div className="mt-2">
@@ -207,6 +218,48 @@ export function ConnectCard({
       )
     );
     await revokeApiKey(id);
+  }
+
+  const hasAgentKey = activeKeys.some((k) => k.isAgentKey);
+
+  async function createAgentKey() {
+    if (hasAgentKey && !confirm("This will replace your existing Agent Key. Continue?")) return;
+    setAgentKeyLoading(true);
+    const res = await fetch("/api/keys/agent", { method: "POST" });
+    if (res.ok) {
+      const data = await res.json();
+      setNewRawKey(data.key);
+      // Mark old agent keys as revoked in local state, add new one
+      setKeys((prev) => [
+        {
+          id: crypto.randomUUID(),
+          name: "Agent Key",
+          keyPrefix: data.prefix,
+          lastUsedAt: null,
+          createdAt: new Date().toISOString(),
+          revokedAt: null,
+          scope: "full",
+          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+          permissions: null,
+          isAgentKey: true,
+        },
+        ...prev.map((k) =>
+          k.isAgentKey && !k.revokedAt
+            ? { ...k, revokedAt: new Date().toISOString() }
+            : k
+        ),
+      ]);
+    }
+    setAgentKeyLoading(false);
+  }
+
+  async function updateAgentModel(model: string) {
+    setAgentModel(model);
+    await fetch("/api/agent/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model }),
+    });
   }
 
   // Mode 2: key was just generated — show snippets
@@ -411,6 +464,42 @@ export function ConnectCard({
           </div>
           {advancedSection}
 
+          {/* Agent Key section */}
+          <div className="mt-3 rounded-lg border border-border bg-bg p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Slack Agent</p>
+                <p className="text-xs text-text-tertiary">
+                  DM the Switchboard Agent bot in Slack to use your integrations via AI.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant={hasAgentKey ? "secondary" : "primary"}
+                onClick={createAgentKey}
+                disabled={agentKeyLoading}
+              >
+                {agentKeyLoading ? "Creating..." : hasAgentKey ? "Replace Agent Key" : "Create Agent Key"}
+              </Button>
+            </div>
+            {hasAgentKey && (
+              <div className="mt-2 flex items-center gap-2">
+                <label className="text-xs text-text-tertiary">Model:</label>
+                <select
+                  value={agentModel}
+                  onChange={(e) => updateAgentModel(e.target.value)}
+                  className="rounded-lg border border-border bg-bg px-2 py-1 text-xs"
+                >
+                  {AGENT_MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
           <div className="mt-3 space-y-2">
             {keys.map((k) => {
               const expired = !k.revokedAt && new Date(k.expiresAt) <= new Date();
@@ -424,6 +513,11 @@ export function ConnectCard({
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">
                       {k.name}
+                      {k.isAgentKey && !k.revokedAt && !expired && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
+                          Agent
+                        </span>
+                      )}
                       {k.revokedAt && (
                         <span className="ml-2 text-xs font-normal text-red-400">
                           Revoked

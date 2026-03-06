@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useEscapeKey } from "@/hooks/use-escape-key";
 
 interface FileData {
   id?: string;
@@ -30,6 +31,8 @@ export function FileEditor({ file, currentPath, onSave, onClose }: FileEditorPro
   );
   const [saving, setSaving] = useState(false);
   const [metaError, setMetaError] = useState<string | null>(null);
+
+  useEscapeKey(onClose);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

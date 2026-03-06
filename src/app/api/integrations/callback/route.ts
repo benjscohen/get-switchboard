@@ -6,6 +6,8 @@ import { proxyIntegrationRegistry } from "@/lib/integrations/proxy-registry";
 import { OAUTH_STATE_COOKIE } from "@/lib/oauth-state";
 import { encrypt } from "@/lib/encryption";
 import { getAppOrigin } from "@/lib/app-url";
+import { loadIntegrationScopes } from "@/lib/integration-scopes";
+import { isUserInScope } from "@/lib/permissions";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -48,6 +50,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(
       `${getAppOrigin(req)}/mcp?error=state_mismatch`
     );
+  }
+
+  // Defense-in-depth: verify the user still has access to this integration
+  const { data: userProfile } = await supabaseAdmin
+    .from("profiles")
+    .select("organization_id, org_role")
+    .eq("id", stored.userId)
+    .single();
+
+  if (userProfile?.organization_id) {
+    const scopes = await loadIntegrationScopes(userProfile.organization_id);
+    const scopeId = stored.isProxy
+      ? `proxy:${stored.integrationId}`
+      : stored.integrationId;
+    if (!isUserInScope(scopes, stored.userId, userProfile.org_role, scopeId)) {
+      return NextResponse.redirect(
+        `${getAppOrigin(req)}/mcp?error=access_denied`
+      );
+    }
   }
 
   const redirectUri = `${getAppOrigin(req)}/api/integrations/callback`;
@@ -163,6 +184,10 @@ export async function GET(req: NextRequest) {
   const scope: string | undefined =
     tokens.scope ?? tokens.authed_user?.scope;
 
+  // Capture provider user ID (e.g. Slack's authed_user.id)
+  const providerUserId: string | undefined =
+    tokens.authed_user?.id ?? tokens.user_id;
+
   if (!accessToken) {
     console.error("No access token in response:", JSON.stringify(tokens));
     return NextResponse.redirect(
@@ -190,6 +215,7 @@ export async function GET(req: NextRequest) {
           : null,
         token_type: tokenType ?? "Bearer",
         scope: scope ?? null,
+        provider_user_id: providerUserId ?? null,
       },
       { onConflict: "user_id,integration_id" }
     );

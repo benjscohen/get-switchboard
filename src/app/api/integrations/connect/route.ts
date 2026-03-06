@@ -7,6 +7,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { OAUTH_STATE_COOKIE, OAUTH_COOKIE_OPTIONS } from "@/lib/oauth-state";
 import { getAppOrigin } from "@/lib/app-url";
 import { generatePkce, getOrRegisterClient } from "@/lib/oauth-pkce";
+import { loadIntegrationScopes } from "@/lib/integration-scopes";
+import { isUserInScope } from "@/lib/permissions";
 
 export async function GET(req: NextRequest) {
   const authResult = await requireAuth();
@@ -26,6 +28,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { error: "Missing integration parameter" },
       { status: 400 }
+    );
+  }
+
+  // Enforce integration access scopes
+  const scopes = await loadIntegrationScopes(authResult.organizationId);
+  const scopeId = proxyIntegrationRegistry.has(integrationId)
+    ? `proxy:${integrationId}`
+    : integrationId;
+  if (!isUserInScope(scopes, authResult.userId, authResult.orgRole, scopeId)) {
+    return NextResponse.json(
+      { error: "You don't have access to this integration" },
+      { status: 403 }
     );
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { VersionHistory, type BaseVersion } from "@/components/ui/version-history";
+import { MarkdownContent } from "@/components/ui/markdown-content";
 
 interface SkillVersion extends BaseVersion {
   skillId: string;
@@ -55,9 +56,9 @@ export function SkillHistory({ skillId, skillName, currentVersion, onRollback, o
           )}
           <div>
             <span className="text-xs font-medium text-text-secondary">Content:</span>
-            <pre className="mt-1 max-h-48 overflow-auto rounded-md bg-bg-hover p-3 text-xs whitespace-pre-wrap">
-              {v.content}
-            </pre>
+            <div className="mt-1 max-h-48 overflow-auto rounded-md bg-bg-hover p-3">
+              <MarkdownContent content={v.content} highlightArgs />
+            </div>
           </div>
           {v.arguments.length > 0 && (
             <div>

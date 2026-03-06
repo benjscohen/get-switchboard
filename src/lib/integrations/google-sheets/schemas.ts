@@ -110,7 +110,7 @@ export const sortFilterSchema = z.object({
 export const manageTabsSchema = z.object({
   spreadsheetId,
   operation: z
-    .enum(["add", "delete", "rename", "duplicate"])
+    .enum(["add", "delete", "rename", "duplicate", "hide", "unhide", "move", "color"])
     .describe("Tab operation to perform"),
   title: z.string().optional().describe("Tab name (for add)"),
   sheetId: sheetId.optional(),
@@ -119,6 +119,15 @@ export const manageTabsSchema = z.object({
     .string()
     .optional()
     .describe("Destination spreadsheet ID (for duplicate to another spreadsheet)"),
+  position: z
+    .number()
+    .int()
+    .optional()
+    .describe("New tab position index (0-based, for move)"),
+  tabColor: z
+    .string()
+    .optional()
+    .describe('Hex color (e.g. "#FF0000"), or "clear" to remove'),
 });
 
 export const copyTabSchema = z.object({

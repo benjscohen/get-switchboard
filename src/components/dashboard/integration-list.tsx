@@ -37,6 +37,8 @@ export type UserKeyItem = {
   keyMode?: "shared" | "per_user";
   hasSharedKey?: boolean;
   authType?: string;
+  /** For custom_headers auth: the header keys users need to provide */
+  headerKeys?: string[];
 };
 
 type LocalItem = {
@@ -53,13 +55,13 @@ type UnifiedItem =
   | { kind: "integration"; data: IntegrationItem; connected: boolean }
   | { kind: "user-key"; data: UserKeyItem; connected: boolean };
 
-function isUserKeyConnected(item: UserKeyItem): boolean {
+export function isUserKeyConnected(item: UserKeyItem): boolean {
   if (item.hasPersonalKey) return true;
   if (item.type === "proxy") return false;
   // custom-mcp: check shared key / auth type
   if (item.keyMode === "per_user") return false;
   if (item.hasSharedKey) return true;
-  if (item.authType === "bearer") return false;
+  if (item.authType === "bearer" || item.authType === "custom_headers") return false;
   return true; // "none" auth = no key needed
 }
 
@@ -599,16 +601,12 @@ function UserKeyRow({
             </>
           )}
           {keyStatus === "shared" && (
-            <>
-              <Badge variant="default">Using Shared Key</Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowKeyForm(true)}
-              >
-                Add Your Key
-              </Button>
-            </>
+            <Badge variant="success">
+              <svg className="mr-1 h-3 w-3" viewBox="0 0 12 12" fill="none">
+                <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Connected
+            </Badge>
           )}
           {keyStatus === "required" && (
             <>
@@ -636,6 +634,7 @@ function UserKeyRow({
           targetName={item.name}
           hasExistingKey={item.hasPersonalKey}
           instructions={item.userKeyInstructions}
+          headerKeys={item.headerKeys}
           onSaved={() => {
             setShowKeyForm(false);
             onKeyChange(item.type, item.targetId, true);

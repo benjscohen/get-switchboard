@@ -9,13 +9,21 @@ type DiscoveredTool = {
   inputSchema: Record<string, unknown>;
 };
 
+/** Either a Bearer token string, explicit headers dict, or undefined (no auth). */
+export type ProxyAuth = string | { headers: Record<string, string> } | undefined;
+
+function resolveAuthHeaders(auth: ProxyAuth): Record<string, string> {
+  if (!auth) return {};
+  if (typeof auth === "string") return { Authorization: `Bearer ${auth}` };
+  return { ...auth.headers };
+}
+
 export async function discoverTools(
   serverUrl: string,
-  apiKey?: string
+  auth?: ProxyAuth
 ): Promise<DiscoveredTool[]> {
   const client = new Client({ name: "switchboard-discovery", version: "1.0.0" });
-  const headers: Record<string, string> = {};
-  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+  const headers = resolveAuthHeaders(auth);
 
   const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
     requestInit: { headers },
@@ -42,13 +50,12 @@ export async function discoverTools(
 
 export async function proxyToolCall(
   serverUrl: string,
-  apiKey: string | undefined,
+  auth: ProxyAuth,
   toolName: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
   const client = new Client({ name: "switchboard-proxy", version: "1.0.0" });
-  const headers: Record<string, string> = {};
-  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+  const headers = resolveAuthHeaders(auth);
 
   const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
     requestInit: { headers },

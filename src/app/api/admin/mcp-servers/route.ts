@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/api-auth";
 import { encrypt } from "@/lib/encryption";
-import { discoverTools } from "@/lib/mcp/proxy-client";
+import { discoverTools, type ProxyAuth } from "@/lib/mcp/proxy-client";
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -19,29 +19,40 @@ export async function GET() {
   }
 
   return NextResponse.json(
-    (servers ?? []).map((s) => ({
-      id: s.id,
-      name: s.name,
-      slug: s.slug,
-      description: s.description,
-      serverUrl: s.server_url,
-      authType: s.auth_type,
-      hasSharedKey: !!s.shared_api_key,
-      keyMode: s.key_mode ?? "shared",
-      userKeyInstructions: s.user_key_instructions ?? null,
-      status: s.status,
-      lastError: s.last_error,
-      lastDiscoveredAt: s.last_discovered_at,
-      createdAt: s.created_at,
-      tools: (s.custom_mcp_tools ?? []).map(
-        (t: { id: string; tool_name: string; description: string; enabled: boolean }) => ({
-          id: t.id,
-          toolName: t.tool_name,
-          description: t.description,
-          enabled: t.enabled,
-        })
-      ),
-    }))
+    (servers ?? []).map((s) => {
+      // Return custom header keys with hasValue flag (never expose decrypted values)
+      const customHeaders = Array.isArray(s.custom_headers)
+        ? (s.custom_headers as Array<{ key: string; value?: string }>).map((h) => ({
+            key: h.key,
+            hasValue: !!h.value,
+          }))
+        : null;
+
+      return {
+        id: s.id,
+        name: s.name,
+        slug: s.slug,
+        description: s.description,
+        serverUrl: s.server_url,
+        authType: s.auth_type,
+        hasSharedKey: !!s.shared_api_key,
+        keyMode: s.key_mode ?? "shared",
+        userKeyInstructions: s.user_key_instructions ?? null,
+        customHeaders,
+        status: s.status,
+        lastError: s.last_error,
+        lastDiscoveredAt: s.last_discovered_at,
+        createdAt: s.created_at,
+        tools: (s.custom_mcp_tools ?? []).map(
+          (t: { id: string; tool_name: string; description: string; enabled: boolean }) => ({
+            id: t.id,
+            toolName: t.tool_name,
+            description: t.description,
+            enabled: t.enabled,
+          })
+        ),
+      };
+    })
   );
 }
 
@@ -50,7 +61,7 @@ export async function POST(req: NextRequest) {
   if (!auth.authenticated) return auth.response;
 
   const body = await req.json();
-  const { name, slug, description, serverUrl, authType, sharedApiKey, keyMode, userKeyInstructions } = body as {
+  const { name, slug, description, serverUrl, authType, sharedApiKey, keyMode, userKeyInstructions, customHeaders } = body as {
     name: string;
     slug: string;
     description?: string;
@@ -59,6 +70,7 @@ export async function POST(req: NextRequest) {
     sharedApiKey?: string;
     keyMode?: "shared" | "per_user";
     userKeyInstructions?: string;
+    customHeaders?: Array<{ key: string; value?: string }>;
   };
 
   if (!name || !slug || !serverUrl) {
@@ -75,7 +87,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const resolvedAuthType = authType ?? "bearer";
   const resolvedKeyMode = keyMode ?? "shared";
+
+  // Build custom_headers JSONB for storage
+  let storedCustomHeaders: Array<{ key: string; value?: string }> | null = null;
+  if (resolvedAuthType === "custom_headers" && Array.isArray(customHeaders) && customHeaders.length > 0) {
+    if (resolvedKeyMode === "per_user") {
+      // Per-user: store only header keys (users provide values)
+      storedCustomHeaders = customHeaders.map((h) => ({ key: h.key }));
+    } else {
+      // Shared: encrypt values
+      storedCustomHeaders = customHeaders.map((h) => ({
+        key: h.key,
+        ...(h.value ? { value: encrypt(h.value) } : {}),
+      }));
+    }
+  }
+
   const { data: server, error: insertError } = await supabaseAdmin
     .from("custom_mcp_servers")
     .insert({
@@ -83,10 +112,11 @@ export async function POST(req: NextRequest) {
       slug,
       description: description ?? "",
       server_url: serverUrl,
-      auth_type: authType ?? "bearer",
-      shared_api_key: resolvedKeyMode === "shared" && sharedApiKey ? encrypt(sharedApiKey) : null,
+      auth_type: resolvedAuthType,
+      shared_api_key: resolvedAuthType === "bearer" && resolvedKeyMode === "shared" && sharedApiKey ? encrypt(sharedApiKey) : null,
       key_mode: resolvedKeyMode,
       user_key_instructions: resolvedKeyMode === "per_user" ? (userKeyInstructions ?? null) : null,
+      custom_headers: storedCustomHeaders,
     })
     .select()
     .single();
@@ -107,8 +137,20 @@ export async function POST(req: NextRequest) {
       .update({ status: "active" })
       .eq("id", server.id);
   } else {
+    // Build auth for discovery
+    let discoveryAuth: ProxyAuth;
+    if (resolvedAuthType === "custom_headers" && Array.isArray(customHeaders) && customHeaders.length > 0) {
+      const hdrs: Record<string, string> = {};
+      for (const h of customHeaders) {
+        if (h.key && h.value) hdrs[h.key] = h.value;
+      }
+      if (Object.keys(hdrs).length > 0) discoveryAuth = { headers: hdrs };
+    } else if (sharedApiKey) {
+      discoveryAuth = sharedApiKey;
+    }
+
     try {
-      tools = await discoverTools(serverUrl, sharedApiKey);
+      tools = await discoverTools(serverUrl, discoveryAuth);
 
       if (tools.length > 0) {
         await supabaseAdmin.from("custom_mcp_tools").insert(
@@ -158,7 +200,7 @@ export async function PATCH(req: NextRequest) {
   if (!auth.authenticated) return auth.response;
 
   const body = await req.json();
-  const { id, name, description, serverUrl, authType, sharedApiKey, status, keyMode, userKeyInstructions } = body as {
+  const { id, name, description, serverUrl, authType, sharedApiKey, status, keyMode, userKeyInstructions, customHeaders } = body as {
     id: string;
     name?: string;
     description?: string;
@@ -168,6 +210,7 @@ export async function PATCH(req: NextRequest) {
     status?: string;
     keyMode?: "shared" | "per_user";
     userKeyInstructions?: string | null;
+    customHeaders?: Array<{ key: string; value?: string }> | null;
   };
 
   if (!id) {
@@ -178,9 +221,32 @@ export async function PATCH(req: NextRequest) {
   if (name !== undefined) updates.name = name;
   if (description !== undefined) updates.description = description;
   if (serverUrl !== undefined) updates.server_url = serverUrl;
-  if (authType !== undefined) updates.auth_type = authType;
+  if (authType !== undefined) {
+    updates.auth_type = authType;
+    // When switching to custom_headers, clear shared_api_key; when switching away, clear custom_headers
+    if (authType === "custom_headers") {
+      updates.shared_api_key = null;
+    } else if (authType !== "custom_headers") {
+      updates.custom_headers = null;
+    }
+  }
   if (sharedApiKey !== undefined) {
     updates.shared_api_key = sharedApiKey ? encrypt(sharedApiKey) : null;
+  }
+  if (customHeaders !== undefined) {
+    if (customHeaders === null) {
+      updates.custom_headers = null;
+    } else {
+      const resolvedKM = keyMode ?? "shared";
+      if (resolvedKM === "per_user") {
+        updates.custom_headers = customHeaders.map((h) => ({ key: h.key }));
+      } else {
+        updates.custom_headers = customHeaders.map((h) => ({
+          key: h.key,
+          ...(h.value ? { value: encrypt(h.value) } : {}),
+        }));
+      }
+    }
   }
   if (status !== undefined) updates.status = status;
   if (keyMode !== undefined) {

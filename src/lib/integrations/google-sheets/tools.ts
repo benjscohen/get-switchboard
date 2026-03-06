@@ -310,7 +310,7 @@ export const SHEETS_TOOLS: SheetsToolDef[] = [
   // ── Structure (3) ──
   {
     name: "google_sheets_manage_tabs",
-    description: "Add, delete, rename, or duplicate a tab/sheet",
+    description: "Add, delete, rename, duplicate, hide, unhide, move, or set the color of a tab/sheet",
     schema: s.manageTabsSchema,
     execute: async (a, sheets) => {
       const ssId = a.spreadsheetId as string;
@@ -379,6 +379,92 @@ export const SHEETS_TOOLS: SheetsToolDef[] = [
             .batchUpdate({
               spreadsheetId: ssId,
               requestBody: { requests: [req] },
+            })
+            .then((r) => r.data);
+        }
+
+        case "hide":
+          return sheets.spreadsheets
+            .batchUpdate({
+              spreadsheetId: ssId,
+              requestBody: {
+                requests: [
+                  {
+                    updateSheetProperties: {
+                      properties: {
+                        sheetId: a.sheetId as number,
+                        hidden: true,
+                      },
+                      fields: "hidden",
+                    },
+                  },
+                ],
+              },
+            })
+            .then((r) => r.data);
+
+        case "unhide":
+          return sheets.spreadsheets
+            .batchUpdate({
+              spreadsheetId: ssId,
+              requestBody: {
+                requests: [
+                  {
+                    updateSheetProperties: {
+                      properties: {
+                        sheetId: a.sheetId as number,
+                        hidden: false,
+                      },
+                      fields: "hidden",
+                    },
+                  },
+                ],
+              },
+            })
+            .then((r) => r.data);
+
+        case "move":
+          return sheets.spreadsheets
+            .batchUpdate({
+              spreadsheetId: ssId,
+              requestBody: {
+                requests: [
+                  {
+                    updateSheetProperties: {
+                      properties: {
+                        sheetId: a.sheetId as number,
+                        index: a.position as number,
+                      },
+                      fields: "index",
+                    },
+                  },
+                ],
+              },
+            })
+            .then((r) => r.data);
+
+        case "color": {
+          const colorVal = a.tabColor as string;
+          const tabColorStyle =
+            colorVal.toLowerCase() === "clear"
+              ? { rgbColor: {} }
+              : { rgbColor: hexToColor(colorVal) };
+          return sheets.spreadsheets
+            .batchUpdate({
+              spreadsheetId: ssId,
+              requestBody: {
+                requests: [
+                  {
+                    updateSheetProperties: {
+                      properties: {
+                        sheetId: a.sheetId as number,
+                        tabColorStyle,
+                      },
+                      fields: "tabColorStyle",
+                    },
+                  },
+                ],
+              },
             })
             .then((r) => r.data);
         }

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabList, TabTrigger, TabPanel } from "@/components/ui/tabs";
+import { useEscapeKey } from "@/hooks/use-escape-key";
 
 interface VaultShareTarget {
   id: string;
@@ -49,6 +50,8 @@ export function VaultShareModal({ secretId, secretName, onClose }: VaultShareMod
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [selectedTeam, setSelectedTeam] = useState("");
+
+  useEscapeKey(onClose);
 
   const fetchShares = useCallback(async () => {
     const res = await fetch(`/api/vault/${secretId}/shares`);

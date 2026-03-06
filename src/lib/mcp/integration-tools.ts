@@ -10,7 +10,7 @@ import { logUsage } from "@/lib/usage-log";
 import { submitFeedback } from "@/lib/feedback";
 import { isToolAllowed, isUserInScope } from "@/lib/permissions";
 import { getToolRisk, isRiskAllowedByScope } from "@/lib/mcp/tool-risk";
-import { proxyToolCall } from "@/lib/mcp/proxy-client";
+import { proxyToolCall, type ProxyAuth } from "@/lib/mcp/proxy-client";
 import { jsonSchemaToZodToolSchema } from "@/lib/mcp/json-schema-to-zod";
 import { withToolLogging } from "@/lib/mcp/tool-logging";
 import { decrypt } from "@/lib/encryption";
@@ -244,6 +244,7 @@ export type IntegrationToolsContext = {
       key_mode: string | null;
       status: string;
       organization_id: string | null;
+      custom_headers: Array<{ key: string; value?: string }> | null;
     };
   }>;
   resolvedProxyTools: { tools: ProxyTool[]; fallbackIntegrationIds: Set<string> };
@@ -381,22 +382,69 @@ export function registerIntegrationTools(
           return { content: [{ type: "text" as const, text: "Tool not available" }], isError: true };
         }
 
-        // Resolve API key: user key > shared key
-        const customMcpKeys = extra.authInfo?.extra?.customMcpKeys as Record<string, string> | undefined;
-        const userKey = customMcpKeys?.[srv.id];
-        const sharedKey = srv.shared_api_key ? decrypt(srv.shared_api_key) : undefined;
-        const resolvedKey = userKey ?? sharedKey;
+        // Resolve auth: custom_headers or bearer token
+        let proxyAuth: ProxyAuth;
 
-        if (!resolvedKey && srv.auth_type === "bearer") {
-          const result = resolveApiKeyForProxy(pre, namespacedName, integrationId, srv.name, {
-            keyMode: srv.key_mode ?? undefined,
-          });
-          if ("error" in result) return result.error;
+        if (srv.auth_type === "custom_headers") {
+          // Build headers from shared (server-level) + user overrides
+          const merged: Record<string, string> = {};
+
+          // Shared headers (admin-provided values)
+          if (Array.isArray(srv.custom_headers)) {
+            for (const h of srv.custom_headers) {
+              if (h.key && h.value) merged[h.key] = decrypt(h.value);
+            }
+          }
+
+          // Per-user headers override shared
+          const userHeaders = (extra.authInfo?.extra?.customMcpHeaders as Record<string, Record<string, string>> | undefined)?.[srv.id];
+          if (userHeaders) {
+            for (const [hk, hv] of Object.entries(userHeaders)) {
+              merged[hk] = hv;
+            }
+          }
+
+          // Check that all required header keys have values
+          const requiredKeys = Array.isArray(srv.custom_headers) ? srv.custom_headers.map((h: { key: string }) => h.key) : [];
+          const missingKeys = requiredKeys.filter((k: string) => !merged[k]);
+          if (missingKeys.length > 0) {
+            const isPerUser = srv.key_mode === "per_user";
+            logUsage({
+              userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: namespacedName, integrationId,
+              status: "error", errorMessage: `Missing headers: ${missingKeys.join(", ")}`,
+              durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
+              riskLevel: getToolRisk(namespacedName),
+            });
+            return {
+              content: [{
+                type: "text" as const,
+                text: isPerUser
+                  ? `Integration "${srv.name}" requires custom headers. Add them in your dashboard.`
+                  : `Integration "${srv.name}" is missing required headers. An org admin must configure them.`,
+              }],
+              isError: true,
+            };
+          }
+
+          proxyAuth = Object.keys(merged).length > 0 ? { headers: merged } : undefined;
+        } else {
+          // Bearer token: user key > shared key
+          const customMcpKeys = extra.authInfo?.extra?.customMcpKeys as Record<string, string> | undefined;
+          const userKey = customMcpKeys?.[srv.id];
+          const sharedKey = srv.shared_api_key ? decrypt(srv.shared_api_key) : undefined;
+          proxyAuth = userKey ?? sharedKey;
+
+          if (!proxyAuth && srv.auth_type === "bearer") {
+            const result = resolveApiKeyForProxy(pre, namespacedName, integrationId, srv.name, {
+              keyMode: srv.key_mode ?? undefined,
+            });
+            if ("error" in result) return result.error;
+          }
         }
 
         return executeWithLogging(
           { ...pre, toolName: namespacedName, integrationId },
-          async () => proxyToolCall(srv.server_url, resolvedKey, ct.tool_name, args as Record<string, unknown>),
+          async () => proxyToolCall(srv.server_url, proxyAuth, ct.tool_name, args as Record<string, unknown>),
         );
       }
     );

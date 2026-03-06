@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useEscapeKey } from "@/hooks/use-escape-key";
 
 export interface BaseVersion {
   id: string;
@@ -49,6 +50,8 @@ export function VersionHistory<T extends BaseVersion>({
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [rollingBack, setRollingBack] = useState<number | null>(null);
+
+  useEscapeKey(onClose);
 
   const fetchVersions = useCallback(async () => {
     setLoading(true);

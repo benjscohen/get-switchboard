@@ -174,13 +174,16 @@ export function VaultForm({ secret, onSave, onClose }: VaultFormProps) {
                     className="w-32 rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-accent"
                   />
                   <div className="relative flex-1">
+                    {(() => { const masked = field.sensitive && !field.revealed; return (
                     <input
-                      type={field.sensitive && !field.revealed ? "password" : "text"}
-                      value={field.value}
+                      type="text"
+                      value={masked ? "••••••••" : field.value}
+                      readOnly={masked}
+                      onFocus={() => { if (masked) toggleReveal(i); }}
                       onChange={(e) => updateField(i, { value: e.target.value })}
                       placeholder="Value"
                       className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 pr-16 text-sm outline-none focus:border-accent font-mono"
-                    />
+                    />); })()}
                     <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
                       {field.sensitive && (
                         <button

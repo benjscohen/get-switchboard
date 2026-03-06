@@ -147,16 +147,16 @@ describe("buildSearchText", () => {
 
   it("auto-generates use-when and aliases for non-enriched tools", () => {
     const text = buildSearchText(
-      "google_sheets_sort_filter",
-      "Sort and filter spreadsheet data",
-      "Google Sheets",
-      "spreadsheets"
+      "freshdesk_list_tickets",
+      "List support tickets",
+      "Freshdesk",
+      "support"
     );
 
-    expect(text).toContain("Tool: google_sheets_sort_filter");
-    expect(text).toContain("User wants to sort filter using Google Sheets");
+    expect(text).toContain("Tool: freshdesk_list_tickets");
+    expect(text).toContain("User wants to list tickets using Freshdesk");
     // Auto-generated aliases are space-separated tool name parts
-    expect(text).toContain("Also known as: google sheets sort filter");
+    expect(text).toContain("Also known as: freshdesk list tickets");
   });
 });
 
@@ -385,6 +385,7 @@ describe("SEARCH_ENRICHMENTS", () => {
       "google_docs_create_document",
       "google_drive_search",
       "google_sheets_read",
+      "google_sheets_manage_tabs",
       "asana_create_task",
       "slack_send_message",
       "submit_feedback",

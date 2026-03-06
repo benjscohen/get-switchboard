@@ -11,7 +11,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data: keys, error } = await supabase
     .from("api_keys")
-    .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope, expires_at, permissions")
+    .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope, expires_at, permissions, is_agent_key")
     .eq("organization_id", authResult.organizationId)
     .eq("user_id", authResult.userId)
     .order("created_at", { ascending: false });
@@ -30,6 +30,7 @@ export async function GET() {
     scope: k.scope ?? "full",
     expiresAt: k.expires_at,
     permissions: k.permissions ?? null,
+    isAgentKey: k.is_agent_key ?? false,
   }));
 
   return NextResponse.json(mapped);

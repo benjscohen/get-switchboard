@@ -22,6 +22,7 @@ import { registerIntegrationTools } from "@/lib/mcp/integration-tools";
 import { filterToolsForUser, type ToolMeta } from "@/lib/mcp/tool-filtering";
 import { getFilterContext } from "@/lib/mcp/types";
 import { buildToolIndex, buildIntegrationSummaryLine, ensureToolEmbeddings, type ToolIndexEntry } from "@/lib/mcp/tool-search";
+import { loadIntegrationScopes } from "@/lib/integration-scopes";
 
 // ── Module-level data loading ──
 
@@ -30,7 +31,7 @@ const toolMeta = new Map<string, ToolMeta>();
 const customToolsPromise = supabaseAdmin
   .from("custom_mcp_tools")
   .select(
-    "*, custom_mcp_servers!inner(id, name, slug, server_url, auth_type, shared_api_key, key_mode, status, organization_id)"
+    "*, custom_mcp_servers!inner(id, name, slug, server_url, auth_type, shared_api_key, key_mode, status, organization_id, custom_headers)"
   )
   .eq("enabled", true)
   .eq("custom_mcp_servers.status", "active")
@@ -251,19 +252,16 @@ const authedHandler = withMcpAuth(
       { data: rawOrgKeys },
       { data: rawProxyUserKeys },
       { data: teamMemberships },
-      { data: rawScopes },
+      rawScopes,
     ] = await Promise.all([
       supabaseAdmin.from("profiles").select("status, permissions_mode, organization_id, org_role, role, discovery_mode").eq("id", apiKey.user_id).single(),
       supabaseAdmin.from("user_integration_access").select("integration_id, allowed_tools").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("connections").select("id, integration_id, access_token, refresh_token, expires_at, sender_name").eq("user_id", apiKey.user_id),
-      supabaseAdmin.from("custom_mcp_user_keys").select("server_id, api_key").eq("user_id", apiKey.user_id),
+      supabaseAdmin.from("custom_mcp_user_keys").select("server_id, api_key, custom_headers").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("integration_org_keys").select("integration_id, api_key").eq("organization_id", organizationId).eq("enabled", true),
       supabaseAdmin.from("proxy_user_keys").select("integration_id, api_key").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("team_members").select("team_id").eq("user_id", apiKey.user_id),
-      supabaseAdmin
-        .from("integration_access_scopes")
-        .select("integration_id, integration_scope_users(user_id)")
-        .eq("organization_id", organizationId),
+      loadIntegrationScopes(organizationId),
     ]);
 
     if (!profile || profile.status === "deactivated") return undefined;
@@ -283,8 +281,16 @@ const authedHandler = withMcpAuth(
     }));
 
     const customMcpKeys: Record<string, string> = {};
+    const customMcpHeaders: Record<string, Record<string, string>> = {};
     for (const k of rawUserKeys ?? []) {
-      customMcpKeys[k.server_id] = decrypt(k.api_key);
+      if (k.api_key) customMcpKeys[k.server_id] = decrypt(k.api_key);
+      if (k.custom_headers && typeof k.custom_headers === "object") {
+        const hdrs: Record<string, string> = {};
+        for (const [hk, hv] of Object.entries(k.custom_headers as Record<string, string>)) {
+          hdrs[hk] = decrypt(hv);
+        }
+        customMcpHeaders[k.server_id] = hdrs;
+      }
     }
 
     const integrationOrgKeys: Record<string, string> = {};
@@ -299,11 +305,7 @@ const authedHandler = withMcpAuth(
 
     const teamIds = (teamMemberships ?? []).map((m) => m.team_id);
 
-    const integrationScopes: Record<string, Set<string>> = {};
-    for (const scope of rawScopes ?? []) {
-      const users = (scope.integration_scope_users ?? []) as Array<{ user_id: string }>;
-      integrationScopes[scope.integration_id] = new Set(users.map((u) => u.user_id));
-    }
+    const integrationScopes = rawScopes;
 
     return {
       token: bearerToken,
@@ -317,6 +319,7 @@ const authedHandler = withMcpAuth(
         permissionsMode: profile.permissions_mode,
         integrationAccess,
         customMcpKeys,
+        customMcpHeaders,
         integrationOrgKeys,
         proxyUserKeys,
         teamIds,

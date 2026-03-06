@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { SkillList } from "@/components/skills/skill-list";
 import { SkillEditor } from "@/components/skills/skill-editor";
 import { SkillHistory } from "@/components/skills/skill-history";
+import { SkillPreview } from "@/components/skills/skill-preview";
 import type { SkillTemplate } from "@/lib/skills/templates";
 
 interface SkillArgument {
@@ -50,6 +51,7 @@ export default function SkillsPage() {
   const [creating, setCreating] = useState<"organization" | "team" | "user" | null>(null);
   const [orgRole, setOrgRole] = useState<string>("member");
   const [viewingHistory, setViewingHistory] = useState<Skill | null>(null);
+  const [previewing, setPreviewing] = useState<Skill | null>(null);
   const [addingTemplate, setAddingTemplate] = useState<string | null>(null);
   const [showAllTemplates, setShowAllTemplates] = useState(false);
 
@@ -325,6 +327,7 @@ export default function SkillsPage() {
             onDelete={handleDelete}
             onToggle={handleToggle}
             onHistory={setViewingHistory}
+            onPreview={setPreviewing}
           />
         </>
       )}
@@ -341,6 +344,24 @@ export default function SkillsPage() {
             setEditing(null);
             setCreating(null);
           }}
+        />
+      )}
+
+      {previewing && (
+        <SkillPreview
+          skill={previewing}
+          teamNames={teamNames}
+          onEdit={() => {
+            const skill = previewing;
+            setPreviewing(null);
+            setEditing(skill);
+          }}
+          onHistory={() => {
+            const skill = previewing;
+            setPreviewing(null);
+            setViewingHistory(skill);
+          }}
+          onClose={() => setPreviewing(null)}
         />
       )}
 

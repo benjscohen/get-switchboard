@@ -60,6 +60,8 @@ interface UserKeyFormProps {
   targetName: string;
   hasExistingKey: boolean;
   instructions?: React.ReactNode;
+  /** For custom_headers auth: the header keys the user must provide */
+  headerKeys?: string[];
   onSaved: () => void;
   onCancel: () => void;
 }
@@ -70,23 +72,46 @@ export function UserKeyForm({
   targetName,
   hasExistingKey,
   instructions,
+  headerKeys,
   onSaved,
   onCancel,
 }: UserKeyFormProps) {
+  const isMultiHeader = headerKeys && headerKeys.length > 0;
   const [apiKey, setApiKey] = useState("");
+  const [headerValues, setHeaderValues] = useState<Record<string, string>>(
+    () => Object.fromEntries((headerKeys ?? []).map((k) => [k, ""]))
+  );
   const [saving, setSaving] = useState(false);
+
+  const canSubmit = isMultiHeader
+    ? Object.values(headerValues).some((v) => v.trim())
+    : !!apiKey;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+
+    const payload: Record<string, unknown> = { type, targetId };
+    if (isMultiHeader) {
+      // Filter to only headers that have values
+      const hdrs: Record<string, string> = {};
+      for (const [k, v] of Object.entries(headerValues)) {
+        if (v.trim()) hdrs[k] = v.trim();
+      }
+      payload.customHeaders = hdrs;
+    } else {
+      payload.apiKey = apiKey;
+    }
+
     const res = await fetch("/api/user-keys", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, targetId, apiKey }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     setSaving(false);
     setApiKey("");
+    if (isMultiHeader) setHeaderValues(Object.fromEntries((headerKeys ?? []).map((k) => [k, ""])));
     if (data.discoveredTools > 0) {
       window.location.reload();
     } else {
@@ -105,25 +130,54 @@ export function UserKeyForm({
           )}
         </p>
       )}
-      <form onSubmit={handleSubmit} className="flex items-center gap-2">
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          required
-          placeholder={
-            hasExistingKey
-              ? "Enter new key to replace existing"
-              : `API key for ${targetName}`
-          }
-          className="flex-1 rounded-lg border border-border bg-bg px-3 py-1.5 text-xs focus:border-accent focus:outline-none"
-        />
-        <Button size="sm" type="submit" disabled={saving || !apiKey}>
-          {saving ? "..." : hasExistingKey ? "Update Key" : "Save"}
-        </Button>
-        <Button size="sm" variant="ghost" type="button" onClick={onCancel}>
-          Cancel
-        </Button>
+      <form onSubmit={handleSubmit} className="space-y-2">
+        {isMultiHeader ? (
+          <>
+            {headerKeys.map((key) => (
+              <div key={key} className="flex items-center gap-2">
+                <span className="text-xs font-mono text-text-secondary w-40 shrink-0 truncate" title={key}>
+                  {key}
+                </span>
+                <input
+                  type="password"
+                  value={headerValues[key] ?? ""}
+                  onChange={(e) => setHeaderValues({ ...headerValues, [key]: e.target.value })}
+                  placeholder={hasExistingKey ? "Leave blank to keep existing" : `Value for ${key}`}
+                  className="flex-1 rounded-lg border border-border bg-bg px-3 py-1.5 text-xs focus:border-accent focus:outline-none"
+                />
+              </div>
+            ))}
+            <div className="flex items-center gap-2 pt-1">
+              <Button size="sm" type="submit" disabled={saving || !canSubmit}>
+                {saving ? "..." : hasExistingKey ? "Update Headers" : "Save"}
+              </Button>
+              <Button size="sm" variant="ghost" type="button" onClick={onCancel}>
+                Cancel
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              required
+              placeholder={
+                hasExistingKey
+                  ? "Enter new key to replace existing"
+                  : `API key for ${targetName}`
+              }
+              className="flex-1 rounded-lg border border-border bg-bg px-3 py-1.5 text-xs focus:border-accent focus:outline-none"
+            />
+            <Button size="sm" type="submit" disabled={saving || !apiKey}>
+              {saving ? "..." : hasExistingKey ? "Update Key" : "Save"}
+            </Button>
+            <Button size="sm" variant="ghost" type="button" onClick={onCancel}>
+              Cancel
+            </Button>
+          </div>
+        )}
       </form>
     </div>
   );
