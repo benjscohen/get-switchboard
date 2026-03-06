@@ -15,7 +15,7 @@ import {
 } from "@/lib/files/service";
 import type { ToolMeta } from "@/lib/mcp/tool-filtering";
 import { withToolLogging } from "@/lib/mcp/tool-logging";
-import { getMcpAuth, unauthorized } from "@/lib/mcp/types";
+import { getMcpAuth, ok, err, unauthorized } from "@/lib/mcp/types";
 
 export function registerFileTools(
   server: McpServer,
@@ -33,8 +33,8 @@ export function registerFileTools(
       if (!auth) return unauthorized();
 
       const result = await readFile(auth, args.path);
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return { content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }] };
+      if (!result.ok) return err(result.error);
+      return ok(result.data);
     }),
   );
   toolMeta.set("file_read", { integrationId: "platform", orgId: null });
@@ -53,8 +53,8 @@ export function registerFileTools(
       if (!auth) return unauthorized();
 
       const result = await writeFile(auth, args.path, args.content, { metadata: args.metadata });
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return { content: [{ type: "text" as const, text: `File "${args.path}" saved.\n\n${JSON.stringify(result.data, null, 2)}` }] };
+      if (!result.ok) return err(result.error);
+      return ok(`File "${args.path}" saved.\n\n${JSON.stringify(result.data, null, 2)}`);
     }),
   );
   toolMeta.set("file_write", { integrationId: "platform", orgId: null });
@@ -71,8 +71,8 @@ export function registerFileTools(
       if (!auth) return unauthorized();
 
       const result = await deleteFile(auth, args.path);
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return { content: [{ type: "text" as const, text: `File "${args.path}" deleted.` }] };
+      if (!result.ok) return err(result.error);
+      return ok(`File "${args.path}" deleted.`);
     }),
   );
   toolMeta.set("file_delete", { integrationId: "platform", orgId: null });
@@ -90,8 +90,8 @@ export function registerFileTools(
       if (!auth) return unauthorized();
 
       const result = await moveFile(auth, args.from, args.to);
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return { content: [{ type: "text" as const, text: `Moved "${args.from}" to "${args.to}".\n\n${JSON.stringify(result.data, null, 2)}` }] };
+      if (!result.ok) return err(result.error);
+      return ok(`Moved "${args.from}" to "${args.to}".\n\n${JSON.stringify(result.data, null, 2)}`);
     }),
   );
   toolMeta.set("file_move", { integrationId: "platform", orgId: null });
@@ -109,8 +109,8 @@ export function registerFileTools(
       if (!auth) return unauthorized();
 
       const result = await listDirectory(auth, args.path ?? "/", { recursive: args.recursive });
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return { content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }] };
+      if (!result.ok) return err(result.error);
+      return ok(result.data);
     }),
   );
   toolMeta.set("file_list", { integrationId: "platform", orgId: null });
@@ -128,8 +128,8 @@ export function registerFileTools(
       if (!auth) return unauthorized();
 
       const result = await searchFiles(auth, { query: args.query, path: args.path });
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return { content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }] };
+      if (!result.ok) return err(result.error);
+      return ok(result.data);
     }),
   );
   toolMeta.set("file_search", { integrationId: "platform", orgId: null });
@@ -146,8 +146,8 @@ export function registerFileTools(
       if (!auth) return unauthorized();
 
       const result = await createFolder(auth, args.path);
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return { content: [{ type: "text" as const, text: `Folder "${args.path}" created.\n\n${JSON.stringify(result.data, null, 2)}` }] };
+      if (!result.ok) return err(result.error);
+      return ok(`Folder "${args.path}" created.\n\n${JSON.stringify(result.data, null, 2)}`);
     }),
   );
   toolMeta.set("folder_create", { integrationId: "platform", orgId: null });
@@ -165,8 +165,8 @@ export function registerFileTools(
       if (!auth) return unauthorized();
 
       const result = await deleteFolder(auth, args.path, { recursive: args.recursive });
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return { content: [{ type: "text" as const, text: `Folder "${args.path}" deleted.` }] };
+      if (!result.ok) return err(result.error);
+      return ok(`Folder "${args.path}" deleted.`);
     }),
   );
   toolMeta.set("folder_delete", { integrationId: "platform", orgId: null });
@@ -183,11 +183,11 @@ export function registerFileTools(
       if (!auth) return unauthorized();
 
       const resolved = await resolveFileId(auth, args.path);
-      if (!resolved.ok) return { content: [{ type: "text" as const, text: resolved.error }], isError: true };
+      if (!resolved.ok) return err(resolved.error);
 
       const result = await listVersions(auth, resolved.data.id);
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return { content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }] };
+      if (!result.ok) return err(result.error);
+      return ok(result.data);
     }),
   );
   toolMeta.set("file_history", { integrationId: "platform", orgId: null });
@@ -205,11 +205,11 @@ export function registerFileTools(
       if (!auth) return unauthorized();
 
       const resolved = await resolveFileId(auth, args.path);
-      if (!resolved.ok) return { content: [{ type: "text" as const, text: resolved.error }], isError: true };
+      if (!resolved.ok) return err(resolved.error);
 
       const result = await rollbackFile(auth, resolved.data.id, args.version);
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return { content: [{ type: "text" as const, text: `File "${args.path}" rolled back to version ${args.version}.\n\n${JSON.stringify(result.data, null, 2)}` }] };
+      if (!result.ok) return err(result.error);
+      return ok(`File "${args.path}" rolled back to version ${args.version}.\n\n${JSON.stringify(result.data, null, 2)}`);
     }),
   );
   toolMeta.set("file_rollback", { integrationId: "platform", orgId: null });

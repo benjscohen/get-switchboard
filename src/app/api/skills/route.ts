@@ -3,18 +3,20 @@ import { requireAuth } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { listSkills, createSkill, type SkillAuth } from "@/lib/skills/service";
 
-export async function GET() {
-  const auth = await requireAuth();
-  if (!auth.authenticated) return auth.response;
-
-  // Get user's team IDs
+async function getSkillAuth(auth: { userId: string; organizationId: string; orgRole: string }): Promise<SkillAuth> {
   const { data: teamMemberships } = await supabaseAdmin
     .from("team_members")
     .select("team_id")
     .eq("user_id", auth.userId);
   const teamIds = (teamMemberships ?? []).map((m) => m.team_id);
+  return { userId: auth.userId, organizationId: auth.organizationId, orgRole: auth.orgRole, teamIds };
+}
 
-  const skillAuth: SkillAuth = { userId: auth.userId, organizationId: auth.organizationId, orgRole: auth.orgRole, teamIds };
+export async function GET() {
+  const auth = await requireAuth();
+  if (!auth.authenticated) return auth.response;
+
+  const skillAuth = await getSkillAuth(auth);
   const result = await listSkills(skillAuth);
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
@@ -26,7 +28,7 @@ export async function POST(request: Request) {
   if (!auth.authenticated) return auth.response;
 
   const body = await request.json();
-  const skillAuth: SkillAuth = { userId: auth.userId, organizationId: auth.organizationId, orgRole: auth.orgRole };
+  const skillAuth = await getSkillAuth(auth);
   const result = await createSkill(skillAuth, {
     scope: body.scope,
     teamId: body.teamId,

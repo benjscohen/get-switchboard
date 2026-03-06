@@ -452,6 +452,10 @@ export async function updateSecret(
 
   if (!existing) return { ok: false, error: "Secret not found", status: 404 };
 
+  if (input.fields !== undefined && input.fields.length === 0) {
+    return { ok: false, error: "At least one field is required", status: 400 };
+  }
+
   // Update metadata
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.name !== undefined) updates.name = input.name.trim();
@@ -578,7 +582,6 @@ export async function unshareSecret(
   secretId: string,
   shareId: string
 ): Promise<ServiceResult<{ deleted: true }>> {
-  // Owner can always unshare; org admin can unshare within their org
   const { data: secret } = await supabaseAdmin
     .from("vault_secrets")
     .select("id, user_id")
@@ -586,8 +589,27 @@ export async function unshareSecret(
     .single();
 
   if (!secret) return { ok: false, error: "Secret not found", status: 404 };
-  if (!canManageShares(auth, secret.user_id)) {
+
+  const isOwner = auth.userId === secret.user_id;
+  const isOrgAdmin = auth.orgRole === "owner" || auth.orgRole === "admin";
+
+  if (!isOwner && !isOrgAdmin) {
     return { ok: false, error: "Forbidden", status: 403 };
+  }
+
+  // Org admins (non-owners) can only remove org-level shares
+  if (!isOwner && isOrgAdmin) {
+    const { data: share } = await supabaseAdmin
+      .from("vault_shares")
+      .select("organization_id")
+      .eq("id", shareId)
+      .eq("secret_id", secretId)
+      .single();
+
+    if (!share) return { ok: false, error: "Share not found", status: 404 };
+    if (!share.organization_id) {
+      return { ok: false, error: "Org admins can only manage organization-level shares", status: 403 };
+    }
   }
 
   const { error } = await supabaseAdmin

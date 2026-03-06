@@ -278,7 +278,7 @@ export async function createSkill(auth: SkillAuth, input: CreateSkillInput): Pro
   const s = skill as SkillRow;
 
   // Record version 1
-  await supabaseAdmin.from("skill_versions").insert({
+  const { error: versionError } = await supabaseAdmin.from("skill_versions").insert({
     skill_id: s.id,
     version: 1,
     name: s.name,
@@ -289,6 +289,7 @@ export async function createSkill(auth: SkillAuth, input: CreateSkillInput): Pro
     change_type: "created",
     changed_by: auth.userId,
   });
+  if (versionError) console.error("Failed to record skill version:", versionError.message);
 
   return { ok: true, data: formatSkill(s), status: 201 };
 }
@@ -305,6 +306,17 @@ export async function updateSkill(auth: SkillAuth, id: string, input: UpdateSkil
   const s = skill as SkillRow;
   if (!(await canEditSkill(auth, s))) {
     return { ok: false, error: "Forbidden", status: 403 };
+  }
+
+  // Early return if no meaningful fields changed
+  if (
+    input.name === undefined &&
+    input.description === undefined &&
+    input.content === undefined &&
+    input.arguments === undefined &&
+    input.enabled === undefined
+  ) {
+    return { ok: true, data: formatSkill(s) };
   }
 
   const newVersion = s.current_version + 1;
@@ -332,7 +344,7 @@ export async function updateSkill(auth: SkillAuth, id: string, input: UpdateSkil
   const u = updated as SkillRow;
 
   // Record new version
-  await supabaseAdmin.from("skill_versions").insert({
+  const { error: versionError } = await supabaseAdmin.from("skill_versions").insert({
     skill_id: id,
     version: newVersion,
     name: u.name,
@@ -343,6 +355,7 @@ export async function updateSkill(auth: SkillAuth, id: string, input: UpdateSkil
     change_type: "updated",
     changed_by: auth.userId,
   });
+  if (versionError) console.error("Failed to record skill version:", versionError.message);
 
   return { ok: true, data: formatSkill(u) };
 }
@@ -379,8 +392,8 @@ export async function listSkillVersions(
   if (!skill) return { ok: false, error: "Skill not found", status: 404 };
 
   const s = skill as SkillRow;
-  if (!(await canEditSkill(auth, s))) {
-    return { ok: false, error: "Forbidden", status: 403 };
+  if (!canViewSkill(auth, s)) {
+    return { ok: false, error: "Not found", status: 404 };
   }
 
   const { data: versions, error } = await supabaseAdmin
@@ -402,8 +415,8 @@ export async function getSkillVersion(
   if (!skill) return { ok: false, error: "Skill not found", status: 404 };
 
   const s = skill as SkillRow;
-  if (!(await canEditSkill(auth, s))) {
-    return { ok: false, error: "Forbidden", status: 403 };
+  if (!canViewSkill(auth, s)) {
+    return { ok: false, error: "Not found", status: 404 };
   }
 
   const { data: ver, error } = await supabaseAdmin
@@ -462,7 +475,7 @@ export async function rollbackSkill(
 
   if (error) return { ok: false, error: error.message, status: 500 };
 
-  await supabaseAdmin.from("skill_versions").insert({
+  const { error: versionError } = await supabaseAdmin.from("skill_versions").insert({
     skill_id: skillId,
     version: newVersion,
     name: ver.name,
@@ -474,6 +487,7 @@ export async function rollbackSkill(
     changed_by: auth.userId,
     change_summary: `Rolled back to version ${targetVersion}`,
   });
+  if (versionError) console.error("Failed to record skill version:", versionError.message);
 
   return { ok: true, data: formatSkill(updated as SkillRow) };
 }

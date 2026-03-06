@@ -16,7 +16,7 @@ import type { VaultAuth } from "@/lib/vault/service";
 import type { ToolMeta } from "@/lib/mcp/tool-filtering";
 import { withToolLogging } from "@/lib/mcp/tool-logging";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getMcpAuth, unauthorized } from "@/lib/mcp/types";
+import { getMcpAuth, ok, err, unauthorized } from "@/lib/mcp/types";
 import type { McpAuthExtra } from "@/lib/mcp/types";
 
 function getVaultAuth(extra: McpAuthExtra): VaultAuth | null {
@@ -28,12 +28,20 @@ function getVaultAuth(extra: McpAuthExtra): VaultAuth | null {
   };
 }
 
-function err(message: string) {
-  return { content: [{ type: "text" as const, text: message }], isError: true };
-}
-
-function ok(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+/**
+ * Resolve a secret by name or ID. Returns the secret ID or an error response.
+ */
+async function resolveSecretId(
+  auth: VaultAuth,
+  args: { id?: string; name?: string },
+): Promise<{ secretId: string } | { error: ReturnType<typeof err> }> {
+  if (args.id) return { secretId: args.id };
+  if (args.name) {
+    const found = await getSecretByName(auth, args.name);
+    if (!found.ok) return { error: err(found.error) };
+    return { secretId: found.data.id };
+  }
+  return { error: err("Provide either name or id") };
 }
 
 /**
@@ -174,17 +182,10 @@ export function registerVaultTools(
       const auth = getVaultAuth(extra);
       if (!auth) return unauthorized();
 
-      let secretId = args.id;
-      if (!secretId && args.name) {
-        const found = await getSecretByName(auth, args.name);
-        if (!found.ok) return err(found.error);
-        secretId = found.data.id;
-      }
-      if (!secretId) {
-        return err("Provide either name or id");
-      }
+      const resolved = await resolveSecretId(auth, args);
+      if ("error" in resolved) return resolved.error;
 
-      const result = await deleteSecret(auth, secretId);
+      const result = await deleteSecret(auth, resolved.secretId);
       if (!result.ok) return err(result.error);
       return ok({ message: "Secret deleted successfully." });
     })
@@ -234,14 +235,9 @@ export function registerVaultTools(
       const auth = getVaultAuth(extra);
       if (!auth) return unauthorized();
 
-      // Resolve secret
-      let secretId = args.id;
-      if (!secretId && args.name) {
-        const found = await getSecretByName(auth, args.name);
-        if (!found.ok) return err(found.error);
-        secretId = found.data.id;
-      }
-      if (!secretId) return err("Provide either name or id");
+      const resolved = await resolveSecretId(auth, args);
+      if ("error" in resolved) return resolved.error;
+      const { secretId } = resolved;
 
       // Resolve target
       const targets = [args.share_with_email, args.share_with_team, args.share_with_org].filter(Boolean);
@@ -290,15 +286,10 @@ export function registerVaultTools(
       const auth = getVaultAuth(extra);
       if (!auth) return unauthorized();
 
-      let secretId = args.id;
-      if (!secretId && args.name) {
-        const found = await getSecretByName(auth, args.name);
-        if (!found.ok) return err(found.error);
-        secretId = found.data.id;
-      }
-      if (!secretId) return err("Provide either name or id");
+      const resolved = await resolveSecretId(auth, args);
+      if ("error" in resolved) return resolved.error;
 
-      const result = await unshareSecret(auth, secretId, args.share_id);
+      const result = await unshareSecret(auth, resolved.secretId, args.share_id);
       if (!result.ok) return err(result.error);
       return ok({ message: "Share revoked successfully." });
     })
@@ -317,15 +308,10 @@ export function registerVaultTools(
       const auth = getVaultAuth(extra);
       if (!auth) return unauthorized();
 
-      let secretId = args.id;
-      if (!secretId && args.name) {
-        const found = await getSecretByName(auth, args.name);
-        if (!found.ok) return err(found.error);
-        secretId = found.data.id;
-      }
-      if (!secretId) return err("Provide either name or id");
+      const resolved = await resolveSecretId(auth, args);
+      if ("error" in resolved) return resolved.error;
 
-      const result = await listShares(auth, secretId);
+      const result = await listShares(auth, resolved.secretId);
       if (!result.ok) return err(result.error);
       return ok(result.data);
     })

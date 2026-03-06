@@ -12,6 +12,7 @@ import { withToolLogging } from "@/lib/mcp/tool-logging";
 // ── Auth helpers ──
 
 import type { McpAuthExtra } from "@/lib/mcp/types";
+import { ok, err, resolveJoin } from "@/lib/mcp/types";
 type McpErrorResult = { content: Array<{ type: "text"; text: string }>; isError: true };
 type OrgAdminCtx = { userId: string; organizationId: string; orgRole: string };
 type SuperAdminCtx = OrgAdminCtx & { role: string };
@@ -22,10 +23,10 @@ function requireOrgAdminMcp(extra: McpAuthExtra): OrgAdminCtx | McpErrorResult {
   const orgRole = extra.authInfo?.extra?.orgRole as string | undefined;
 
   if (!userId || !organizationId) {
-    return { content: [{ type: "text", text: "Unauthorized" }], isError: true };
+    return err("Unauthorized") as McpErrorResult;
   }
   if (orgRole !== "owner" && orgRole !== "admin") {
-    return { content: [{ type: "text", text: "Requires org admin privileges" }], isError: true };
+    return err("Requires org admin privileges") as McpErrorResult;
   }
   return { userId, organizationId, orgRole };
 }
@@ -40,31 +41,23 @@ function requireSuperAdminMcp(extra: McpAuthExtra): SuperAdminCtx | McpErrorResu
     const role = extra.authInfo?.extra?.role as string | undefined;
 
     if (!userId || !organizationId) {
-      return { content: [{ type: "text", text: "Unauthorized" }], isError: true };
+      return err("Unauthorized") as McpErrorResult;
     }
     if (role !== "admin") {
-      return { content: [{ type: "text", text: "Requires super admin privileges" }], isError: true };
+      return err("Requires super admin privileges") as McpErrorResult;
     }
     return { userId, organizationId, orgRole: orgRole ?? "member", role };
   }
 
   const role = extra.authInfo?.extra?.role as string | undefined;
   if (role !== "admin") {
-    return { content: [{ type: "text", text: "Requires super admin privileges" }], isError: true };
+    return err("Requires super admin privileges") as McpErrorResult;
   }
   return { ...orgResult, role };
 }
 
 function isError(result: unknown): result is McpErrorResult {
   return typeof result === "object" && result !== null && "isError" in result;
-}
-
-function ok(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
-}
-
-function err(message: string): McpErrorResult {
-  return { content: [{ type: "text", text: message }], isError: true };
 }
 
 // ── Tool registration ──
@@ -131,8 +124,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
           return ok({
             ...team,
             members: (members ?? []).map((m) => {
-              const profileRaw = m.profiles as unknown;
-              const profile = (Array.isArray(profileRaw) ? profileRaw[0] : profileRaw) as { name: string | null; image: string | null } | null;
+              const profile = resolveJoin<{ name: string | null; image: string | null }>(m.profiles);
               return { id: m.id, userId: m.user_id, role: m.role, name: profile?.name ?? null, joinedAt: m.joined_at };
             }),
           });
@@ -213,8 +205,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
             .eq("team_id", args.team_id);
 
           return ok((members ?? []).map((m) => {
-            const profileRaw = m.profiles as unknown;
-            const profile = (Array.isArray(profileRaw) ? profileRaw[0] : profileRaw) as { name: string | null; image: string | null } | null;
+            const profile = resolveJoin<{ name: string | null; image: string | null }>(m.profiles);
             return { id: m.id, userId: m.user_id, role: m.role, name: profile?.name ?? null, joinedAt: m.joined_at };
           }));
         }

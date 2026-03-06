@@ -3,6 +3,7 @@ import { z } from "zod";
 import { filterToolsForUser, type ToolMeta, type RegisteredTool } from "./tool-filtering";
 import { zodToJsonSchema } from "./schema-utils";
 import { withToolLogging } from "./tool-logging";
+import { getFilterContext } from "./types";
 
 /**
  * Registers the `call_tool` meta-tool that lets discovery-mode users
@@ -22,37 +23,10 @@ export function registerCallTool(
       arguments: z.record(z.string(), z.unknown()).optional().default({}).describe("Arguments to pass to the tool"),
     },
     withToolLogging("call_tool", "platform", async (args, extra) => {
-      const connections = extra.authInfo?.extra?.connections as
-        | Array<{ integrationId: string }>
-        | undefined;
-      const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
-      const permissionsMode = extra.authInfo?.extra?.permissionsMode as string | undefined;
-      const integrationAccess = extra.authInfo?.extra?.integrationAccess as
-        | Array<{ integrationId: string; allowedTools: string[] }>
-        | undefined;
-      const integrationOrgKeys = extra.authInfo?.extra?.integrationOrgKeys as
-        | Record<string, string>
-        | undefined;
-      const proxyUserKeys = extra.authInfo?.extra?.proxyUserKeys as
-        | Record<string, string>
-        | undefined;
-      const apiKeyScope = extra.authInfo?.extra?.apiKeyScope as string | undefined;
-      const role = extra.authInfo?.extra?.role as string | undefined;
-      const orgRole = extra.authInfo?.extra?.orgRole as string | undefined;
+      const ctx = getFilterContext(extra);
 
       // Check permissions with discoveryMode OFF to get real allowed tools
-      const visibleList = filterToolsForUser(registeredTools, toolMeta, {
-        connections,
-        organizationId,
-        permissionsMode,
-        integrationAccess,
-        integrationOrgKeys,
-        proxyUserKeys,
-        apiKeyScope,
-        role,
-        orgRole,
-        discoveryMode: false,
-      });
+      const visibleList = filterToolsForUser(registeredTools, toolMeta, { ...ctx, discoveryMode: false });
       const visibleToolNames = new Set(visibleList.map((t) => t.name));
 
       if (!visibleToolNames.has(args.tool_name)) {

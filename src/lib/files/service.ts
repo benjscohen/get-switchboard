@@ -222,13 +222,14 @@ export async function readFileById(
   auth: FileAuth,
   id: string,
 ): Promise<ServiceResult<FileEntry>> {
-  const { data, error } = await supabaseAdmin
+  let q = supabaseAdmin
     .from("files")
     .select("*")
     .eq("id", id)
-    .eq("user_id", auth.userId)
-    .single();
+    .eq("user_id", auth.userId);
+  q = orgFilter(q, auth);
 
+  const { data, error } = await q.single();
   if (error || !data) return { ok: false, error: "File not found", status: 404 };
   return { ok: true, data: formatFile(data) };
 }
@@ -281,7 +282,7 @@ export async function writeFile(
   if (error) return { ok: false, error: error.message, status: 500 };
 
   // Record version
-  await supabaseAdmin.from("file_versions").insert({
+  const { error: versionError } = await supabaseAdmin.from("file_versions").insert({
     file_id: data.id,
     version: newVersion,
     path: data.path,
@@ -291,6 +292,7 @@ export async function writeFile(
     change_type: isCreate ? "created" : "updated",
     changed_by: auth.userId,
   });
+  if (versionError) console.error("Failed to record file version:", versionError.message);
 
   return { ok: true, data: formatFile(data) };
 }
@@ -317,12 +319,14 @@ export async function deleteFileById(
   auth: FileAuth,
   id: string,
 ): Promise<ServiceResult<{ deleted: true }>> {
-  const { error } = await supabaseAdmin
+  let q = supabaseAdmin
     .from("files")
     .delete()
     .eq("id", id)
     .eq("user_id", auth.userId);
+  q = orgFilter(q, auth);
 
+  const { error } = await q;
   if (error) return { ok: false, error: error.message, status: 500 };
   return { ok: true, data: { deleted: true } };
 }
@@ -332,12 +336,13 @@ export async function updateFileById(
   id: string,
   input: { content?: string; metadata?: Record<string, unknown>; path?: string },
 ): Promise<ServiceResult<FileEntry>> {
-  const { data: existing } = await supabaseAdmin
+  let existQ = supabaseAdmin
     .from("files")
     .select("*")
     .eq("id", id)
-    .eq("user_id", auth.userId)
-    .single();
+    .eq("user_id", auth.userId);
+  existQ = orgFilter(existQ, auth);
+  const { data: existing } = await existQ.single();
 
   if (!existing) return { ok: false, error: "File not found", status: 404 };
 
@@ -366,7 +371,7 @@ export async function updateFileById(
 
   if (error) return { ok: false, error: error.message, status: 500 };
 
-  await supabaseAdmin.from("file_versions").insert({
+  const { error: versionError } = await supabaseAdmin.from("file_versions").insert({
     file_id: id,
     version: newVersion,
     path: data.path,
@@ -376,6 +381,7 @@ export async function updateFileById(
     change_type: input.path ? "moved" : "updated",
     changed_by: auth.userId,
   });
+  if (versionError) console.error("Failed to record file version:", versionError.message);
 
   return { ok: true, data: formatFile(data) };
 }
@@ -434,17 +440,20 @@ export async function moveFile(
     const { data: descendants } = await dq;
 
     if (descendants && descendants.length > 0) {
-      for (const desc of descendants) {
-        const newDescPath = newPrefix + (desc.path as string).slice(oldPrefix.length);
-        const newDescParent = getParentPath(newDescPath);
-        await supabaseAdmin
-          .from("files")
-          .update({ path: newDescPath, parent_path: newDescParent, updated_at: new Date().toISOString() })
-          .eq("id", desc.id);
-      }
+      const now = new Date().toISOString();
+      await Promise.all(
+        descendants.map((desc) => {
+          const newDescPath = newPrefix + (desc.path as string).slice(oldPrefix.length);
+          const newDescParent = getParentPath(newDescPath);
+          return supabaseAdmin
+            .from("files")
+            .update({ path: newDescPath, parent_path: newDescParent, updated_at: now })
+            .eq("id", desc.id);
+        })
+      );
     }
 
-    await supabaseAdmin.from("file_versions").insert({
+    const { error: versionError } = await supabaseAdmin.from("file_versions").insert({
       file_id: source.id,
       version: newVersion,
       path: normalizedTo,
@@ -455,6 +464,7 @@ export async function moveFile(
       changed_by: auth.userId,
       change_summary: `Moved from ${normalizedFrom} to ${normalizedTo}`,
     });
+    if (versionError) console.error("Failed to record file version:", versionError.message);
 
     return { ok: true, data: formatFile(updated) };
   }
@@ -475,7 +485,7 @@ export async function moveFile(
 
   if (error) return { ok: false, error: error.message, status: 500 };
 
-  await supabaseAdmin.from("file_versions").insert({
+  const { error: moveVersionError } = await supabaseAdmin.from("file_versions").insert({
     file_id: source.id,
     version: newVersion,
     path: normalizedTo,
@@ -486,6 +496,7 @@ export async function moveFile(
     changed_by: auth.userId,
     change_summary: `Moved from ${normalizedFrom} to ${normalizedTo}`,
   });
+  if (moveVersionError) console.error("Failed to record file version:", moveVersionError.message);
 
   return { ok: true, data: formatFile(updated) };
 }
@@ -739,7 +750,7 @@ export async function rollbackFile(
 
   if (error) return { ok: false, error: error.message, status: 500 };
 
-  await supabaseAdmin.from("file_versions").insert({
+  const { error: versionError } = await supabaseAdmin.from("file_versions").insert({
     file_id: fileId,
     version: newVersion,
     path: ver.path,
@@ -750,6 +761,7 @@ export async function rollbackFile(
     changed_by: auth.userId,
     change_summary: `Rolled back to version ${targetVersion}`,
   });
+  if (versionError) console.error("Failed to record file version:", versionError.message);
 
   return { ok: true, data: formatFile(updated) };
 }
@@ -808,7 +820,7 @@ export async function bulkWriteFiles(
     if (parent !== "/") parentPaths.add(parent);
   }
   for (const parent of parentPaths) {
-    await ensureParentFolders(auth, parent + "/dummy");
+    await ensureParentFolders(auth, parent + "/_");
   }
 
   const rows = normalizedEntries.map((e) => {
@@ -846,7 +858,8 @@ export async function bulkWriteFiles(
       change_type: existingMap.has(f.path) ? "updated" : "created",
       changed_by: auth.userId,
     }));
-    await supabaseAdmin.from("file_versions").insert(versionRows);
+    const { error: batchVersionError } = await supabaseAdmin.from("file_versions").insert(versionRows);
+    if (batchVersionError) console.error("Failed to record file versions:", batchVersionError.message);
   }
 
   return { ok: true, data: { upserted: rows.length, paths: rows.map((r) => r.path) } };
@@ -905,6 +918,9 @@ export async function parseAndUpsertFiles(
   auth: FileAuth,
   markdown: string,
 ): Promise<ServiceResult<{ upserted: number; paths: string[] }>> {
+  if (markdown.length > 10_000_000) {
+    return { ok: false, error: "Markdown input too large (max 10MB)", status: 413 };
+  }
   const entries = parseMarkdownToFiles(markdown);
   return bulkWriteFiles(auth, entries);
 }

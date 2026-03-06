@@ -8,7 +8,7 @@ import {
 } from "@/lib/files/service";
 import type { ToolMeta } from "@/lib/mcp/tool-filtering";
 import { withToolLogging } from "@/lib/mcp/tool-logging";
-import { getMcpAuth, unauthorized } from "@/lib/mcp/types";
+import { getMcpAuth, ok, err, unauthorized } from "@/lib/mcp/types";
 
 const MEMORIES_DIR = "/memories";
 
@@ -40,8 +40,8 @@ export function registerMemoryTools(
       if (args.tags?.length) metadata.tags = args.tags;
 
       const result = await writeFile(auth, path, args.content, { metadata });
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return { content: [{ type: "text" as const, text: `Memory "${args.key}" saved.` }] };
+      if (!result.ok) return err(result.error);
+      return ok(`Memory "${args.key}" saved.`);
     }),
   );
   toolMeta.set("save_memory", { integrationId: "platform", orgId: null });
@@ -60,10 +60,10 @@ export function registerMemoryTools(
       if (args.query) {
         // Search within /memories/
         const searchResult = await searchFiles(auth, { query: args.query, path: MEMORIES_DIR });
-        if (!searchResult.ok) return { content: [{ type: "text" as const, text: searchResult.error }], isError: true };
+        if (!searchResult.ok) return err(searchResult.error);
 
         const files = searchResult.data.slice(0, 5);
-        if (files.length === 0) return { content: [{ type: "text" as const, text: "No memories found." }] };
+        if (files.length === 0) return ok("No memories found.");
 
         // Fetch content for each match
         const memories = await Promise.all(
@@ -75,7 +75,7 @@ export function registerMemoryTools(
             };
           }),
         );
-        return { content: [{ type: "text" as const, text: JSON.stringify(memories, null, 2) }] };
+        return ok(memories);
       }
 
       // No query — load session context (MEMORY.md + today/yesterday daily logs)
@@ -100,7 +100,7 @@ export function registerMemoryTools(
         }
       }
 
-      return { content: [{ type: "text" as const, text: sections.join("\n\n---\n\n") }] };
+      return ok(sections.join("\n\n---\n\n"));
     }),
   );
   toolMeta.set("recall_memories", { integrationId: "platform", orgId: null });
@@ -118,8 +118,8 @@ export function registerMemoryTools(
 
       const path = memoryPath(args.key);
       const result = await deleteFile(auth, path);
-      if (!result.ok) return { content: [{ type: "text" as const, text: result.error }], isError: true };
-      return { content: [{ type: "text" as const, text: `Memory "${args.key}" forgotten.` }] };
+      if (!result.ok) return err(result.error);
+      return ok(`Memory "${args.key}" forgotten.`);
     }),
   );
   toolMeta.set("forget_memory", { integrationId: "platform", orgId: null });

@@ -39,6 +39,12 @@ export async function POST(
 
   // Resolve "current" organization_id to the user's actual org
   const orgId = body.organization_id === "current" ? auth.organizationId : body.organization_id;
+  if (body.organization_id && !orgId) {
+    return NextResponse.json(
+      { error: "No organization context available" },
+      { status: 400 }
+    );
+  }
 
   const target = body.user_id
     ? { user_id: body.user_id }
