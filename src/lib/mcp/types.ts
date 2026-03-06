@@ -51,6 +51,7 @@ export function getFilterContext(extra: McpAuthExtra): FilterContext {
     discoveryMode: e?.discoveryMode as boolean | undefined,
     integrationScopes: e?.integrationScopes as Record<string, Set<string>> | undefined,
     userId: e?.userId as string | undefined,
+    apiKeyPermissions: e?.apiKeyPermissions as Record<string, string[] | null> | null | undefined,
   };
 }
 

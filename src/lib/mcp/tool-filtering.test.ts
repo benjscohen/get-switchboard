@@ -603,6 +603,225 @@ describe("filterToolsForUser", () => {
     });
   });
 
+  describe("apiKeyPermissions — per-key integration/tool restrictions", () => {
+    it("null permissions (unrestricted) — all tools visible as normal", () => {
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }, { integrationId: "google-sheets" }],
+        organizationId: ORG_A,
+        apiKeyPermissions: null,
+      };
+      const result = filterToolsForUser(allTools(), allMeta(), ctx);
+      const names = toolNames(result);
+
+      expect(names).toContain("google_calendar_list_events");
+      expect(names).toContain("google_sheets_read_range");
+      expect(names).toContain("acme__search");
+    });
+
+    it("undefined permissions — all tools visible as normal", () => {
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }],
+        organizationId: ORG_A,
+        apiKeyPermissions: undefined,
+      };
+      const result = filterToolsForUser(allTools(), allMeta(), ctx);
+
+      expect(toolNames(result)).toContain("google_calendar_list_events");
+    });
+
+    it("empty object {} — no integration tools visible", () => {
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }, { integrationId: "google-sheets" }],
+        organizationId: ORG_A,
+        apiKeyPermissions: {},
+      };
+      const result = filterToolsForUser(allTools(), allMeta(), ctx);
+
+      // No integration or custom tools should pass
+      expect(toolNames(result)).toEqual([]);
+    });
+
+    it("specific integration with null (all tools) — only that integration visible", () => {
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }, { integrationId: "google-sheets" }],
+        organizationId: ORG_A,
+        apiKeyPermissions: { "google-calendar": null },
+      };
+      const result = filterToolsForUser(allTools(), allMeta(), ctx);
+      const names = toolNames(result);
+
+      expect(names).toContain("google_calendar_list_events");
+      expect(names).toContain("google_calendar_create_event");
+      expect(names).not.toContain("google_sheets_read_range");
+      expect(names).not.toContain("acme__search");
+    });
+
+    it("specific integration with tool list — only those tools visible", () => {
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }],
+        organizationId: ORG_A,
+        apiKeyPermissions: { "google-calendar": ["google_calendar_list_events"] },
+      };
+      const result = filterToolsForUser(allTools(), allMeta(), ctx);
+      const names = toolNames(result);
+
+      expect(names).toContain("google_calendar_list_events");
+      expect(names).not.toContain("google_calendar_create_event");
+    });
+
+    it("mixed — one integration all tools, another specific tools", () => {
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }, { integrationId: "google-sheets" }],
+        organizationId: ORG_A,
+        apiKeyPermissions: {
+          "google-calendar": null,
+          "google-sheets": ["google_sheets_read_range"],
+        },
+      };
+      const result = filterToolsForUser(allTools(), allMeta(), ctx);
+      const names = toolNames(result);
+
+      expect(names).toContain("google_calendar_list_events");
+      expect(names).toContain("google_calendar_create_event");
+      expect(names).toContain("google_sheets_read_range");
+      expect(names).not.toContain("acme__search");
+    });
+
+    it("custom integrations work with permissions", () => {
+      const ctx: FilterContext = {
+        connections: [],
+        organizationId: ORG_A,
+        apiKeyPermissions: { "custom:srv-acme": ["acme__search"] },
+      };
+      const result = filterToolsForUser(allTools(), allMeta(), ctx);
+      const names = toolNames(result);
+
+      expect(names).toContain("acme__search");
+      expect(names).not.toContain("acme__query");
+      expect(names).not.toContain("globalbot__ask");
+    });
+
+    it("platform tools always pass regardless of apiKeyPermissions", () => {
+      const platformToolDefs: Array<[string, Partial<RegisteredTool>]> = [
+        ["manage_skills", { description: "Manage skills" }],
+      ];
+      const platformMetaDefs: Array<[string, ToolMeta]> = [
+        ["manage_skills", { integrationId: "platform", orgId: null }],
+      ];
+      const tools = buildRegisteredTools([...builtinTools, ...platformToolDefs]);
+      const meta = new Map<string, ToolMeta>([...builtinMeta, ...platformMetaDefs]);
+
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }],
+        apiKeyPermissions: {},  // empty = no integrations allowed
+      };
+      const result = filterToolsForUser(tools, meta, ctx);
+      const names = toolNames(result);
+
+      // Platform tool should still be visible
+      expect(names).toContain("manage_skills");
+      // But integration tools should not
+      expect(names).not.toContain("google_calendar_list_events");
+    });
+
+    it("permissions interact correctly with apiKeyScope", () => {
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }, { integrationId: "google-sheets" }],
+        organizationId: ORG_A,
+        apiKeyScope: "read_only",
+        apiKeyPermissions: { "google-calendar": null, "google-sheets": null },
+      };
+      const result = filterToolsForUser(allTools(), allMeta(), ctx);
+      const names = toolNames(result);
+
+      // All tools for the permitted integrations should be present
+      // (apiKeyScope risk filtering may further reduce, but both checks apply)
+      expect(names).toContain("google_calendar_list_events");
+      expect(names).toContain("google_sheets_read_range");
+      expect(names).not.toContain("acme__search");
+    });
+
+    it("admin:org tools bypass apiKeyPermissions when user is org admin", () => {
+      const adminTools = buildRegisteredTools([
+        ["admin_teams", { description: "Manage teams" }],
+        ["google_calendar_list_events", { description: "List events" }],
+      ]);
+      const adminMeta = new Map<string, ToolMeta>([
+        ["admin_teams", { integrationId: "admin:org", orgId: null }],
+        ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+      ]);
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }],
+        orgRole: "admin",
+        apiKeyPermissions: {},  // empty = no integrations
+      };
+      const result = filterToolsForUser(adminTools, adminMeta, ctx);
+      const names = toolNames(result);
+
+      expect(names).toContain("admin_teams");
+      expect(names).not.toContain("google_calendar_list_events");
+    });
+
+    it("admin:super tools bypass apiKeyPermissions when user is super admin", () => {
+      const adminTools = buildRegisteredTools([
+        ["admin_users", { description: "Manage users" }],
+        ["google_calendar_list_events", { description: "List events" }],
+      ]);
+      const adminMeta = new Map<string, ToolMeta>([
+        ["admin_users", { integrationId: "admin:super", orgId: null }],
+        ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+      ]);
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }],
+        role: "admin",
+        apiKeyPermissions: {},
+      };
+      const result = filterToolsForUser(adminTools, adminMeta, ctx);
+      const names = toolNames(result);
+
+      expect(names).toContain("admin_users");
+      expect(names).not.toContain("google_calendar_list_events");
+    });
+
+    it("discovery mode ignores apiKeyPermissions entirely", () => {
+      const tools = buildRegisteredTools([
+        ["discover_tools", { description: "Discover tools" }],
+        ["submit_feedback", { description: "Submit feedback" }],
+        ["google_calendar_list_events", { description: "List events" }],
+      ]);
+      const meta = new Map<string, ToolMeta>([
+        ["discover_tools", { integrationId: "platform", orgId: null }],
+        ["submit_feedback", { integrationId: "platform", orgId: null }],
+        ["google_calendar_list_events", { integrationId: "google-calendar", orgId: null }],
+      ]);
+      const ctx: FilterContext = {
+        connections: [{ integrationId: "google-calendar" }],
+        discoveryMode: true,
+        apiKeyPermissions: {},  // would block everything in normal mode
+      };
+      const result = filterToolsForUser(tools, meta, ctx);
+      const names = toolNames(result);
+
+      // Discovery mode has its own allowlist — apiKeyPermissions doesn't apply
+      expect(names).toContain("discover_tools");
+      expect(names).toContain("submit_feedback");
+      expect(names).not.toContain("google_calendar_list_events");
+    });
+
+    it("permissions with integration not in connections — tool excluded by connection check first", () => {
+      const ctx: FilterContext = {
+        connections: [],  // no connections
+        organizationId: ORG_A,
+        apiKeyPermissions: { "google-calendar": null },  // permitted but not connected
+      };
+      const result = filterToolsForUser(allTools(), allMeta(), ctx);
+      const names = toolNames(result);
+
+      // Calendar tools permitted by apiKeyPermissions but user has no connection
+      expect(names).not.toContain("google_calendar_list_events");
+    });
+  });
+
   describe("combined filtering scenarios", () => {
     it("user with one connection in a non-matching org sees only global custom tools + connected builtin", () => {
       const ctx: FilterContext = {

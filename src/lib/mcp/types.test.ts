@@ -76,6 +76,7 @@ describe("getFilterContext", () => {
           discoveryMode: true,
           integrationScopes: { slack: new Set(["user-1"]) },
           userId: "user-1",
+          apiKeyPermissions: { "google-calendar": null, "slack": ["slack_send"] },
         },
       },
     };
@@ -93,6 +94,7 @@ describe("getFilterContext", () => {
     expect(ctx.discoveryMode).toBe(true);
     expect(ctx.integrationScopes).toEqual({ slack: new Set(["user-1"]) });
     expect(ctx.userId).toBe("user-1");
+    expect(ctx.apiKeyPermissions).toEqual({ "google-calendar": null, "slack": ["slack_send"] });
   });
 
   it("returns undefined fields when authInfo.extra is empty", () => {
@@ -100,12 +102,36 @@ describe("getFilterContext", () => {
     expect(ctx.connections).toBeUndefined();
     expect(ctx.organizationId).toBeUndefined();
     expect(ctx.userId).toBeUndefined();
+    expect(ctx.apiKeyPermissions).toBeUndefined();
   });
 
   it("returns undefined fields when authInfo is missing", () => {
     const ctx = getFilterContext({});
     expect(ctx.connections).toBeUndefined();
     expect(ctx.organizationId).toBeUndefined();
+    expect(ctx.apiKeyPermissions).toBeUndefined();
+  });
+
+  it("extracts null apiKeyPermissions (unrestricted key)", () => {
+    const ctx = getFilterContext({
+      authInfo: { extra: { apiKeyPermissions: null } },
+    });
+    expect(ctx.apiKeyPermissions).toBeNull();
+  });
+
+  it("extracts empty object apiKeyPermissions (no integrations)", () => {
+    const ctx = getFilterContext({
+      authInfo: { extra: { apiKeyPermissions: {} } },
+    });
+    expect(ctx.apiKeyPermissions).toEqual({});
+  });
+
+  it("extracts apiKeyPermissions with mixed null and array values", () => {
+    const perms = { "google-calendar": null, "slack": ["slack_send_message"] };
+    const ctx = getFilterContext({
+      authInfo: { extra: { apiKeyPermissions: perms } },
+    });
+    expect(ctx.apiKeyPermissions).toEqual(perms);
   });
 
   it("preserves Set objects for integrationScopes", () => {

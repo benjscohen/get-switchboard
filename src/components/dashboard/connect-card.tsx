@@ -9,6 +9,7 @@ import { Tabs, TabList, TabTrigger, TabPanel } from "@/components/ui/tabs";
 import { MCP_CLIENTS, generateSnippet, generatePrompt } from "@/lib/mcp-snippets";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { revokeApiKey } from "@/lib/api";
+import { PermissionsPicker } from "./permissions-picker";
 
 function CopyButton({
   text,
@@ -44,6 +45,21 @@ interface ApiKeyEntry {
   revokedAt: string | null;
   scope?: string;
   expiresAt: string;
+  permissions?: Record<string, string[] | null> | null;
+}
+
+type AvailableIntegration = {
+  id: string;
+  name: string;
+  tools: { name: string; description: string }[];
+};
+
+function permissionsSummary(k: ApiKeyEntry): string | null {
+  if (!k.permissions) return null;
+  const ids = Object.keys(k.permissions);
+  if (ids.length === 0) return "No integrations";
+  if (ids.length <= 2) return ids.join(", ");
+  return `${ids.length} integrations`;
 }
 
 function getExpiryInfo(expiresAt: string): { label: string; className: string } {
@@ -65,10 +81,12 @@ const SCOPE_LABELS: Record<string, string> = {
 export function ConnectCard({
   origin,
   initialKeys,
+  availableIntegrations = [],
   connectionStats,
 }: {
   origin: string;
   initialKeys: ApiKeyEntry[];
+  availableIntegrations?: AvailableIntegration[];
   connectionStats?: { connected: number; total: number };
 }) {
   const [keys, setKeys] = useState<ApiKeyEntry[]>(initialKeys);
@@ -77,22 +95,91 @@ export function ConnectCard({
   const [newRawKey, setNewRawKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [manageExpanded, setManageExpanded] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [permMode, setPermMode] = useState<"all" | "specific">("all");
+  const [permissions, setPermissions] = useState<Record<string, string[] | null>>({});
+
+  const advancedSection = availableIntegrations.length > 0 && (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setAdvancedOpen(!advancedOpen)}
+        className="inline-flex items-center gap-1 text-xs text-text-tertiary transition-colors hover:text-text-primary cursor-pointer"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`transition-transform ${advancedOpen ? "rotate-90" : ""}`}
+        >
+          <path d="M6 4l4 4-4 4" />
+        </svg>
+        Restrict to specific integrations or tools
+      </button>
+      {advancedOpen && (
+        <div className="mt-2 rounded-lg border border-border bg-bg p-3">
+          <div className="mb-2 flex gap-4">
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+              <input
+                type="radio"
+                name="perm-mode"
+                checked={permMode === "all"}
+                onChange={() => setPermMode("all")}
+                className="accent-accent"
+              />
+              All integrations
+            </label>
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+              <input
+                type="radio"
+                name="perm-mode"
+                checked={permMode === "specific"}
+                onChange={() => setPermMode("specific")}
+                className="accent-accent"
+              />
+              Specific integrations
+            </label>
+          </div>
+          {permMode === "specific" && (
+            <PermissionsPicker
+              integrations={availableIntegrations}
+              value={permissions}
+              onChange={setPermissions}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   const activeKeys = keys.filter((k) => !k.revokedAt && new Date(k.expiresAt) > new Date());
   const hasActiveKeys = activeKeys.length > 0;
 
   async function generate() {
     setLoading(true);
+    const effectivePermissions = advancedOpen && permMode === "specific" ? permissions : null;
     const res = await fetch("/api/keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newKeyName || "Default", scope: newKeyScope }),
+      body: JSON.stringify({
+        name: newKeyName || "Default",
+        scope: newKeyScope,
+        permissions: effectivePermissions,
+      }),
     });
     if (res.ok) {
       const data = await res.json();
       setNewRawKey(data.key);
       setNewKeyName("");
       setNewKeyScope("full");
+      setAdvancedOpen(false);
+      setPermMode("all");
+      setPermissions({});
       setKeys((prev) => [
         {
           id: crypto.randomUUID(),
@@ -103,6 +190,7 @@ export function ConnectCard({
           revokedAt: null,
           scope: data.scope ?? "full",
           expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+          permissions: data.permissions ?? null,
         },
         ...prev,
       ]);
@@ -213,6 +301,7 @@ export function ConnectCard({
                   {loading ? "Generating..." : "Generate Key"}
                 </Button>
               </div>
+              {advancedSection}
             </div>
           </div>
 
@@ -320,8 +409,9 @@ export function ConnectCard({
               {loading ? "Generating..." : "New Key"}
             </Button>
           </div>
+          {advancedSection}
 
-          <div className="space-y-2">
+          <div className="mt-3 space-y-2">
             {keys.map((k) => {
               const expired = !k.revokedAt && new Date(k.expiresAt) <= new Date();
               const inactive = !!k.revokedAt || expired;
@@ -350,6 +440,11 @@ export function ConnectCard({
                       {k.scope && k.scope !== "full" && (
                         <span className="ml-2 font-sans text-amber-500">
                           {SCOPE_LABELS[k.scope] ?? k.scope}
+                        </span>
+                      )}
+                      {permissionsSummary(k) && (
+                        <span className="ml-2 font-sans text-text-tertiary">
+                          · {permissionsSummary(k)}
                         </span>
                       )}
                     </p>

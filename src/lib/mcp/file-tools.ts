@@ -11,6 +11,7 @@ import {
   deleteFolder,
   resolveFileId,
   listVersions,
+  getVersion,
   rollbackFile,
 } from "@/lib/files/service";
 import type { ToolMeta } from "@/lib/mcp/tool-filtering";
@@ -191,6 +192,28 @@ export function registerFileTools(
     }),
   );
   toolMeta.set("file_history", { integrationId: "platform", orgId: null });
+
+  // file_version_read
+  server.tool(
+    "file_version_read",
+    "Read the content of a specific file version. Use file_history to list available versions first.",
+    {
+      path: z.string().describe("File path"),
+      version: z.number().describe("Version number to read"),
+    },
+    withToolLogging("file_version_read", "platform", async (args, extra) => {
+      const auth = getMcpAuth(extra);
+      if (!auth) return unauthorized();
+
+      const resolved = await resolveFileId(auth, args.path);
+      if (!resolved.ok) return err(resolved.error);
+
+      const result = await getVersion(auth, resolved.data.id, args.version);
+      if (!result.ok) return err(result.error);
+      return ok(result.data);
+    }),
+  );
+  toolMeta.set("file_version_read", { integrationId: "platform", orgId: null });
 
   // file_rollback
   server.tool(

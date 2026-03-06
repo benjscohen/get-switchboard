@@ -221,7 +221,7 @@ const authedHandler = withMcpAuth(
     const keyHash = hashApiKey(bearerToken);
     const { data: apiKey } = await supabaseAdmin
       .from("api_keys")
-      .select("user_id, id, organization_id, scope, expires_at")
+      .select("user_id, id, organization_id, scope, expires_at, permissions")
       .eq("key_hash", keyHash)
       .is("revoked_at", null)
       .single();
@@ -323,6 +323,7 @@ const authedHandler = withMcpAuth(
         orgRole: profile.org_role ?? "member",
         role: profile.role ?? "user",
         apiKeyScope: apiKey.scope ?? "full",
+        apiKeyPermissions: apiKey.permissions ?? null,
         discoveryMode: profile.discovery_mode ?? false,
         keyExpired,
         integrationScopes,

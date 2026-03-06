@@ -63,7 +63,7 @@ export default async function DashboardPage() {
     orgId
       ? supabaseAdmin
           .from("api_keys")
-          .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope, expires_at")
+          .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope, expires_at, permissions")
           .eq("organization_id", orgId)
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
@@ -105,6 +105,7 @@ export default async function DashboardPage() {
     revokedAt: k.revoked_at,
     scope: (k as { scope?: string }).scope ?? "full",
     expiresAt: (k as { expires_at?: string }).expires_at ?? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+    permissions: (k as { permissions?: Record<string, string[] | null> | null }).permissions ?? null,
   }));
 
   const userKeySet = new Set((userKeys ?? []).map((k) => k.server_id));
@@ -259,6 +260,17 @@ export default async function DashboardPage() {
 
   const userKeyIntegrations = [...proxyUserKeys, ...customMcpUserKeys];
 
+  const availableIntegrations = [
+    ...builtinIntegrations.map((i) => ({ id: i.id, name: i.name, tools: i.tools })),
+    ...proxyIntegrations.map((i) => ({ id: i.id, name: i.name, tools: i.tools })),
+    ...oauthProxyIntegrations.map((i) => ({ id: i.id, name: i.name, tools: i.tools })),
+    ...customMcpUserKeys.map((i) => ({
+      id: i.targetId.startsWith("custom:") ? i.targetId : `custom:${i.targetId}`,
+      name: i.name,
+      tools: i.tools,
+    })),
+  ];
+
   const headersList = await headers();
   const host = headersList.get("host") ?? "localhost:3000";
   const proto = headersList.get("x-forwarded-proto") ?? "http";
@@ -272,6 +284,7 @@ export default async function DashboardPage() {
         <ConnectCard
           origin={origin}
           initialKeys={initialKeys}
+          availableIntegrations={availableIntegrations}
           connectionStats={{
             connected: integrations.filter(i => i.connected).length
               + proxyIntegrations.filter(i => i.connected).length

@@ -11,7 +11,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data: keys, error } = await supabase
     .from("api_keys")
-    .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope, expires_at")
+    .select("id, name, key_prefix, last_used_at, created_at, user_id, revoked_at, scope, expires_at, permissions")
     .eq("organization_id", authResult.organizationId)
     .eq("user_id", authResult.userId)
     .order("created_at", { ascending: false });
@@ -29,6 +29,7 @@ export async function GET() {
     revokedAt: k.revoked_at,
     scope: k.scope ?? "full",
     expiresAt: k.expires_at,
+    permissions: k.permissions ?? null,
   }));
 
   return NextResponse.json(mapped);
@@ -57,6 +58,29 @@ export async function POST(request: Request) {
     );
   }
 
+  // Validate optional per-key permissions
+  let permissions: Record<string, string[] | null> | null = null;
+  if (body.permissions != null) {
+    if (typeof body.permissions !== "object" || Array.isArray(body.permissions)) {
+      return NextResponse.json(
+        { error: "permissions must be an object mapping integration IDs to tool arrays or null" },
+        { status: 400 }
+      );
+    }
+    for (const [key, value] of Object.entries(body.permissions)) {
+      if (typeof key !== "string") {
+        return NextResponse.json({ error: "permissions keys must be strings" }, { status: 400 });
+      }
+      if (value !== null && (!Array.isArray(value) || !value.every((v) => typeof v === "string"))) {
+        return NextResponse.json(
+          { error: `permissions["${key}"] must be null (all tools) or a string array of tool names` },
+          { status: 400 }
+        );
+      }
+    }
+    permissions = body.permissions as Record<string, string[] | null>;
+  }
+
   const { raw, hash, prefix } = generateApiKey();
 
   const supabase = await createClient();
@@ -67,6 +91,7 @@ export async function POST(request: Request) {
     key_hash: hash,
     key_prefix: prefix,
     scope,
+    permissions,
     expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
   });
 
@@ -74,7 +99,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Failed to create API key" }, { status: 500 });
   }
 
-  return NextResponse.json({ key: raw, prefix, name, scope });
+  return NextResponse.json({ key: raw, prefix, name, scope, permissions });
 }
 
 export async function DELETE(request: Request) {

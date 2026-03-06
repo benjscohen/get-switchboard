@@ -28,6 +28,8 @@ export type FilterContext = {
   integrationScopes?: Record<string, Set<string>>;
   /** Current user ID (for integration scope checks). */
   userId?: string;
+  /** Per-API-key integration/tool permissions. null/undefined = unrestricted. */
+  apiKeyPermissions?: Record<string, string[] | null> | null;
 };
 
 /**
@@ -123,6 +125,14 @@ export function filterToolsForUser(
       // API key scope filtering
       if (ctx.apiKeyScope && ctx.apiKeyScope !== "full") {
         if (!isRiskAllowedByScope(getToolRisk(name), ctx.apiKeyScope)) return false;
+      }
+
+      // Per-key integration/tool permissions
+      if (ctx.apiKeyPermissions != null) {
+        const permIntegrationId = meta.integrationId;
+        if (!(permIntegrationId in ctx.apiKeyPermissions)) return false;
+        const allowedTools = ctx.apiKeyPermissions[permIntegrationId];
+        if (allowedTools !== null && !allowedTools.includes(name)) return false;
       }
 
       return true;
