@@ -73,7 +73,7 @@ export function IntegrationAccessScopes() {
     const map = new Map<string, IntegrationScopeEdit>();
     for (const entry of d.catalog) {
       const scopedUsers = d.scopes[entry.id];
-      if (scopedUsers && scopedUsers.length > 0) {
+      if (scopedUsers !== undefined) {
         map.set(entry.id, { state: "specific", userIds: new Set(scopedUsers) });
       } else {
         map.set(entry.id, { state: "everyone", userIds: new Set() });
@@ -110,7 +110,7 @@ export function IntegrationAccessScopes() {
 
     const scopes: Array<{ integrationId: string; userIds: string[] }> = [];
     for (const [integrationId, edit] of edits) {
-      if (edit.state === "specific" && edit.userIds.size > 0) {
+      if (edit.state === "specific") {
         scopes.push({ integrationId, userIds: Array.from(edit.userIds) });
       }
     }
@@ -125,7 +125,14 @@ export function IntegrationAccessScopes() {
       if (res.ok) {
         setSuccess("Access scopes saved");
         setTimeout(() => setSuccess(""), 3000);
-        fetchData();
+        // Optimistic update: rebuild scopes from current edits instead of re-fetching
+        const newScopes: Record<string, string[]> = {};
+        for (const [integrationId, edit] of edits) {
+          if (edit.state === "specific") {
+            newScopes[integrationId] = Array.from(edit.userIds);
+          }
+        }
+        setData((prev) => prev ? { ...prev, scopes: newScopes } : prev);
       } else {
         const d = await res.json();
         setError(d.error || "Failed to save");
@@ -136,10 +143,6 @@ export function IntegrationAccessScopes() {
 
     setSaving(false);
   }
-
-  const hasEmptySpecific = Array.from(edits.values()).some(
-    (edit) => edit.state === "specific" && edit.userIds.size === 0
-  );
 
   if (loading) {
     return <p className="text-text-tertiary">Loading access scopes...</p>;
@@ -189,6 +192,11 @@ export function IntegrationAccessScopes() {
                     selectedIds={edit.userIds}
                     onChange={(ids) => setUserIds(entry.id, ids)}
                   />
+                  {edit.userIds.size === 0 && (
+                    <p className="mt-1 text-xs text-text-tertiary">
+                      No users selected — only org admins and owners will have access.
+                    </p>
+                  )}
                 </div>
               )}
             </Card>
@@ -197,14 +205,9 @@ export function IntegrationAccessScopes() {
       </div>
 
       <div className="flex items-center gap-3">
-        <Button size="sm" onClick={handleSave} disabled={saving || hasEmptySpecific}>
+        <Button size="sm" onClick={handleSave} disabled={saving}>
           {saving ? "Saving..." : "Save access scopes"}
         </Button>
-        {hasEmptySpecific && (
-          <span className="text-sm text-yellow-500">
-            Select at least one user for each &quot;Specific users&quot; integration, or set back to &quot;Everyone.&quot;
-          </span>
-        )}
         {success && <span className="text-sm text-green-500">{success}</span>}
         {error && <span className="text-sm text-red-500">{error}</span>}
       </div>

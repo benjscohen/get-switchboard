@@ -60,8 +60,8 @@ export async function PUT(request: Request) {
     .delete()
     .eq("organization_id", auth.organizationId);
 
-  // Insert new scopes (only those with userIds)
-  const scopesToInsert = scopes.filter((s) => s.userIds.length > 0);
+  // Insert new scopes (empty userIds = admins only)
+  const scopesToInsert = scopes;
 
   for (const scope of scopesToInsert) {
     const { data: inserted, error } = await supabaseAdmin
