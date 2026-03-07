@@ -83,6 +83,7 @@ export default async function AppLayout({
               { href: "/mcp", label: "MCP" },
               { href: "/skills", label: "Skills" },
               { href: "/agents", label: "Agents" },
+              { href: "/schedules", label: "Schedules" },
               { href: "/files", label: "Files" },
               { href: "/vault", label: "Vault" },
               ...((showOrgSettings || role === "admin") ? [{ href: "/settings", label: "Settings" }] : []),

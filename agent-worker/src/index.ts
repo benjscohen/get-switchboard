@@ -6,6 +6,7 @@ import {
   retrySession,
   getActiveSessionCount,
 } from "./agent.js";
+import { startScheduler } from "./scheduler.js";
 import * as slack from "./slack.js";
 import * as db from "./db.js";
 import { buildRetryDisabledBlocks } from "./slack-blocks.js";
@@ -176,6 +177,8 @@ async function start() {
 
   console.log("Recovering stale sessions from previous run...");
   await recoverStaleSessions();
+
+  startScheduler();
 
   await app.start();
   console.log(

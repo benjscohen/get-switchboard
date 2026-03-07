@@ -42,6 +42,20 @@ export async function canEditScopedEntity(auth: ScopedAuth, entity: ScopedEntity
   return false;
 }
 
+/** Build a ScopedAuth from a route-level auth object (fetches team memberships). */
+export async function buildScopedAuth(auth: {
+  userId: string;
+  organizationId: string;
+  orgRole: string;
+}): Promise<ScopedAuth> {
+  const { data: teamMemberships } = await supabaseAdmin
+    .from("team_members")
+    .select("team_id")
+    .eq("user_id", auth.userId);
+  const teamIds = (teamMemberships ?? []).map((m) => m.team_id);
+  return { userId: auth.userId, organizationId: auth.organizationId, orgRole: auth.orgRole, teamIds };
+}
+
 export function canViewScopedEntity(auth: ScopedAuth, entity: ScopedEntity): boolean {
   if (entity.user_id) return entity.user_id === auth.userId;
   if (entity.organization_id) return entity.organization_id === auth.organizationId;

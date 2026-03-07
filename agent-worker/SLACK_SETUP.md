@@ -12,7 +12,8 @@ Uses **Socket Mode** — no public URL required. The worker connects outbound to
 ```yaml
 display_information:
   name: Switchboard Agent
-  description: Your AI agent with access to all your Switchboard integrations
+  description: "AI assistant with access to 230+ business tools — Gmail, Calendar, GitHub, CRM, and more."
+  long_description: "Switchboard Agent gives you a powerful AI assistant right in Slack with access to all your business tools.\n\n*What can it do?*\n• Search and draft emails in Gmail\n• Create and manage calendar events\n• Search files and create documents in Google Drive\n• Look up contacts and manage deals in HubSpot CRM\n• Create issues and track projects in Shortcut and Asana\n• Search code and manage PRs on GitHub\n• Search Slack channels and messages\n• And 230+ more tools across your connected integrations\n\n*How to get started:*\n1. Sign up at get-switchboard.com\n2. Connect your integrations from the dashboard\n3. Come back to Slack and DM the Switchboard Agent\n\n*Tips:*\n• Just type in plain English — no special commands needed\n• Attach files — I can read documents, images, PDFs, and code\n• Prefix with \"plan:\" for complex tasks — I'll present a plan for your approval\n• Reply in threads to continue conversations with full context\n• I remember your preferences across conversations\n\nLearn more at get-switchboard.com"
   background_color: "#3B82F6"
 features:
   app_home:

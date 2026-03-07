@@ -21,6 +21,7 @@ import { registerDiscoverTools } from "@/lib/mcp/discover-tools";
 import { registerCallTool } from "@/lib/mcp/call-tool";
 import { registerSkillTools } from "@/lib/mcp/skill-tools";
 import { registerAgentTools } from "@/lib/mcp/agent-tools";
+import { registerScheduleTools } from "@/lib/mcp/schedule-tools";
 import { registerIntegrationTools } from "@/lib/mcp/integration-tools";
 import { filterToolsForUser, type ToolMeta } from "@/lib/mcp/tool-filtering";
 import { getFilterContext, getFullMcpAuth } from "@/lib/mcp/types";
@@ -155,6 +156,7 @@ async function mcpHandler(req: Request): Promise<Response> {
 - **Files & Memory**: A versioned file system for documents and persistent memory.
 - **Skills**: Reusable prompt templates (manage_skills).
 - **Agents**: Reusable AI agent configurations. Use /agent:name to load one (manage_agents).
+- **Schedules**: Cron-triggered agent runs with delivery to Slack or files (manage_schedules).
 - **Vault**: Encrypted secrets storage. Share with teammates, teams, or the org.
 
 ## Memory Conventions
@@ -188,6 +190,7 @@ You have a durable memory system. Follow these conventions:
   });
   registerSkillTools(server, toolMeta, []);
   registerAgentTools(server, toolMeta, []);
+  registerScheduleTools(server, toolMeta);
   registerAdminTools(server, toolMeta);
   registerVaultTools(server, toolMeta);
   registerFileTools(server, toolMeta);
