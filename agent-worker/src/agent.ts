@@ -833,41 +833,56 @@ export async function processMessage(
                 // Extract FILE_UPLOAD directives before formatting
                 const { cleanText, uploads } = extractFileUploads(text);
 
+                // Upload FILE_UPLOAD directive files first (independent of text post)
+                if (uploads.length > 0) {
+                  await uploadExtractedFiles(uploads, channelId, replyThread, sessionId);
+                }
+
+                // Post text to Slack (skip if response was only FILE_UPLOAD directives)
+                const slackText = cleanText
+                  ? truncateForSlack(slack.markdownToSlack(cleanText))
+                  : null;
+
                 try {
-                  const resultTs = await slack.postMessage(
-                    channelId,
-                    truncateForSlack(slack.markdownToSlack(cleanText)),
-                    replyThread,
-                  );
-                  console.log(`[session ${sessionId}] posted to Slack ts=${resultTs}`);
+                  if (slackText) {
+                    const resultTs = await slack.postMessage(
+                      channelId,
+                      slackText,
+                      replyThread,
+                    );
+                    console.log(`[session ${sessionId}] posted to Slack ts=${resultTs}`);
 
-                  await db.createMessage({
-                    sessionId,
-                    role: "assistant",
-                    content: cleanText,
-                    slackTs: resultTs,
-                    metadata: { turns: message.num_turns, cost: message.total_cost_usd },
-                  });
+                    await db.createMessage({
+                      sessionId,
+                      role: "assistant",
+                      content: cleanText,
+                      slackTs: resultTs,
+                      metadata: { turns: message.num_turns, cost: message.total_cost_usd },
+                    });
 
-                  // Upload full response as file if it was truncated
-                  if (cleanText.length > SLACK_MAX_TEXT) {
-                    try {
-                      await slack.uploadFile({
-                        channelId,
-                        threadTs: replyThread,
-                        filename: "response.md",
-                        content: cleanText,
-                        title: "Full response",
-                      });
-                      console.log(`[session ${sessionId}] uploaded full response as response.md`);
-                    } catch (uploadErr) {
-                      console.error(`[session ${sessionId}] failed to upload response.md:`, uploadErr);
+                    // Upload full response as file if it was truncated
+                    if (cleanText.length > SLACK_MAX_TEXT) {
+                      try {
+                        await slack.uploadFile({
+                          channelId,
+                          threadTs: replyThread,
+                          filename: "response.md",
+                          content: cleanText,
+                          title: "Full response",
+                        });
+                        console.log(`[session ${sessionId}] uploaded full response as response.md`);
+                      } catch (uploadErr) {
+                        console.error(`[session ${sessionId}] failed to upload response.md:`, uploadErr);
+                      }
                     }
-                  }
-
-                  // Upload FILE_UPLOAD directive files
-                  if (uploads.length > 0) {
-                    await uploadExtractedFiles(uploads, channelId, replyThread, sessionId);
+                  } else {
+                    console.log(`[session ${sessionId}] no text to post (file-only response)`);
+                    await db.createMessage({
+                      sessionId,
+                      role: "assistant",
+                      content: uploads.map((u) => `[Uploaded ${u.path}]`).join("\n"),
+                      metadata: { turns: message.num_turns, cost: message.total_cost_usd },
+                    });
                   }
 
                   // Swap eyes → checkmark on the message that triggered this reply
@@ -889,10 +904,12 @@ export async function processMessage(
                 } catch (slackErr) {
                   console.error(`[session ${sessionId}] failed to post result to Slack:`, slackErr);
                   // Retry with plain text (no markdown conversion, truncated)
-                  try {
-                    await slack.postMessage(channelId, text.slice(0, 3900), replyThread);
-                  } catch (retryErr) {
-                    console.error(`[session ${sessionId}] retry also failed:`, retryErr);
+                  if (slackText) {
+                    try {
+                      await slack.postMessage(channelId, cleanText.slice(0, 3900), replyThread);
+                    } catch (retryErr) {
+                      console.error(`[session ${sessionId}] retry also failed:`, retryErr);
+                    }
                   }
                 }
 
