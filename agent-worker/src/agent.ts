@@ -474,16 +474,17 @@ export async function processMessage(
         const msgCounts = new Map<string, number>();
         const recentMessages: string[] = []; // last 10 type:subtype labels
         let lastMessageAt = Date.now();
+        let waitingForFollowUp = false; // true after result:success — waiting for user, not SDK
 
         // Independent heartbeat — fires even when the for-await loop is stuck
         const heartbeat = setInterval(() => {
           const elapsed = Math.round((Date.now() - startTime) / 1000);
           const sinceLast = Math.round((Date.now() - lastMessageAt) / 1000);
           console.log(
-            `[session ${sessionId}] heartbeat ${elapsed}s — last_msg=${sinceLast}s ago — counts=${JSON.stringify(Object.fromEntries(msgCounts))}`,
+            `[session ${sessionId}] heartbeat ${elapsed}s — last_msg=${sinceLast}s ago — waiting=${waitingForFollowUp} — counts=${JSON.stringify(Object.fromEntries(msgCounts))}`,
           );
 
-          if (Date.now() - lastMessageAt > SDK_INACTIVITY_TIMEOUT_MS) {
+          if (!waitingForFollowUp && Date.now() - lastMessageAt > SDK_INACTIVITY_TIMEOUT_MS) {
             console.error(
               `[session ${sessionId}] SDK inactivity timeout — no messages for ${sinceLast}s, aborting`,
             );
@@ -501,6 +502,7 @@ export async function processMessage(
           recentMessages.push(label);
           if (recentMessages.length > 10) recentMessages.shift();
           lastMessageAt = Date.now();
+          waitingForFollowUp = false;
 
           // Capture session_id from any message
           if ("session_id" in message && message.session_id && !claudeSessionId) {
@@ -555,7 +557,8 @@ export async function processMessage(
                 }
               }
 
-              // Reset idle timer — wait for potential follow-up
+              // Mark as waiting for user follow-up — suppresses SDK inactivity timeout
+              waitingForFollowUp = true;
               resetIdleTimer();
             } else {
               // Error result — surface to user via retry flow
