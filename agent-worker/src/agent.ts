@@ -16,7 +16,7 @@ import {
   unregisterSession,
 } from "./session-registry.js";
 import type { PlanDecision } from "./session-registry.js";
-import type { SlackFile, UserLookup } from "./types.js";
+import type { SlackFile } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Image / PDF / text detection helpers
@@ -366,7 +366,7 @@ export async function processMessage(
   await slack.addReaction(channelId, messageTs, "eyes").catch(() => {});
 
   // 2. Look up the Switchboard user
-  let lookup: UserLookup | null;
+  let lookup: db.LookupResult;
   try {
     lookup = await db.lookupUserBySlackId(slackUserId);
   } catch (err) {
@@ -380,16 +380,18 @@ export async function processMessage(
     return;
   }
 
-  if (!lookup) {
+  if (!lookup.ok) {
     await Promise.all([
       slack.removeReaction(channelId, messageTs, "eyes").catch(() => {}),
       slack.addReaction(channelId, messageTs, "x").catch(() => {}),
     ]);
-    await slack.postMessage(
-      channelId,
-      "I don't recognize your Slack account. Please connect Slack in your Switchboard dashboard first: https://www.get-switchboard.com",
-      threadTs || messageTs,
-    );
+
+    const msg =
+      lookup.reason === "no_connection"
+        ? "It looks like your Slack account isn't connected to Switchboard yet. Connect Slack and enable the agent here: https://www.get-switchboard.com/mcp"
+        : "Your Slack Agent isn't enabled yet. Turn it on here: https://www.get-switchboard.com/mcp";
+
+    await slack.postMessage(channelId, msg, threadTs || messageTs);
     return;
   }
 
@@ -1151,8 +1153,8 @@ export async function retrySession(
 
   // 2. Look up Slack user (fresh credentials)
   const lookup = await db.lookupUserBySlackId(triggerSlackUserId);
-  if (!lookup) {
-    console.error(`Retry: Slack user ${triggerSlackUserId} not found`);
+  if (!lookup.ok) {
+    console.error(`Retry: Slack user ${triggerSlackUserId} not found (${lookup.reason})`);
     return;
   }
 

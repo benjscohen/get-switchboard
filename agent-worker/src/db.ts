@@ -60,9 +60,17 @@ function decrypt(value: string): string {
 // User lookup: Slack user ID -> Switchboard user + agent key
 // ---------------------------------------------------------------------------
 
+export type LookupFailure =
+  | { ok: false; reason: "no_connection" }
+  | { ok: false; reason: "no_agent_key" };
+
+export type LookupResult =
+  | ({ ok: true } & UserLookup)
+  | LookupFailure;
+
 export async function lookupUserBySlackId(
   slackUserId: string,
-): Promise<UserLookup | null> {
+): Promise<LookupResult> {
   // 1. Find user_id from Slack connection
   const { data: connection, error: connErr } = await supabase
     .from("connections")
@@ -72,11 +80,10 @@ export async function lookupUserBySlackId(
     .maybeSingle();
 
   if (connErr) {
-    console.error("Error looking up Slack connection:", connErr);
-    return null;
+    throw connErr;
   }
   if (!connection) {
-    return null;
+    return { ok: false, reason: "no_connection" };
   }
 
   const userId = connection.user_id as string;
@@ -89,8 +96,7 @@ export async function lookupUserBySlackId(
     .single();
 
   if (profileErr || !profile) {
-    console.error("Error looking up profile:", profileErr);
-    return null;
+    throw profileErr ?? new Error("Profile not found");
   }
 
   const organizationId = profile.organization_id as string;
@@ -110,16 +116,15 @@ export async function lookupUserBySlackId(
     .maybeSingle();
 
   if (keyErr) {
-    console.error("Error looking up agent key:", keyErr);
-    return null;
+    throw keyErr;
   }
   if (!apiKey) {
-    return null;
+    return { ok: false, reason: "no_agent_key" };
   }
 
   const agentKey = decrypt(apiKey.encrypted_raw_key as string);
 
-  return { userId, organizationId, agentKey, model, name, email, slackUserId };
+  return { ok: true, userId, organizationId, agentKey, model, name, email, slackUserId };
 }
 
 // ---------------------------------------------------------------------------
