@@ -495,6 +495,7 @@ export async function processMessage(
 
         // Iterate — handle multiple result messages (one per user turn)
         let claudeSessionId: string | null = null;
+        let lastAssistantText = ""; // text from intermediate assistant turns (fallback for empty result)
         for await (const message of conversation) {
           // Track message counts
           const label = `${message.type}:${"subtype" in message ? (message as { subtype?: string }).subtype : "-"}`;
@@ -516,18 +517,42 @@ export async function processMessage(
             console.log("[claude-code system]", JSON.stringify(message));
           }
 
-          // Log assistant message metadata (not full content)
+          // Log assistant message metadata and capture text content
           if (message.type === "assistant") {
-            const msg = message as { message?: { id?: string; content?: unknown[]; stop_reason?: string } };
-            console.log(`[session ${sessionId}] assistant msg id=${msg.message?.id} blocks=${Array.isArray(msg.message?.content) ? msg.message!.content.length : "?"} stop=${msg.message?.stop_reason || "?"}`);
+            const msg = message as {
+              message?: {
+                id?: string;
+                content?: Array<{ type: string; text?: string }>;
+                stop_reason?: string;
+              };
+            };
+            const blocks = msg.message?.content || [];
+            const blockTypes = blocks.map((b) => b.type).join(",") || "?";
+            console.log(
+              `[session ${sessionId}] assistant msg id=${msg.message?.id} blocks=[${blockTypes}] stop=${msg.message?.stop_reason || "?"}`,
+            );
+
+            // Accumulate text from assistant messages — SDK result.result may be
+            // empty when text was produced in an intermediate turn (before tool calls)
+            const textContent = blocks
+              .filter((b) => b.type === "text" && b.text)
+              .map((b) => b.text!)
+              .join("");
+            if (textContent) lastAssistantText = textContent;
           }
 
           if (message.type === "result") {
             if (message.subtype === "success") {
-              const text = message.result || "(No response generated)";
+              const text = message.result || lastAssistantText || "(No response generated)";
+              if (!message.result) {
+                console.warn(
+                  `[session ${sessionId}] result.result empty — using ${lastAssistantText ? `lastAssistantText (len=${lastAssistantText.length})` : "fallback"}`,
+                );
+              }
               console.log(
                 `[session ${sessionId}] result:success — len=${text.length} preview=${JSON.stringify(text.slice(0, 200))}`,
               );
+              lastAssistantText = ""; // reset for next turn
               lastResultText = text;
               totalTurns += message.num_turns;
               totalCost += message.total_cost_usd;
