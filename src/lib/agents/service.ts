@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { upsertEmbeddings, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore } from "@/lib/embeddings";
 import { type ServiceResult, type ScopedAuth, slugify, canEditScopedEntity, canViewScopedEntity } from "@/lib/shared/scoped-entity";
 import { normalizeToolAccess } from "@/lib/agents/tool-access-utils";
+import { DEFAULT_AGENT_TEMPLATES, type AgentTemplate } from "@/lib/agents/templates";
 
 // Re-export shared types for convenience
 export { type ServiceResult, slugify } from "@/lib/shared/scoped-entity";
@@ -594,4 +595,58 @@ export async function searchAgents(
     ok: true,
     data: filtered.map((r) => ({ ...formatAgent(r.agent), score: r.score })),
   };
+}
+
+// ── Templates ──
+
+export async function listTemplates(): Promise<AgentTemplate[]> {
+  const { data, error } = await supabaseAdmin
+    .from("agent_templates")
+    .select("*")
+    .eq("enabled", true)
+    .order("sort_order");
+
+  if (error || !data || data.length === 0) {
+    return DEFAULT_AGENT_TEMPLATES;
+  }
+
+  return data.map((t) => ({
+    id: t.id,
+    name: t.name,
+    slug: t.slug,
+    description: t.description ?? "",
+    instructions: t.instructions,
+    toolAccess: t.tool_access as string[],
+    model: t.model ?? undefined,
+    category: t.category as "general" | "integration",
+    defaultScope: t.default_scope as "organization" | "user",
+  }));
+}
+
+export async function createFromTemplate(
+  auth: AgentAuth,
+  templateSlug: string,
+  overrides?: { scope?: string; name?: string; instructions?: string; toolAccess?: string[]; model?: string },
+): Promise<ServiceResult<ReturnType<typeof formatAgent>> & { templateNotFound?: boolean; availableSlugs?: string[] }> {
+  const templates = await listTemplates();
+  const template = templates.find((t) => t.slug === templateSlug);
+
+  if (!template) {
+    return {
+      ok: false,
+      error: `Template "${templateSlug}" not found`,
+      status: 404,
+      templateNotFound: true,
+      availableSlugs: templates.map((t) => t.slug),
+    };
+  }
+
+  return createAgent(auth, {
+    scope: overrides?.scope ?? template.defaultScope,
+    name: overrides?.name ?? template.name,
+    description: template.description,
+    instructions: overrides?.instructions ?? template.instructions,
+    toolAccess: overrides?.toolAccess ?? template.toolAccess,
+    model: overrides?.model ?? template.model,
+  });
 }

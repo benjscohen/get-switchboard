@@ -41,15 +41,10 @@ export function filterToolsForUser(
   toolMeta: Map<string, ToolMeta>,
   ctx: FilterContext
 ) {
-  // Discovery mode: only expose the discover_tools tool and a few platform utilities
+  // Discovery mode: expose all platform tools (no connection required)
   if (ctx.discoveryMode) {
-    const DISCOVERY_VISIBLE = new Set([
-      "discover_tools", "call_tool", "submit_feedback", "manage_skills",
-      "save_memory", "recall_memories",
-      "file_read", "file_write", "file_search",
-    ]);
     return Object.entries(registeredTools)
-      .filter(([name, tool]) => tool.enabled && DISCOVERY_VISIBLE.has(name))
+      .filter(([name, tool]) => tool.enabled && toolMeta.get(name)?.integrationId === "platform")
       .map(([name, tool]) => ({
         name,
         description: tool.description,

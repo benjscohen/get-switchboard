@@ -14,6 +14,9 @@ function makeSession(overrides?: Partial<RunningSession>): RunningSession {
     pendingFollowUpTs: [],
     pushMessage: () => true,
     close: () => {},
+    isPlanMode: false,
+    pendingPlanApproval: null,
+    setPermissionMode: null,
     ...overrides,
   };
 }

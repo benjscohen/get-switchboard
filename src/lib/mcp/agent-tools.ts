@@ -14,11 +14,44 @@ import {
   getAgentVersion,
   rollbackAgent,
   searchAgents,
+  listTemplates,
+  createFromTemplate,
 } from "@/lib/agents/service";
 import type { ToolMeta } from "./tool-filtering";
 import { withToolLogging } from "./tool-logging";
 import { getFullMcpAuth, ok, err } from "./types";
 import { getFullCatalog } from "@/lib/integrations/catalog";
+
+const TOOL_DESCRIPTION = `Manage reusable AI agent configurations. Agents become MCP prompts that any team member can load with /agent:<name>.
+
+Quick start:
+  1. list_templates → see ready-made agents
+  2. create_from_template (slug: "research-assistant") → instant agent
+  3. list → see your agents with their prompt names
+
+Operations:
+  list               — List all agents you can see (org + team + personal)
+  get                — Get full agent details by prompt name
+  create             — Create a new agent from scratch
+  create_from_template — Create an agent from a template (fastest way)
+  list_templates     — Browse available agent templates
+  update             — Update an existing agent (by id)
+  delete             — Delete an agent (by id)
+  search             — Semantic search across agents
+  history            — View version history for an agent
+  version            — View a specific version snapshot
+  rollback           — Rollback an agent to a previous version
+  list_integrations  — List available integrations for tool_access
+
+Scope:
+  "user"         — Only you can see/use it
+  "organization" — Everyone in your org (requires admin/owner role)
+  "team"         — Team members only (requires team_id)
+
+tool_access format:
+  Whole integration: ["slack", "google-calendar"]
+  Specific tools:    ["slack:slack_post_message", "google-calendar:google_calendar_list_events"]
+  Mixed:             ["slack", "google-calendar:google_calendar_list_events", "platform"]`;
 
 export function registerAgentTools(
   server: McpServer,
@@ -51,38 +84,42 @@ export function registerAgentTools(
   // Register manage_agents tool (consolidated CRUD)
   server.tool(
     "manage_agents",
-    "Manage agent definitions (reusable AI agent configurations). CRUD, search, version history, and rollback.",
+    TOOL_DESCRIPTION,
     {
-      operation: z.enum(["list", "get", "create", "update", "delete", "history", "version", "rollback", "search", "list_integrations"])
-        .describe("Agent operation to perform"),
+      operation: z.enum([
+        "list", "get", "create", "create_from_template", "list_templates",
+        "update", "delete", "search", "list_integrations",
+        "history", "version", "rollback",
+      ])
+        .describe("Operation to perform. Start with 'list_templates' or 'list' to explore."),
       id: z.string().optional()
-        .describe("Agent ID (required for update, delete, history, version, rollback)"),
+        .describe("Agent UUID. Required for: update, delete, history, version, rollback. Get it from 'list'."),
       name: z.string().optional()
-        .describe("Agent prompt name for 'get' (e.g. agent:org:research-assistant), or display name for 'create'/'update'"),
+        .describe("Multi-purpose: prompt name for 'get' (e.g. 'agent:org:research-assistant'), display name for 'create'/'update', search query for 'search'."),
       scope: z.enum(["user", "organization", "team"]).optional()
-        .describe("Agent visibility scope (required for create)"),
+        .describe("Visibility scope. Required for 'create'. Optional override for 'create_from_template'. Default: template's defaultScope."),
       slug: z.string().optional()
-        .describe("URL-friendly slug (auto-generated from name if omitted)"),
+        .describe("URL-friendly identifier. Auto-generated from name if omitted. For 'create_from_template': the template slug to use (e.g. 'research-assistant')."),
       description: z.string().optional()
-        .describe("Short description of the agent"),
+        .describe("Short summary of what the agent does (1-2 sentences)."),
       instructions: z.string().optional()
-        .describe("Agent system prompt / instructions"),
+        .describe("System prompt for the agent. Example: 'You are a research assistant. When given a topic, conduct thorough research using available tools...'"),
       tool_access: z.array(z.string()).optional()
-        .describe("Array of integration IDs or integration:tool entries (e.g. [\"slack\", \"google-calendar:google_calendar_list_events\"]). Use list_integrations to see available options."),
+        .describe('Integration/tool access list. Formats: whole integration ["slack"], specific tool ["slack:slack_post_message"], or mixed. Use list_integrations to see options.'),
       model: z.string().optional()
-        .describe("Preferred model (e.g. claude-sonnet-4-6)"),
+        .describe("Preferred model identifier (e.g. 'claude-sonnet-4-6'). Optional — defaults to the caller's model."),
       team_id: z.string().optional()
-        .describe("Team ID (required when scope is 'team')"),
+        .describe("Team UUID. Required when scope is 'team'."),
       enabled: z.boolean().optional()
-        .describe("Enable or disable the agent (update only)"),
+        .describe("Enable/disable the agent. Only used with 'update'."),
       version: z.number().optional()
-        .describe("Version number (for 'version' to view a specific version, for 'rollback' as target)"),
+        .describe("Version number. For 'version': which snapshot to view. For 'rollback': target version to restore."),
     },
     withToolLogging("manage_agents", "platform", async (args, extra) => {
-      // "list" returns empty array when unauthenticated; all others require auth
+      // "list" and "list_templates" return empty/defaults when unauthenticated
       if (args.operation === "list") {
         const auth = getFullMcpAuth(extra);
-        if (!auth) return ok([]);
+        if (!auth) return ok({ agents: [], count: 0, tip: "Authenticate with an API key to see your agents." });
 
         const result = await listAgents(auth);
         if (!result.ok) return err(result.error);
@@ -93,21 +130,60 @@ export function registerAgentTools(
           ...result.data.user,
         ].map((a) => ({
           id: a.id,
-          name: `agent:${a.scope === "organization" ? "org" : a.scope}:${a.slug}`,
+          promptName: `agent:${a.scope === "organization" ? "org" : a.scope}:${a.slug}`,
+          name: a.name,
           description: a.description,
-          toolCount: a.toolAccess.length,
+          scope: a.scope,
+          tools: a.toolAccess,
           model: a.model,
+          enabled: a.enabled,
+          version: a.currentVersion,
         }));
 
-        return ok(all);
+        if (all.length === 0) {
+          return ok({
+            agents: [],
+            count: 0,
+            tip: "No agents yet. Try 'list_templates' to see ready-made agents you can create instantly, or 'create' to build one from scratch.",
+          });
+        }
+
+        return ok({
+          agents: all,
+          count: all.length,
+          tip: "Use 'get' with a promptName to see full details. Load an agent as a prompt with /agent:<promptName>.",
+        });
+      }
+
+      if (args.operation === "list_templates") {
+        const templates = await listTemplates();
+        return ok({
+          templates: templates.map((t) => ({
+            slug: t.slug,
+            name: t.name,
+            description: t.description,
+            category: t.category,
+            defaultScope: t.defaultScope,
+            toolAccess: t.toolAccess,
+            model: t.model ?? null,
+          })),
+          count: templates.length,
+          tip: "Create an agent from a template: use operation 'create_from_template' with slug set to the template slug (e.g. 'research-assistant'). You can override scope, name, instructions, tool_access, and model.",
+        });
       }
 
       const auth = getFullMcpAuth(extra);
-      if (!auth) return err("Unauthorized");
+      if (!auth) return err("Unauthorized. Check that your API key is valid and included in the request.");
 
       switch (args.operation) {
         case "get": {
-          if (!args.name) return err("Missing required field: name");
+          if (!args.name) {
+            return err(
+              "Missing required field: name\n\n" +
+              "Provide the agent's prompt name, e.g. 'agent:org:research-assistant'.\n" +
+              "Use operation 'list' to see all available agents and their prompt names."
+            );
+          }
 
           const result = await listAgents(auth);
           if (!result.ok) return err(result.error);
@@ -115,32 +191,99 @@ export function registerAgentTools(
           const all = [...result.data.organization, ...result.data.team, ...result.data.user];
           const agent = all.find((a) => `agent:${a.scope === "organization" ? "org" : a.scope}:${a.slug}` === args.name);
 
-          if (!agent) return err(`Agent "${args.name}" not found or not available`);
+          if (!agent) {
+            return err(
+              `Agent "${args.name}" not found.\n\n` +
+              "Expected format: 'agent:<scope>:<slug>' (e.g. 'agent:org:research-assistant', 'agent:user:my-helper').\n" +
+              "Use operation 'list' to see all available agents."
+            );
+          }
           return ok(agent);
         }
 
         case "create": {
-          if (!args.scope || !args.name || !args.instructions) {
-            return err("Missing required fields: scope, name, instructions");
+          const missing: string[] = [];
+          if (!args.scope) missing.push("scope — 'user', 'organization', or 'team'");
+          if (!args.name) missing.push("name — display name (e.g. 'Research Assistant')");
+          if (!args.instructions) missing.push("instructions — system prompt text");
+
+          if (missing.length > 0) {
+            return err(
+              "Missing required fields:\n" +
+              missing.map((m) => `  • ${m}`).join("\n") +
+              "\n\nTip: For a faster start, try 'list_templates' to see ready-made agents you can create with 'create_from_template'."
+            );
           }
 
           const result = await createAgent(auth, {
-            scope: args.scope,
+            scope: args.scope!,
             teamId: args.team_id,
-            name: args.name,
+            name: args.name!,
             slug: args.slug,
             description: args.description,
-            instructions: args.instructions,
+            instructions: args.instructions!,
             toolAccess: args.tool_access,
             model: args.model,
           });
 
           if (!result.ok) return err(result.error);
-          return ok(JSON.stringify(result.data, null, 2) + "\n\nNote: This agent will be available as an MCP prompt after server restart.");
+
+          const data = result.data;
+          const promptName = `agent:${data.scope === "organization" ? "org" : data.scope}:${data.slug}`;
+          return ok({
+            ...data,
+            promptName,
+            tip: `Agent created! It will be available as an MCP prompt (${promptName}) after server restart. Use 'list' to see all agents.`,
+          });
+        }
+
+        case "create_from_template": {
+          if (!args.slug) {
+            const templates = await listTemplates();
+            return err(
+              "Missing required field: slug (the template slug to create from).\n\n" +
+              "Available templates:\n" +
+              templates.map((t) => `  • "${t.slug}" — ${t.name}: ${t.description}`).join("\n") +
+              "\n\nSet slug to one of these values."
+            );
+          }
+
+          const result = await createFromTemplate(auth, args.slug, {
+            scope: args.scope,
+            name: args.name,
+            instructions: args.instructions,
+            toolAccess: args.tool_access,
+            model: args.model,
+          });
+
+          if (!result.ok) {
+            if (result.templateNotFound && result.availableSlugs) {
+              return err(
+                `Template "${args.slug}" not found.\n\n` +
+                "Available template slugs:\n" +
+                result.availableSlugs.map((s) => `  • "${s}"`).join("\n") +
+                "\n\nUse one of these slugs, or try 'list_templates' for full details."
+              );
+            }
+            return err(result.error);
+          }
+
+          const data = result.data;
+          const promptName = `agent:${data.scope === "organization" ? "org" : data.scope}:${data.slug}`;
+          return ok({
+            ...data,
+            promptName,
+            tip: `Agent created from template! It will be available as an MCP prompt (${promptName}) after server restart.`,
+          });
         }
 
         case "update": {
-          if (!args.id) return err("Missing required field: id");
+          if (!args.id) {
+            return err(
+              "Missing required field: id (agent UUID).\n\n" +
+              "Use operation 'list' to find the agent's id."
+            );
+          }
 
           const result = await updateAgent(auth, args.id, {
             name: args.name,
@@ -152,20 +295,36 @@ export function registerAgentTools(
           });
 
           if (!result.ok) return err(result.error);
-          return ok(JSON.stringify(result.data, null, 2) + "\n\nNote: MCP prompt changes take effect after server restart.");
+
+          const data = result.data;
+          const promptName = `agent:${data.scope === "organization" ? "org" : data.scope}:${data.slug}`;
+          return ok({
+            ...data,
+            promptName,
+            tip: `Agent updated (v${data.currentVersion}). MCP prompt changes take effect after server restart.`,
+          });
         }
 
         case "delete": {
-          if (!args.id) return err("Missing required field: id");
+          if (!args.id) {
+            return err(
+              "Missing required field: id (agent UUID).\n\n" +
+              "Use operation 'list' to find the agent's id."
+            );
+          }
 
           const result = await deleteAgentService(auth, args.id);
-
           if (!result.ok) return err(result.error);
-          return ok("Agent deleted successfully.");
+          return ok({ deleted: true, tip: "Agent deleted. The MCP prompt will be removed after server restart." });
         }
 
         case "history": {
-          if (!args.id) return err("Missing required field: id");
+          if (!args.id) {
+            return err(
+              "Missing required field: id (agent UUID).\n\n" +
+              "Use operation 'list' to find the agent's id."
+            );
+          }
 
           const result = await listAgentVersions(auth, args.id);
           if (!result.ok) return err(result.error);
@@ -173,43 +332,88 @@ export function registerAgentTools(
         }
 
         case "version": {
-          if (!args.id || args.version === undefined) {
-            return err("Missing required fields: id, version");
+          const missing: string[] = [];
+          if (!args.id) missing.push("id — agent UUID");
+          if (args.version === undefined) missing.push("version — version number to view");
+
+          if (missing.length > 0) {
+            return err(
+              "Missing required fields:\n" +
+              missing.map((m) => `  • ${m}`).join("\n") +
+              "\n\nUse 'history' to see available versions for an agent."
+            );
           }
 
-          const result = await getAgentVersion(auth, args.id, args.version);
+          const result = await getAgentVersion(auth, args.id!, args.version!);
           if (!result.ok) return err(result.error);
           return ok(result.data);
         }
 
         case "rollback": {
-          if (!args.id || args.version === undefined) {
-            return err("Missing required fields: id, version");
+          const missing: string[] = [];
+          if (!args.id) missing.push("id — agent UUID");
+          if (args.version === undefined) missing.push("version — target version to restore");
+
+          if (missing.length > 0) {
+            return err(
+              "Missing required fields:\n" +
+              missing.map((m) => `  • ${m}`).join("\n") +
+              "\n\nUse 'history' to see available versions for an agent."
+            );
           }
 
-          const result = await rollbackAgent(auth, args.id, args.version);
+          const result = await rollbackAgent(auth, args.id!, args.version!);
           if (!result.ok) return err(result.error);
-          return ok(JSON.stringify(result.data, null, 2) + "\n\nRollback applied. MCP prompt changes take effect after server restart.");
+
+          const data = result.data;
+          const promptName = `agent:${data.scope === "organization" ? "org" : data.scope}:${data.slug}`;
+          return ok({
+            ...data,
+            promptName,
+            tip: `Rolled back to version ${args.version}. Now at v${data.currentVersion}. MCP prompt changes take effect after server restart.`,
+          });
         }
 
         case "search": {
-          if (!args.name) return err("Missing required field: name (used as search query)");
+          if (!args.name) {
+            return err(
+              "Missing required field: name (used as search query).\n\n" +
+              "Provide a search term, e.g. name: 'research' or name: 'standup slack'."
+            );
+          }
 
           const result = await searchAgents(auth, args.name, { limit: 10 });
           if (!result.ok) return err(result.error);
-          return ok(result.data);
+
+          if (result.data.length === 0) {
+            return ok({ results: [], count: 0, tip: "No agents matched your search. Try 'list' to see all agents, or 'list_templates' for templates." });
+          }
+
+          return ok({
+            results: result.data.map((a) => ({
+              ...a,
+              promptName: `agent:${a.scope === "organization" ? "org" : a.scope}:${a.slug}`,
+            })),
+            count: result.data.length,
+          });
         }
 
         case "list_integrations": {
           const catalog = await getFullCatalog();
-          return ok(catalog.map((c) => ({
+          const integrations = catalog.map((c) => ({
             id: c.id.startsWith("proxy:") ? c.id.replace("proxy:", "") : c.id,
             name: c.name,
             kind: c.kind,
             category: c.category,
             toolCount: c.toolCount,
             tools: c.tools.map((t) => t.name),
-          })));
+          }));
+
+          return ok({
+            integrations,
+            count: integrations.length,
+            tip: 'Use these IDs in tool_access. Whole integration: ["slack"]. Specific tool: ["slack:slack_post_message"]. Mixed: ["slack", "google-calendar:google_calendar_list_events"].',
+          });
         }
       }
     })

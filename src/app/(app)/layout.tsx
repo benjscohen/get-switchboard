@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getAuthProfile } from "@/lib/auth-cache";
 import { Container } from "@/components/ui/container";
 import { UserMenu } from "@/components/app/user-menu";
+import { MainNav } from "@/components/app/main-nav";
 
 export default async function AppLayout({
   children,
@@ -78,44 +79,14 @@ export default async function AppLayout({
                 {org.name}
               </span>
             )}
-            <Link
-              href="/mcp"
-              className="text-sm text-text-secondary transition-colors hover:text-text-primary"
-            >
-              MCP
-            </Link>
-            <Link
-              href="/skills"
-              className="text-sm text-text-secondary transition-colors hover:text-text-primary"
-            >
-              Skills
-            </Link>
-            <Link
-              href="/agents"
-              className="text-sm text-text-secondary transition-colors hover:text-text-primary"
-            >
-              Agents
-            </Link>
-            <Link
-              href="/files"
-              className="text-sm text-text-secondary transition-colors hover:text-text-primary"
-            >
-              Files
-            </Link>
-            <Link
-              href="/vault"
-              className="text-sm text-text-secondary transition-colors hover:text-text-primary"
-            >
-              Vault
-            </Link>
-            {(showOrgSettings || role === "admin") && (
-              <Link
-                href="/settings"
-                className="text-sm text-text-secondary transition-colors hover:text-text-primary"
-              >
-                Settings
-              </Link>
-            )}
+            <MainNav links={[
+              { href: "/mcp", label: "MCP" },
+              { href: "/skills", label: "Skills" },
+              { href: "/agents", label: "Agents" },
+              { href: "/files", label: "Files" },
+              { href: "/vault", label: "Vault" },
+              ...((showOrgSettings || role === "admin") ? [{ href: "/settings", label: "Settings" }] : []),
+            ]} />
           </div>
           <UserMenu
             displayName={displayName}

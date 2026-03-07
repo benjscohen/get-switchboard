@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScopeUserPicker } from "@/components/admin/scope-user-picker";
+import { AccessScopesSkeleton } from "@/components/admin/access-scopes-skeleton";
 
 interface CatalogEntry {
   id: string;
@@ -145,7 +146,7 @@ export function IntegrationAccessScopes() {
   }
 
   if (loading) {
-    return <p className="text-text-tertiary">Loading access scopes...</p>;
+    return <AccessScopesSkeleton />;
   }
 
   if (!data) {

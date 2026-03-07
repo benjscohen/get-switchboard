@@ -22,7 +22,7 @@ function splitCsv(s: string | undefined): string[] {
     .filter(Boolean);
 }
 
-interface Attachment {
+export interface Attachment {
   filename: string;
   mimeType: string;
   base64Data: string;
@@ -36,7 +36,15 @@ function wrapBase64(data: string, lineLength = 76): string {
   return lines.join("\r\n");
 }
 
-function buildMimeMessage(opts: {
+export function plaintextToHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
+}
+
+export function buildMimeMessage(opts: {
   to: string;
   subject: string;
   body: string;
@@ -50,17 +58,19 @@ function buildMimeMessage(opts: {
   from?: string;
   signatureHtml?: string | null;
 }): string {
-  const ct = opts.contentType || "text/plain";
+  let ct = opts.contentType || "text/plain";
   const hasAttachments = opts.attachments && opts.attachments.length > 0;
 
   // Append signature to body
+  // When there's an HTML signature and the body is plain text, upgrade to HTML
+  // so the signature retains its formatting (bold, images, links).
   let body = opts.body;
   if (opts.signatureHtml) {
-    if (ct === "text/html") {
-      body += `<br><div class="gmail_signature">${opts.signatureHtml}</div>`;
-    } else {
-      body += `\n--\n${stripHtmlTags(opts.signatureHtml)}`;
+    if (ct === "text/plain") {
+      body = plaintextToHtml(body);
+      ct = "text/html";
     }
+    body += `<br><div class="gmail_signature">${opts.signatureHtml}</div>`;
   }
 
   const headerLines: string[] = [];

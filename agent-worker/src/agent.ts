@@ -5,7 +5,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fetchUserFiles, writeFilesToStableDir, findSessionFile } from "./files.js";
 import { extractClaudeMd, buildSystemPrompt } from "./prompt.js";
-import { buildErrorWithRetryBlocks } from "./slack-blocks.js";
+import { buildErrorWithRetryBlocks, buildPlanApprovalBlocks, buildPlanApprovedBlocks } from "./slack-blocks.js";
 import { createMessageStream } from "./message-stream.js";
 import {
   buildThreadKey,
@@ -13,6 +13,7 @@ import {
   registerSession,
   unregisterSession,
 } from "./session-registry.js";
+import type { PlanDecision } from "./session-registry.js";
 import type { SlackFile, UserLookup } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -305,6 +306,14 @@ export async function processMessage(
     fullPrompt = fileContent ? `${text}\n${fileContent}` : text;
   }
 
+  // 6b. Detect plan mode prefix
+  const planModeRequested = /^\s*plan\s*:/i.test(fullPrompt);
+  let effectivePrompt = fullPrompt;
+  if (planModeRequested) {
+    effectivePrompt = fullPrompt.replace(/^\s*plan\s*:\s*/i, "");
+    await slack.addReaction(channelId, messageTs, "memo").catch(() => {});
+  }
+
   // 7. Create session row
   let sessionId: string;
   try {
@@ -314,7 +323,7 @@ export async function processMessage(
       slackChannelId: channelId,
       slackThreadTs: threadTs || messageTs,
       slackMessageTs: messageTs,
-      prompt: fullPrompt,
+      prompt: effectivePrompt,
       model: lookup.model,
       ...(retryOf ? { retryOf } : {}),
     });
@@ -345,11 +354,12 @@ export async function processMessage(
     await db.createMessage({
       sessionId,
       role: "user",
-      content: fullPrompt,
+      content: effectivePrompt,
       slackTs: messageTs,
       metadata: {
         slackUserId,
         fileCount: files.length,
+        ...(planModeRequested ? { planMode: true } : {}),
       },
     });
 
@@ -419,7 +429,7 @@ export async function processMessage(
 
     // 14. Create message stream + register in session registry
     const threadKey = buildThreadKey(channelId, threadTs || messageTs);
-    let stream = createMessageStream(fullPrompt);
+    let stream = createMessageStream(effectivePrompt);
 
     const runningSession = {
       sessionId,
@@ -427,6 +437,9 @@ export async function processMessage(
       pendingFollowUpTs: [] as string[],
       pushMessage: stream.pushMessage,
       close: stream.close,
+      isPlanMode: planModeRequested,
+      pendingPlanApproval: null as import("./session-registry.js").PendingPlanApproval | null,
+      setPermissionMode: null as ((mode: import("@anthropic-ai/claude-code").PermissionMode) => Promise<void>) | null,
     };
     registerSession(threadKey, runningSession);
 
@@ -434,6 +447,8 @@ export async function processMessage(
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
     const resetIdleTimer = () => {
       if (idleTimer) clearTimeout(idleTimer);
+      // Don't start idle timer while waiting for plan approval
+      if (runningSession.pendingPlanApproval) return;
       idleTimer = setTimeout(() => {
         console.log(`[session ${sessionId}] Idle timeout — closing stream`);
         stream.close();
@@ -449,35 +464,125 @@ export async function processMessage(
     try {
       const systemPrompt = buildSystemPrompt(claudeMdContent);
 
-      const buildQueryOptions = () => ({
-        model: lookup.model,
-        customSystemPrompt: systemPrompt,
-        ...(tempDir ? { cwd: tempDir } : {}),
-        mcpServers: {
-          switchboard: {
-            type: "http" as const,
-            url: process.env.SWITCHBOARD_MCP_URL!.trim(),
-            headers: {
-              Authorization: `Bearer ${lookup.agentKey}`,
+      const buildQueryOptions = () => {
+        const baseOptions = {
+          model: lookup.model,
+          customSystemPrompt: systemPrompt,
+          ...(tempDir ? { cwd: tempDir } : {}),
+          mcpServers: {
+            switchboard: {
+              type: "http" as const,
+              url: process.env.SWITCHBOARD_MCP_URL!.trim(),
+              headers: {
+                Authorization: `Bearer ${lookup.agentKey}`,
+              },
             },
           },
-        },
-        permissionMode: "bypassPermissions" as const,
-        abortController,
-        ...(resumeSessionId ? { resume: resumeSessionId } : {}),
-        stderr: (data: string) => {
-          const redacted = data
-            .replace(/Bearer [^\s"']+/g, "Bearer [REDACTED]")
-            .replace(/sk_live_[^\s"']+/g, "sk_live_[REDACTED]");
-          console.error("[claude-code stderr]", redacted);
-        },
-      });
+          abortController,
+          ...(resumeSessionId ? { resume: resumeSessionId } : {}),
+          stderr: (data: string) => {
+            const redacted = data
+              .replace(/Bearer [^\s"']+/g, "Bearer [REDACTED]")
+              .replace(/sk_live_[^\s"']+/g, "sk_live_[REDACTED]");
+            console.error("[claude-code stderr]", redacted);
+          },
+        };
+
+        if (planModeRequested) {
+          return {
+            ...baseOptions,
+            permissionMode: "plan" as const,
+            hooks: {
+              PreToolUse: [
+                {
+                  matcher: "ExitPlanMode",
+                  hooks: [
+                    async (input: import("@anthropic-ai/claude-code").HookInput) => {
+                      const toolInput = (input as import("@anthropic-ai/claude-code").PreToolUseHookInput).tool_input as { plan?: string };
+                      const plan = toolInput?.plan || "(No plan provided)";
+
+                      console.log(`[session ${sessionId}] Plan submitted (len=${plan.length})`);
+
+                      // Post plan to Slack with approval button
+                      const planBlocks = buildPlanApprovalBlocks(slack.markdownToSlack(plan), sessionId);
+                      const planTs = await slack.postMessage(
+                        channelId,
+                        slack.markdownToSlack(plan),
+                        replyThread,
+                        planBlocks,
+                      );
+
+                      // Store plan as assistant message
+                      await db.createMessage({
+                        sessionId,
+                        role: "assistant",
+                        content: plan,
+                        slackTs: planTs,
+                        metadata: { isPlan: true },
+                      });
+
+                      // Block until user approves or provides revision feedback
+                      const decision = await new Promise<PlanDecision>((resolve) => {
+                        runningSession.pendingPlanApproval = {
+                          plan,
+                          planMessageTs: planTs,
+                          resolve,
+                        };
+                      });
+
+                      runningSession.pendingPlanApproval = null;
+
+                      if (decision.action === "approve") {
+                        // Update Slack message to show approved state
+                        const approvedBlocks = buildPlanApprovedBlocks(slack.markdownToSlack(plan));
+                        await slack.updateMessage(channelId, planTs, slack.markdownToSlack(plan), approvedBlocks).catch(() => {});
+
+                        // Switch to full permissions
+                        if (runningSession.setPermissionMode) {
+                          await runningSession.setPermissionMode("bypassPermissions");
+                        }
+
+                        console.log(`[session ${sessionId}] Plan approved — switching to bypassPermissions`);
+                        return {
+                          hookSpecificOutput: {
+                            hookEventName: "PreToolUse" as const,
+                            permissionDecision: "allow" as const,
+                          },
+                        };
+                      } else {
+                        console.log(`[session ${sessionId}] Plan revision requested: ${decision.feedback.slice(0, 100)}`);
+                        return {
+                          hookSpecificOutput: {
+                            hookEventName: "PreToolUse" as const,
+                            permissionDecision: "deny" as const,
+                            permissionDecisionReason: decision.feedback,
+                          },
+                        };
+                      }
+                    },
+                  ],
+                },
+              ],
+            },
+          };
+        }
+
+        return {
+          ...baseOptions,
+          permissionMode: "bypassPermissions" as const,
+        };
+      };
 
       const runConversation = async () => {
         const conversation = query({
           prompt: stream.iterable,
           options: buildQueryOptions(),
         });
+
+        // Expose setPermissionMode so the plan approval hook can switch modes
+        if (planModeRequested) {
+          runningSession.setPermissionMode = (mode) => conversation.setPermissionMode(mode);
+        }
 
         // Diagnostic counters — set up BEFORE mcpServerStatus so heartbeat runs even if it hangs
         const startTime = Date.now();
@@ -494,7 +599,7 @@ export async function processMessage(
             `[session ${sessionId}] heartbeat ${elapsed}s — last_msg=${sinceLast}s ago — waiting=${waitingForFollowUp} — counts=${JSON.stringify(Object.fromEntries(msgCounts))}`,
           );
 
-          if (!waitingForFollowUp && Date.now() - lastMessageAt > SDK_INACTIVITY_TIMEOUT_MS) {
+          if (!waitingForFollowUp && !runningSession.pendingPlanApproval && Date.now() - lastMessageAt > SDK_INACTIVITY_TIMEOUT_MS) {
             console.error(
               `[session ${sessionId}] SDK inactivity timeout — no messages for ${sinceLast}s, aborting`,
             );
@@ -684,7 +789,7 @@ export async function processMessage(
           resumeSessionId = null;
           // Recreate stream — the previous one's async generator is consumed/done
           stream.close();
-          stream = createMessageStream(fullPrompt);
+          stream = createMessageStream(effectivePrompt);
           runningSession.pushMessage = stream.pushMessage;
           runningSession.close = stream.close;
           await runConversation();

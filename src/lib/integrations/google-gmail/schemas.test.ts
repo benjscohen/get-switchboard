@@ -25,7 +25,7 @@ import {
   getProfileSchema,
   listHistorySchema,
 } from "./schemas";
-import { GMAIL_TOOLS } from "./tools";
+import { GMAIL_TOOLS, buildMimeMessage, plaintextToHtml } from "./tools";
 
 // ── Tool count ──
 
@@ -759,5 +759,160 @@ describe("schemas with required fields reject empty object", () => {
     ["listHistorySchema", listHistorySchema],
   ] as const)("%s rejects {}", (_name, schema) => {
     expect(() => schema.parse({})).toThrow();
+  });
+});
+
+// ── buildMimeMessage signature handling ──
+
+describe("buildMimeMessage", () => {
+  const base = { to: "a@b.com", subject: "hi", body: "Hello world" };
+
+  function bodyFrom(mime: string): string {
+    // Extract the body portion after the blank line separating headers
+    const parts = mime.split("\r\n\r\n");
+    return parts.slice(1).join("\r\n\r\n");
+  }
+
+  function headerValue(mime: string, name: string): string | undefined {
+    for (const line of mime.split("\r\n")) {
+      if (line.startsWith(`${name}: `)) return line.slice(name.length + 2);
+    }
+    return undefined;
+  }
+
+  describe("plaintextToHtml", () => {
+    it("escapes HTML entities", () => {
+      expect(plaintextToHtml("a & b < c > d")).toBe("a &amp; b &lt; c &gt; d");
+    });
+
+    it("converts newlines to <br>", () => {
+      expect(plaintextToHtml("line1\nline2\nline3")).toBe(
+        "line1<br>line2<br>line3"
+      );
+    });
+
+    it("handles empty string", () => {
+      expect(plaintextToHtml("")).toBe("");
+    });
+  });
+
+  describe("plain text without signature", () => {
+    it("sends as text/plain", () => {
+      const mime = buildMimeMessage(base);
+      expect(headerValue(mime, "Content-Type")).toBe(
+        "text/plain; charset=utf-8"
+      );
+      expect(bodyFrom(mime)).toBe("Hello world");
+    });
+  });
+
+  describe("HTML body without signature", () => {
+    it("sends as text/html", () => {
+      const mime = buildMimeMessage({
+        ...base,
+        body: "<p>Hello</p>",
+        contentType: "text/html",
+      });
+      expect(headerValue(mime, "Content-Type")).toBe(
+        "text/html; charset=utf-8"
+      );
+      expect(bodyFrom(mime)).toBe("<p>Hello</p>");
+    });
+  });
+
+  describe("plain text + HTML signature (the fix)", () => {
+    const sig = '<b>John</b><img src="logo.png">';
+
+    it("upgrades content type to text/html", () => {
+      const mime = buildMimeMessage({ ...base, signatureHtml: sig });
+      expect(headerValue(mime, "Content-Type")).toBe(
+        "text/html; charset=utf-8"
+      );
+    });
+
+    it("escapes the plain text body for HTML", () => {
+      const mime = buildMimeMessage({
+        ...base,
+        body: "Use <b> & <i> tags",
+        signatureHtml: sig,
+      });
+      const body = bodyFrom(mime);
+      expect(body).toContain("Use &lt;b&gt; &amp; &lt;i&gt; tags");
+    });
+
+    it("converts newlines to <br>", () => {
+      const mime = buildMimeMessage({
+        ...base,
+        body: "line1\nline2",
+        signatureHtml: sig,
+      });
+      const body = bodyFrom(mime);
+      expect(body).toContain("line1<br>line2");
+    });
+
+    it("preserves signature HTML (bold, images)", () => {
+      const mime = buildMimeMessage({ ...base, signatureHtml: sig });
+      const body = bodyFrom(mime);
+      expect(body).toContain("<b>John</b>");
+      expect(body).toContain('<img src="logo.png">');
+    });
+
+    it("wraps signature in gmail_signature div", () => {
+      const mime = buildMimeMessage({ ...base, signatureHtml: sig });
+      const body = bodyFrom(mime);
+      expect(body).toContain('<div class="gmail_signature">');
+    });
+  });
+
+  describe("HTML body + HTML signature", () => {
+    it("appends signature without escaping body", () => {
+      const mime = buildMimeMessage({
+        ...base,
+        body: "<p>Hello</p>",
+        contentType: "text/html",
+        signatureHtml: "<b>Sig</b>",
+      });
+      const body = bodyFrom(mime);
+      expect(body).toContain("<p>Hello</p>");
+      expect(body).toContain('<div class="gmail_signature"><b>Sig</b></div>');
+    });
+  });
+
+  describe("no signature", () => {
+    it("plain text stays plain text", () => {
+      const mime = buildMimeMessage(base);
+      expect(headerValue(mime, "Content-Type")).toBe(
+        "text/plain; charset=utf-8"
+      );
+      expect(bodyFrom(mime)).not.toContain("gmail_signature");
+    });
+
+    it("null signature is ignored", () => {
+      const mime = buildMimeMessage({ ...base, signatureHtml: null });
+      expect(headerValue(mime, "Content-Type")).toBe(
+        "text/plain; charset=utf-8"
+      );
+    });
+  });
+
+  describe("with attachments + signature upgrade", () => {
+    it("uses text/html in multipart body part", () => {
+      const sig = "<b>Sig</b>";
+      const mime = buildMimeMessage({
+        ...base,
+        signatureHtml: sig,
+        attachments: [
+          {
+            filename: "f.txt",
+            mimeType: "text/plain",
+            base64Data: "dGVzdA==",
+          },
+        ],
+      });
+      // The multipart body should contain a text/html part, not text/plain
+      expect(mime).toContain("Content-Type: text/html; charset=utf-8");
+      expect(mime).not.toContain("Content-Type: text/plain; charset=utf-8");
+      expect(mime).toContain('<div class="gmail_signature"><b>Sig</b></div>');
+    });
   });
 });

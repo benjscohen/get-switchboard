@@ -446,33 +446,35 @@ describe("filterToolsForUser", () => {
   });
 
   describe("discovery mode", () => {
+    // All 27 platform tools
+    const ALL_PLATFORM_TOOLS = [
+      // Files & Folders (11)
+      "file_read", "file_write", "file_delete", "file_move", "file_list",
+      "file_search", "folder_create", "folder_delete", "file_history",
+      "file_version_read", "file_rollback",
+      // Memory (3)
+      "save_memory", "recall_memories", "forget_memory",
+      // Vault (8)
+      "vault_list_secrets", "vault_get_secret", "vault_set_secret",
+      "vault_delete_secret", "vault_search_secrets", "vault_share_secret",
+      "vault_unshare_secret", "vault_list_shares",
+      // Core (5)
+      "discover_tools", "call_tool", "submit_feedback", "manage_skills", "manage_agents",
+    ] as const;
+
     const discoveryTools: Array<[string, Partial<RegisteredTool>]> = [
       ...builtinTools,
       ...customTools,
-      ["discover_tools", { description: "Discover tools" }],
-      ["submit_feedback", { description: "Submit feedback" }],
-      ["manage_skills", { description: "Manage skills" }],
-      ["save_memory", { description: "Save a memory" }],
-      ["recall_memories", { description: "Recall memories" }],
-      ["file_read", { description: "Read a file" }],
-      ["file_write", { description: "Write a file" }],
-      ["file_search", { description: "Search files" }],
+      ...ALL_PLATFORM_TOOLS.map((name): [string, Partial<RegisteredTool>] => [name, { description: `Platform: ${name}` }]),
     ];
 
     const discoveryMeta: Array<[string, ToolMeta]> = [
       ...builtinMeta,
       ...customMeta,
-      ["discover_tools", { integrationId: "platform", orgId: null }],
-      ["submit_feedback", { integrationId: "platform", orgId: null }],
-      ["manage_skills", { integrationId: "platform", orgId: null }],
-      ["save_memory", { integrationId: "platform", orgId: null }],
-      ["recall_memories", { integrationId: "platform", orgId: null }],
-      ["file_read", { integrationId: "platform", orgId: null }],
-      ["file_write", { integrationId: "platform", orgId: null }],
-      ["file_search", { integrationId: "platform", orgId: null }],
+      ...ALL_PLATFORM_TOOLS.map((name): [string, ToolMeta] => [name, { integrationId: "platform", orgId: null }]),
     ];
 
-    it("returns only discovery-visible tools when discoveryMode is true", () => {
+    it("returns all platform tools when discoveryMode is true", () => {
       const ctx: FilterContext = {
         connections: [
           { integrationId: "google-calendar" },
@@ -489,16 +491,7 @@ describe("filterToolsForUser", () => {
       );
       const names = toolNames(result);
 
-      expect(names).toEqual([
-        "discover_tools",
-        "file_read",
-        "file_search",
-        "file_write",
-        "manage_skills",
-        "recall_memories",
-        "save_memory",
-        "submit_feedback",
-      ]);
+      expect(names).toEqual([...ALL_PLATFORM_TOOLS].sort());
     });
 
     it("excludes builtin and custom tools in discovery mode", () => {
@@ -517,6 +510,25 @@ describe("filterToolsForUser", () => {
       expect(names).not.toContain("google_calendar_list_events");
       expect(names).not.toContain("acme__search");
       expect(names).not.toContain("globalbot__ask");
+    });
+
+    it("every platform tool in toolMeta appears in discovery mode results (sync guard)", () => {
+      const tools = buildRegisteredTools(discoveryTools);
+      const meta = new Map(discoveryMeta);
+      const ctx: FilterContext = { discoveryMode: true };
+
+      const result = filterToolsForUser(tools, meta, ctx);
+      const resultNames = new Set(result.map((t) => t.name));
+
+      // Collect all platform tools from meta
+      const platformInMeta = new Set<string>();
+      for (const [name, m] of meta) {
+        if (m.integrationId === "platform" && tools[name]?.enabled) {
+          platformInMeta.add(name);
+        }
+      }
+
+      expect(resultNames).toEqual(platformInMeta);
     });
 
     it("normal mode still works when discoveryMode is false", () => {
@@ -593,8 +605,11 @@ describe("filterToolsForUser", () => {
       const tools = buildRegisteredTools([
         ["discover_tools", { description: "Discover tools", inputSchema: zodSchema }],
       ]);
+      const meta = new Map<string, ToolMeta>([
+        ["discover_tools", { integrationId: "platform", orgId: null }],
+      ]);
       const ctx: FilterContext = { discoveryMode: true };
-      const result = filterToolsForUser(tools, new Map(), ctx);
+      const result = filterToolsForUser(tools, meta, ctx);
       const schema = result[0].inputSchema as Record<string, unknown>;
 
       expect(schema).toHaveProperty("type", "object");

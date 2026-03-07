@@ -7,8 +7,9 @@ import {
   getActiveSessionCount,
 } from "./agent.js";
 import * as slack from "./slack.js";
+import * as db from "./db.js";
 import { buildRetryDisabledBlocks } from "./slack-blocks.js";
-import { buildThreadKey, getRunningSession } from "./session-registry.js";
+import { buildThreadKey, getRunningSession, findRunningSessionBySessionId } from "./session-registry.js";
 import type { SlackFile } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,21 @@ app.message(async ({ message, body }) => {
     const threadKey = buildThreadKey(channelId, threadTs);
     const running = getRunningSession(threadKey);
     if (running) {
+      // Route text to plan feedback if waiting for approval
+      if (running.pendingPlanApproval) {
+        running.pendingPlanApproval.resolve({ action: "revise", feedback: text });
+        await slack.addReaction(channelId, messageTs, "white_check_mark").catch(() => {});
+        // Store feedback message in DB
+        await db.createMessage({
+          sessionId: running.sessionId,
+          role: "user",
+          content: text,
+          slackTs: messageTs,
+          metadata: { slackUserId, isPlanFeedback: true },
+        }).catch((err) => console.error("Failed to store plan feedback:", err));
+        return;
+      }
+
       await slack.addReaction(channelId, messageTs, "eyes").catch(() => {});
       const injected = await injectFollowUp(
         threadKey,
@@ -124,6 +140,22 @@ app.action("retry_session", async ({ action, ack, body }) => {
   retrySession(sessionId, body.user.id).catch((err) =>
     console.error("Retry session failed:", err),
   );
+});
+
+// Handle "Approve" button clicks on plan approval messages
+app.action("approve_plan", async ({ action, ack, body }) => {
+  await ack();
+  const sessionId = (action as { value?: string }).value;
+  if (!sessionId) return;
+
+  const running = findRunningSessionBySessionId(sessionId);
+  if (!running?.pendingPlanApproval) {
+    console.warn(`approve_plan: no pending approval for session ${sessionId}`);
+    return;
+  }
+
+  // Resolve the promise — the hook in agent.ts will handle the rest
+  running.pendingPlanApproval.resolve({ action: "approve" });
 });
 
 // ---------------------------------------------------------------------------
