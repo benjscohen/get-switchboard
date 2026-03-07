@@ -100,4 +100,4 @@ If you want to add this to your existing Switchboard Slack app instead of creati
 The user needs to disconnect and reconnect Slack in their Switchboard dashboard so `provider_user_id` gets captured.
 
 ### "still working on your last request"
-Each user can only have one active session at a time. Wait for it to finish (5-minute timeout max).
+Each user can only have one active session at a time. Wait for it to finish (4-hour timeout max).

@@ -10,9 +10,7 @@ import type { SlackFile, UserLookup } from "./types.js";
 // ---------------------------------------------------------------------------
 
 const MAX_CONCURRENT_SESSIONS = 10;
-const MAX_TURNS = 25;
-const MAX_BUDGET_USD = 2.0;
-const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 const TEXT_EXTENSIONS = new Set([
   ".txt",
@@ -270,6 +268,7 @@ export async function processMessage(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
           Authorization: `Bearer ${lookup.agentKey}`,
         },
         body: JSON.stringify({
@@ -316,67 +315,97 @@ export async function processMessage(
     let totalTurns = 0;
 
     try {
-      const conversation = query({
-        prompt: fullPrompt,
-        options: {
-          model: lookup.model,
-          customSystemPrompt: buildSystemPrompt(claudeMdContent),
-          ...(tempDir ? { cwd: tempDir } : {}),
-          mcpServers: {
-            switchboard: {
-              type: "http",
-              url: process.env.SWITCHBOARD_MCP_URL!,
-              headers: {
-                Authorization: `Bearer ${lookup.agentKey}`,
-              },
+      const buildQueryOptions = () => ({
+        model: lookup.model,
+        customSystemPrompt: buildSystemPrompt(claudeMdContent),
+        ...(tempDir ? { cwd: tempDir } : {}),
+        mcpServers: {
+          switchboard: {
+            type: "http" as const,
+            url: process.env.SWITCHBOARD_MCP_URL!,
+            headers: {
+              Authorization: `Bearer ${lookup.agentKey}`,
             },
           },
-          permissionMode: "bypassPermissions",
-          maxTurns: MAX_TURNS,
-          abortController,
-          ...(resumeSessionId ? { resume: resumeSessionId } : {}),
-          stderr: (data: string) => {
-            const redacted = data
-              .replace(/Bearer [^\s"']+/g, "Bearer [REDACTED]")
-              .replace(/sk_live_[^\s"']+/g, "sk_live_[REDACTED]");
-            console.error("[claude-code stderr]", redacted);
-          },
+        },
+        permissionMode: "bypassPermissions" as const,
+        abortController,
+        ...(resumeSessionId ? { resume: resumeSessionId } : {}),
+        stderr: (data: string) => {
+          const redacted = data
+            .replace(/Bearer [^\s"']+/g, "Bearer [REDACTED]")
+            .replace(/sk_live_[^\s"']+/g, "sk_live_[REDACTED]");
+          console.error("[claude-code stderr]", redacted);
         },
       });
 
-      // Check MCP server status
-      try {
-        const mcpStatus = await conversation.mcpServerStatus();
-        console.log("[mcp-status]", JSON.stringify(mcpStatus));
-      } catch {
-        console.log("[mcp-status] not available (non-streaming mode)");
-      }
+      const runConversation = async () => {
+        const conversation = query({
+          prompt: fullPrompt,
+          options: buildQueryOptions(),
+        });
 
-      // Iterate the async generator — capture session_id and final result
-      resultText = "";
-      let claudeSessionId: string | null = null;
-      for await (const message of conversation) {
-        // Capture session_id from any message
-        if ("session_id" in message && message.session_id && !claudeSessionId) {
-          claudeSessionId = message.session_id;
+        // Check MCP server status
+        try {
+          const mcpStatus = await conversation.mcpServerStatus();
+          console.log("[mcp-status]", JSON.stringify(mcpStatus));
+        } catch {
+          console.log("[mcp-status] not available (non-streaming mode)");
         }
-        // Log system messages (often contain MCP connection info)
-        if (message.type === "system") {
-          console.log("[claude-code system]", JSON.stringify(message));
-        }
-        if (message.type === "result") {
-          if (message.subtype === "success") {
-            resultText = message.result;
-            totalTurns = message.num_turns;
-          } else {
-            console.error("[claude-code] error result:", JSON.stringify(message));
+
+        // Iterate the async generator — capture session_id and final result
+        let text = "";
+        let turns = 0;
+        let claudeSessionId: string | null = null;
+        for await (const message of conversation) {
+          // Capture session_id from any message
+          if ("session_id" in message && message.session_id && !claudeSessionId) {
+            claudeSessionId = message.session_id;
+          }
+          // Log system messages (often contain MCP connection info)
+          if (message.type === "system") {
+            console.log("[claude-code system]", JSON.stringify(message));
+          }
+          if (message.type === "result") {
+            if (message.subtype === "success") {
+              text = message.result;
+              turns = message.num_turns;
+            } else {
+              console.error("[claude-code] error result:", JSON.stringify(message));
+            }
           }
         }
+
+        return { text, turns, claudeSessionId };
+      };
+
+      let result: { text: string; turns: number; claudeSessionId: string | null };
+      try {
+        result = await runConversation();
+      } catch (err: unknown) {
+        // If resume failed because the session no longer exists, retry without resume
+        const isSessionNotFound =
+          resumeSessionId &&
+          err instanceof Error &&
+          err.message.includes("No conversation found");
+
+        if (isSessionNotFound) {
+          console.warn(
+            `[thread] Resume failed for session ${resumeSessionId}, starting fresh session`,
+          );
+          resumeSessionId = null;
+          result = await runConversation();
+        } else {
+          throw err;
+        }
       }
 
+      resultText = result.text;
+      totalTurns = result.turns;
+
       // Store claude session ID for future thread resumption
-      if (claudeSessionId) {
-        await db.updateSession(sessionId, { claude_session_id: claudeSessionId });
+      if (result.claudeSessionId) {
+        await db.updateSession(sessionId, { claude_session_id: result.claudeSessionId });
       }
 
       clearTimeout(timeoutId);
@@ -390,7 +419,7 @@ export async function processMessage(
       const isAbort =
         err instanceof Error && err.name === "AbortError";
       const errorMessage = isAbort
-        ? "Request timed out after 5 minutes."
+        ? "Request timed out after 4 hours."
         : err instanceof Error
           ? err.message
           : "An unknown error occurred";
