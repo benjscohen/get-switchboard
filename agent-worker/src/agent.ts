@@ -4,6 +4,13 @@ import * as db from "./db.js";
 import { fetchUserFiles, writeFilesToDisk, cleanupTempDir } from "./files.js";
 import { extractClaudeMd, buildSystemPrompt } from "./prompt.js";
 import { buildErrorWithRetryBlocks } from "./slack-blocks.js";
+import { createMessageStream } from "./message-stream.js";
+import {
+  buildThreadKey,
+  getRunningSession,
+  registerSession,
+  unregisterSession,
+} from "./session-registry.js";
 import type { SlackFile, UserLookup } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -12,6 +19,7 @@ import type { SlackFile, UserLookup } from "./types.js";
 
 const MAX_CONCURRENT_SESSIONS = 10;
 const TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes — close session after no follow-ups
 
 const TEXT_EXTENSIONS = new Set([
   ".txt",
@@ -65,7 +73,7 @@ function isTextFile(file: SlackFile): boolean {
   return TEXT_EXTENSIONS.has(ext) || file.mimetype.startsWith("text/");
 }
 
-async function formatFiles(files: SlackFile[]): Promise<string> {
+export async function formatFiles(files: SlackFile[]): Promise<string> {
   if (files.length === 0) return "";
 
   const parts: string[] = [];
@@ -174,6 +182,47 @@ async function postErrorWithRetry(opts: {
       replyThread,
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Follow-up injection into a running session
+// ---------------------------------------------------------------------------
+
+export async function injectFollowUp(
+  threadKey: string,
+  sessionId: string,
+  slackUserId: string,
+  text: string,
+  files: SlackFile[],
+  messageTs: string,
+): Promise<boolean> {
+  const running = getRunningSession(threadKey);
+  if (!running) return false;
+
+  const fileContent = await formatFiles(files);
+  const fullText = fileContent ? `${text}\n${fileContent}` : text;
+
+  // Store user message in DB
+  await db.createMessage({
+    sessionId: running.sessionId,
+    role: "user",
+    content: fullText,
+    slackTs: messageTs,
+    metadata: { slackUserId, fileCount: files.length, isFollowUp: true },
+  });
+
+  // Push into the running session's async generator
+  return new Promise<boolean>((outerResolve) => {
+    const pushed = running.pushMessage({
+      text: fullText,
+      messageTs,
+      resolve: () => outerResolve(true),
+    });
+    if (!pushed) {
+      // Session already closed (race condition)
+      outerResolve(false);
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -351,9 +400,32 @@ export async function processMessage(
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), TIMEOUT_MS);
 
-    // 13. Run Claude Code SDK
-    let resultText: string;
+    // 14. Create message stream + register in session registry
+    const threadKey = buildThreadKey(channelId, threadTs || messageTs);
+    const stream = createMessageStream(fullPrompt);
+
+    const runningSession = {
+      sessionId,
+      claudeSessionId: null as string | null,
+      pushMessage: stream.pushMessage,
+      close: stream.close,
+    };
+    registerSession(threadKey, runningSession);
+
+    // Idle timeout: close the stream if no follow-up arrives within IDLE_TIMEOUT_MS
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    const resetIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        console.log(`[session ${sessionId}] Idle timeout — closing stream`);
+        stream.close();
+      }, IDLE_TIMEOUT_MS);
+    };
+
+    // 15. Run Claude Code SDK (multi-turn)
+    let lastResultText: string | null = null;
     let totalTurns = 0;
+    let totalCost = 0;
 
     try {
       const systemPrompt = buildSystemPrompt(claudeMdContent);
@@ -384,7 +456,7 @@ export async function processMessage(
 
       const runConversation = async () => {
         const conversation = query({
-          prompt: fullPrompt,
+          prompt: stream.iterable,
           options: buildQueryOptions(),
         });
 
@@ -396,35 +468,103 @@ export async function processMessage(
           console.log("[mcp-status] not available (non-streaming mode)");
         }
 
-        // Iterate the async generator — capture session_id and final result
-        let text = "";
-        let turns = 0;
+        // Diagnostic counters
+        const startTime = Date.now();
+        const msgCounts = new Map<string, number>();
+        const recentMessages: string[] = []; // last 10 type:subtype labels
+        const PROGRESS_INTERVAL_MS = 30_000;
+        let lastProgressLog = Date.now();
+
+        // Iterate — handle multiple result messages (one per user turn)
         let claudeSessionId: string | null = null;
         for await (const message of conversation) {
+          // Track message counts
+          const label = `${message.type}:${"subtype" in message ? (message as { subtype?: string }).subtype : "-"}`;
+          msgCounts.set(label, (msgCounts.get(label) || 0) + 1);
+          recentMessages.push(label);
+          if (recentMessages.length > 10) recentMessages.shift();
+
+          // Progress heartbeat
+          const now = Date.now();
+          if (now - lastProgressLog >= PROGRESS_INTERVAL_MS) {
+            const elapsed = Math.round((now - startTime) / 1000);
+            console.log(`[session ${sessionId}] progress ${elapsed}s — counts: ${JSON.stringify(Object.fromEntries(msgCounts))}`);
+            lastProgressLog = now;
+          }
+
           // Capture session_id from any message
           if ("session_id" in message && message.session_id && !claudeSessionId) {
             claudeSessionId = message.session_id;
+            stream.setSessionId(claudeSessionId);
+            runningSession.claudeSessionId = claudeSessionId;
+            await db.updateSession(sessionId, { claude_session_id: claudeSessionId });
           }
-          // Log system messages (often contain MCP connection info)
+
           if (message.type === "system") {
             console.log("[claude-code system]", JSON.stringify(message));
           }
+
+          // Log assistant message metadata (not full content)
+          if (message.type === "assistant") {
+            const msg = message as { message?: { id?: string; content?: unknown[]; stop_reason?: string } };
+            console.log(`[session ${sessionId}] assistant msg id=${msg.message?.id} blocks=${Array.isArray(msg.message?.content) ? msg.message!.content.length : "?"} stop=${msg.message?.stop_reason || "?"}`);
+          }
+
           if (message.type === "result") {
             if (message.subtype === "success") {
-              text = message.result;
-              turns = message.num_turns;
+              const text = message.result || "(No response generated)";
+              lastResultText = text;
+              totalTurns += message.num_turns;
+              totalCost += message.total_cost_usd;
+
+              // Post result to Slack
+              const resultTs = await slack.postMessage(
+                channelId,
+                truncateForSlack(slack.markdownToSlack(text)),
+                replyThread,
+              );
+
+              // Store assistant message
+              await db.createMessage({
+                sessionId,
+                role: "assistant",
+                content: text,
+                slackTs: resultTs,
+                metadata: { turns: message.num_turns, cost: message.total_cost_usd },
+              });
+
+              // Reset idle timer — wait for potential follow-up
+              resetIdleTimer();
             } else {
+              // Error result — surface to user via retry flow
               console.error("[claude-code] error result:", JSON.stringify(message));
+              throw new Error(
+                `Agent encountered an error (${message.subtype}): ${
+                  "error" in message && message.error
+                    ? String(message.error)
+                    : "no details available"
+                }`,
+              );
             }
           }
         }
 
-        return { text, turns, claudeSessionId };
+        // Summary log after loop completes
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        console.log(
+          `[session ${sessionId}] conversation done — elapsed=${elapsed}s counts=${JSON.stringify(Object.fromEntries(msgCounts))} hasResult=${!!lastResultText} resultLen=${lastResultText?.length ?? 0}`,
+        );
+        if (!lastResultText) {
+          console.warn(
+            `[session ${sessionId}] no result text captured — recent messages: [${recentMessages.join(", ")}]`,
+          );
+        }
+
+        return { claudeSessionId };
       };
 
-      let result: { text: string; turns: number; claudeSessionId: string | null };
       try {
-        result = await runConversation();
+        await runConversation();
       } catch (err: unknown) {
         // If resume failed because the session no longer exists, retry without resume
         const isSessionNotFound =
@@ -437,27 +577,28 @@ export async function processMessage(
             `[thread] Resume failed for session ${resumeSessionId}, starting fresh session`,
           );
           resumeSessionId = null;
-          result = await runConversation();
+          await runConversation();
         } else {
           throw err;
         }
       }
 
-      resultText = result.text;
-      totalTurns = result.turns;
-
-      // Store claude session ID for future thread resumption
-      if (result.claudeSessionId) {
-        await db.updateSession(sessionId, { claude_session_id: result.claudeSessionId });
-      }
-
       clearTimeout(timeoutId);
+      if (idleTimer) clearTimeout(idleTimer);
 
-      if (!resultText) {
-        resultText = "(No response generated)";
+      if (!lastResultText) {
+        console.warn(`[session ${sessionId}] fallback — no result text after conversation completed`);
+        lastResultText = "(No response generated — the agent completed without producing output. Please try again.)";
+        await slack.postMessage(
+          channelId,
+          lastResultText,
+          replyThread,
+        );
       }
     } catch (err: unknown) {
       clearTimeout(timeoutId);
+      if (idleTimer) clearTimeout(idleTimer);
+      stream.close();
 
       const isAbort =
         err instanceof Error && err.name === "AbortError";
@@ -479,32 +620,17 @@ export async function processMessage(
       return;
     }
 
-    // 13. Success: post result as a new message (triggers notification)
-    const resultTs = await slack.postMessage(
-      channelId,
-      truncateForSlack(slack.markdownToSlack(resultText)),
-      replyThread,
-    );
+    // 16. Finalize: mark completed + swap emoji on the original message
     await Promise.all([
       slack.removeReaction(channelId, messageTs, "eyes").catch(() => {}),
       slack.addReaction(channelId, messageTs, "white_check_mark").catch(() => {}),
     ]);
 
-    // 14. Update session as completed
     await db.updateSession(sessionId, {
       status: "completed",
-      result: resultText,
+      result: lastResultText,
       total_turns: totalTurns,
       completed_at: new Date().toISOString(),
-    });
-
-    // 15. Store assistant message
-    await db.createMessage({
-      sessionId,
-      role: "assistant",
-      content: resultText,
-      slackTs: resultTs,
-      metadata: { totalTurns },
     });
   } catch (err) {
     console.error(`Unexpected error in session ${sessionId}:`, err);
@@ -520,6 +646,7 @@ export async function processMessage(
     }).catch(() => {});
   } finally {
     activeCount--;
+    unregisterSession(buildThreadKey(channelId, threadTs || messageTs));
     if (tempDir) {
       cleanupTempDir(tempDir).catch((err) =>
         console.error("[files] Cleanup failed:", err),
