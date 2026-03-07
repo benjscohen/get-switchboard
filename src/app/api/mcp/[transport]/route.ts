@@ -268,13 +268,11 @@ You have a durable memory system. Follow these conventions:
 
   return transport.handleRequest(req, { authInfo });
   } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    const errStack = err instanceof Error ? err.stack : undefined;
-    console.error("[MCP] mcpHandler error:", errMsg, errStack);
+    console.error("[MCP] mcpHandler error:", err);
     return new Response(
       JSON.stringify({
         jsonrpc: "2.0",
-        error: { code: -32603, message: `Internal error: ${errMsg}` },
+        error: { code: -32603, message: "Internal error" },
         id: null,
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
@@ -439,9 +437,8 @@ async function handler(req: Request) {
   try {
     return await authedHandler(req);
   } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    console.error("[MCP] Unhandled error:", errMsg, err instanceof Error ? err.stack : "");
-    return new Response(JSON.stringify({ error: `Internal server error: ${errMsg}` }), {
+    console.error("[MCP] Unhandled error:", err);
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });

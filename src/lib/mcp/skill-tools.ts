@@ -24,9 +24,14 @@ export function registerSkillTools(
   toolMeta: Map<string, ToolMeta>,
   skills: SkillRecord[],
 ): void {
-  // Register each skill as an MCP prompt
+  // Register each skill as an MCP prompt (skip duplicates — different users
+  // can have the same slug, but the MCP SDK only allows one registration per name;
+  // per-user filtering happens at list time via ListPromptsRequestSchema handler)
+  const registeredPrompts = new Set<string>();
   for (const skill of skills) {
     const promptName = skillPromptName(skill);
+    if (registeredPrompts.has(promptName)) continue;
+    registeredPrompts.add(promptName);
 
     if (skill.arguments.length > 0) {
       const zodShape: Record<string, z.ZodString | z.ZodOptional<z.ZodString>> = {};

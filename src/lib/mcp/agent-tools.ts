@@ -25,9 +25,13 @@ export function registerAgentTools(
   toolMeta: Map<string, ToolMeta>,
   agents: AgentRecord[],
 ): void {
-  // Register each agent as an MCP prompt
+  // Register each agent as an MCP prompt (skip duplicates — different users
+  // can have the same slug; per-user filtering happens at list time)
+  const registeredPrompts = new Set<string>();
   for (const agent of agents) {
     const promptName = agentPromptName(agent);
+    if (registeredPrompts.has(promptName)) continue;
+    registeredPrompts.add(promptName);
 
     const promptContent = [
       agent.instructions,
