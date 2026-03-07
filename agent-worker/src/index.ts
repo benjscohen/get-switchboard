@@ -114,7 +114,7 @@ async function start() {
       process.exit(1);
     }
   }
-  console.log(`MCP URL: ${process.env.SWITCHBOARD_MCP_URL}`);
+  console.log(`MCP URL: ${process.env.SWITCHBOARD_MCP_URL?.trim()}`);
   console.log(`Anthropic key: ${process.env.ANTHROPIC_API_KEY?.slice(0, 12)}...`);
 
   console.log("Recovering stale sessions from previous run...");

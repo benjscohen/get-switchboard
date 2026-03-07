@@ -303,7 +303,7 @@ export async function processMessage(
 
     // 11. Pre-flight MCP connectivity check
     try {
-      const mcpUrl = process.env.SWITCHBOARD_MCP_URL!;
+      const mcpUrl = process.env.SWITCHBOARD_MCP_URL!.trim();
       console.log(`[mcp-preflight] Testing ${mcpUrl} ...`);
       const preflight = await fetch(mcpUrl, {
         method: "POST",
@@ -365,7 +365,7 @@ export async function processMessage(
         mcpServers: {
           switchboard: {
             type: "http" as const,
-            url: process.env.SWITCHBOARD_MCP_URL!,
+            url: process.env.SWITCHBOARD_MCP_URL!.trim(),
             headers: {
               Authorization: `Bearer ${lookup.agentKey}`,
             },
@@ -482,7 +482,7 @@ export async function processMessage(
     // 13. Success: post result as a new message (triggers notification)
     const resultTs = await slack.postMessage(
       channelId,
-      truncateForSlack(resultText),
+      truncateForSlack(slack.markdownToSlack(resultText)),
       replyThread,
     );
     await Promise.all([

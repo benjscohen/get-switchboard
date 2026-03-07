@@ -69,11 +69,9 @@ describe("buildSystemPrompt", () => {
 
   it("includes Slack formatting rules", () => {
     const prompt = buildSystemPrompt(null);
-    expect(prompt).toContain("Slack mrkdwn");
-    expect(prompt).toContain("*bold*");
-    expect(prompt).toContain("_italic_");
-    expect(prompt).toContain("<url|text>");
-    expect(prompt).toContain("Do NOT use # headings");
+    expect(prompt).toContain("Format responses for Slack");
+    expect(prompt).toContain("Do NOT use markdown tables");
+    expect(prompt).toContain("Keep responses concise");
   });
 
   it("does not include CLAUDE.md section when null", () => {
@@ -90,7 +88,7 @@ describe("buildSystemPrompt", () => {
   it("places CLAUDE.md before Slack formatting rules", () => {
     const prompt = buildSystemPrompt("My instructions here.");
     const claudeMdIndex = prompt.indexOf("My instructions here.");
-    const slackIndex = prompt.indexOf("Slack mrkdwn");
+    const slackIndex = prompt.indexOf("Format responses for Slack");
     expect(claudeMdIndex).toBeLessThan(slackIndex);
   });
 
@@ -217,7 +215,7 @@ describe("memory instructions", () => {
     const memory = prompt.indexOf("persistent memory system");
     const dev = prompt.indexOf("dev environment with:");
     const guardrails = prompt.indexOf("ask the user for confirmation");
-    const slack = prompt.indexOf("Slack mrkdwn");
+    const slack = prompt.indexOf("Format responses for Slack");
 
     for (const idx of [identity, memory, dev, guardrails, slack]) {
       expect(idx).toBeGreaterThan(-1);
@@ -232,7 +230,7 @@ describe("memory instructions", () => {
     const prompt = buildSystemPrompt("Custom user rules", DATE);
     const guardrails = prompt.indexOf("ask the user for confirmation");
     const claudeMd = prompt.indexOf("Custom user rules");
-    const slack = prompt.indexOf("Slack mrkdwn");
+    const slack = prompt.indexOf("Format responses for Slack");
 
     for (const idx of [guardrails, claudeMd, slack]) {
       expect(idx).toBeGreaterThan(-1);

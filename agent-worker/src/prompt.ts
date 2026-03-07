@@ -5,15 +5,7 @@ import type { SwitchboardFile } from "./files.js";
 // ---------------------------------------------------------------------------
 
 const SLACK_FORMAT_INSTRUCTIONS = `
-Format all responses using Slack mrkdwn syntax:
-- Bold: *bold* (not **bold**)
-- Italic: _italic_ (not *italic*)
-- Strikethrough: ~text~
-- Code blocks: triple backticks with NO language specifier
-- Inline code: \`code\`
-- Lists: use the bullet character, not - or *
-- Links: <url|text> (not [text](url))
-- Do NOT use # headings (unsupported in Slack)
+Format responses for Slack:
 - Do NOT use markdown tables (use code blocks for tabular data)
 - Keep responses concise for Slack readability
 `.trim();

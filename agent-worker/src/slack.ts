@@ -161,3 +161,26 @@ export async function downloadFile(
 
   return { content: "[Binary file]", filename, mimeType: contentType };
 }
+
+/**
+ * Convert standard Markdown to Slack mrkdwn.
+ * Claude sometimes produces Markdown despite prompt instructions — this catches it.
+ */
+export function markdownToSlack(text: string): string {
+  if (!text) return text;
+
+  return text
+    // Code blocks: remove language specifier (```js → ```)
+    .replace(/```[a-zA-Z]*\n/g, "```\n")
+    // Headers: # Heading → *Heading*
+    .replace(/^#{1,6}\s+(.+)$/gm, "*$1*")
+    // Images: ![alt](url) → <url|alt>  (must come before links)
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, "<$2|$1>")
+    // Links: [text](url) → <url|text>
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "<$2|$1>")
+    // Bold: **text** or __text__ → *text*
+    .replace(/\*\*(.+?)\*\*/g, "*$1*")
+    .replace(/__(.+?)__/g, "*$1*")
+    // Strikethrough: ~~text~~ → ~text~
+    .replace(/~~(.+?)~~/g, "~$1~");
+}
