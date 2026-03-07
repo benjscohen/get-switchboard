@@ -11,6 +11,8 @@ export interface PendingFollowUp {
   resolve: () => void;
 }
 
+export type PlanPhase = "exploring" | "presented" | "revising" | "approved" | "off";
+
 export type PlanDecision =
   | { action: "approve" }
   | { action: "revise"; feedback: string };
@@ -30,6 +32,7 @@ export interface RunningSession {
   close: () => void;
   openGate: () => void;
   isPlanMode: boolean;
+  planPhase: PlanPhase;
   pendingPlanApproval: PendingPlanApproval | null;
   setPermissionMode: ((mode: PermissionMode) => Promise<void>) | null;
 }
