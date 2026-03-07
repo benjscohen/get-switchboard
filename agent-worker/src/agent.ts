@@ -1,4 +1,4 @@
-import { query, AbortError } from "@anthropic-ai/claude-code";
+import { query } from "@anthropic-ai/claude-code";
 import * as slack from "./slack.js";
 import * as db from "./db.js";
 import * as fs from "node:fs/promises";
@@ -1010,7 +1010,10 @@ export async function processMessage(
       stream.close();
 
       console.error(`[session ${sessionId}] error caught: type=${err instanceof Error ? err.constructor?.name : typeof err} message=${err instanceof Error ? err.message : String(err)}`);
-      const isAbort = err instanceof AbortError;
+      const isAbort =
+        err instanceof Error &&
+        (err.message.includes("aborted by user") ||
+          err.message === "Operation aborted");
       const errorMessage = isAbort
         ? "The agent stopped responding and was automatically terminated. Please try again."
         : err instanceof Error
