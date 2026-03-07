@@ -182,5 +182,7 @@ export function markdownToSlack(text: string): string {
     .replace(/\*\*(.+?)\*\*/g, "*$1*")
     .replace(/__(.+?)__/g, "*$1*")
     // Strikethrough: ~~text~~ → ~text~
-    .replace(/~~(.+?)~~/g, "~$1~");
+    .replace(/~~(.+?)~~/g, "~$1~")
+    // Unwrap bold from bare URLs — *https://...* breaks Slack links
+    .replace(/\*(https?:\/\/[^\s*]+)\*/g, "$1");
 }
