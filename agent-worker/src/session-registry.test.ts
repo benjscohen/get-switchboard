@@ -17,6 +17,7 @@ function makeSession(overrides?: Partial<RunningSession>): RunningSession {
     close: () => {},
     openGate: () => {},
     isPlanMode: false,
+    planPhase: "off",
     pendingPlanApproval: null,
     setPermissionMode: null,
     ...overrides,

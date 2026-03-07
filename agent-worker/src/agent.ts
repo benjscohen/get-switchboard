@@ -5,7 +5,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fetchUserFiles, writeFilesToStableDir, findSessionFile } from "./files.js";
 import { extractClaudeMd, buildSystemPrompt } from "./prompt.js";
-import { buildErrorWithRetryBlocks, buildPlanApprovalBlocks, buildPlanApprovedBlocks } from "./slack-blocks.js";
+import { buildErrorWithRetryBlocks, buildPlanApprovalBlocks, buildPlanApprovedBlocks, buildPlanRevisingBlocks } from "./slack-blocks.js";
 import { createMessageStream } from "./message-stream.js";
 import { extractFileUploads, uploadExtractedFiles } from "./file-uploads.js";
 import { StreamingStatusUpdater, type StreamEventLike } from "./streaming.js";
@@ -16,7 +16,7 @@ import {
   registerSession,
   unregisterSession,
 } from "./session-registry.js";
-import type { PlanDecision } from "./session-registry.js";
+import type { PlanDecision, PlanPhase } from "./session-registry.js";
 import type { SlackFile } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -597,6 +597,7 @@ export async function processMessage(
       close: stream.close,
       openGate: stream.openGate,
       isPlanMode: planModeRequested,
+      planPhase: (planModeRequested ? "exploring" : "off") as PlanPhase,
       pendingPlanApproval: null as import("./session-registry.js").PendingPlanApproval | null,
       setPermissionMode: null as ((mode: import("@anthropic-ai/claude-code").PermissionMode) => Promise<void>) | null,
     };
@@ -677,7 +678,8 @@ export async function processMessage(
                         metadata: { isPlan: true },
                       });
 
-                      // Block until user approves or provides revision feedback
+                      // Transition to presented phase and block until user approves or provides revision feedback
+                      runningSession.planPhase = "presented";
                       const decision = await new Promise<PlanDecision>((resolve) => {
                         runningSession.pendingPlanApproval = {
                           plan,
@@ -689,6 +691,9 @@ export async function processMessage(
                       runningSession.pendingPlanApproval = null;
 
                       if (decision.action === "approve") {
+                        // Transition to approved phase
+                        runningSession.planPhase = "approved";
+
                         // Update Slack message to show approved state
                         const approvedBlocks = buildPlanApprovedBlocks(slack.markdownToSlack(plan));
                         await slack.updateMessage(channelId, planTs, slack.markdownToSlack(plan), approvedBlocks).catch(() => {});
@@ -708,7 +713,18 @@ export async function processMessage(
                           },
                         };
                       } else {
+                        // Transition to revising phase
+                        runningSession.planPhase = "revising";
+
+                        // Update Slack message to show revising state
+                        const revisingBlocks = buildPlanRevisingBlocks(slack.markdownToSlack(plan));
+                        await slack.updateMessage(channelId, planTs, slack.markdownToSlack(plan), revisingBlocks).catch(() => {});
+
                         console.log(`[session ${sessionId}] Plan revision requested: ${decision.feedback.slice(0, 100)}`);
+
+                        // Go back to exploring for the next iteration
+                        runningSession.planPhase = "exploring";
+
                         return {
                           hookSpecificOutput: {
                             hookEventName: "PreToolUse" as const,
@@ -857,17 +873,17 @@ export async function processMessage(
                 totalTurns += message.num_turns;
                 totalCost += message.total_cost_usd;
 
-                // Plan approved → suppress summary (plan already shown in approval blocks),
-                // save to DB, and let conversation end — execution restarts with clean context below.
-                if (planModeRequested && planApproved && !planExecutionStarted) {
-                  console.log(`[session ${sessionId}] plan approved — suppressing summary, will restart for execution`);
+                // Plan mode → suppress ALL result:success messages during plan phase.
+                // The plan itself is shown via approval blocks. Only the execution phase posts results.
+                if (planModeRequested && !planExecutionStarted) {
+                  console.log(`[session ${sessionId}] plan phase result:success suppressed (phase=${runningSession.planPhase}) — will not post to Slack`);
 
                   await db.createMessage({
                     sessionId,
                     role: "assistant",
                     content: text,
                     slackTs: null,
-                    metadata: { turns: message.num_turns, cost: message.total_cost_usd, isPlanSummary: true },
+                    metadata: { turns: message.num_turns, cost: message.total_cost_usd, isPlanSummary: true, planPhase: runningSession.planPhase },
                   });
 
                   continue;
@@ -1063,6 +1079,8 @@ export async function processMessage(
 
         planModeRequested = false;   // buildQueryOptions() returns bypassPermissions
         planExecutionStarted = true;
+        runningSession.planPhase = "off";
+        runningSession.isPlanMode = false;
 
         await db.createMessage({
           sessionId,

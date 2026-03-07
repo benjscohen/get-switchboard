@@ -116,3 +116,44 @@ export function buildPlanApprovedBlocks(planText: string): KnownBlock[] {
     },
   ];
 }
+
+/**
+ * Build Block Kit blocks for a plan being revised (button removed, hourglass).
+ */
+export function buildPlanRevisingBlocks(planText: string): KnownBlock[] {
+  return [
+    {
+      type: "header",
+      text: { type: "plain_text", text: "Plan (Revising...)" },
+    },
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: truncateBlockText(planText) },
+    },
+    {
+      type: "context",
+      elements: [{ type: "mrkdwn", text: ":hourglass_flowing_sand: Revising based on your feedback..." }],
+    },
+  ];
+}
+
+/**
+ * Build Block Kit blocks for an expired plan (session ended before approval).
+ */
+export function buildPlanExpiredBlocks(planText: string): KnownBlock[] {
+  return [
+    {
+      type: "header",
+      text: { type: "plain_text", text: "Plan (Expired)" },
+    },
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: truncateBlockText(planText) },
+    },
+    {
+      type: "context",
+      elements: [{ type: "mrkdwn", text: ":warning: This plan has expired \u2014 send a new message to start over." }],
+    },
+  ];
+}
+

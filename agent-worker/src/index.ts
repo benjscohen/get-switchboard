@@ -11,7 +11,7 @@ import { startScheduler } from "./scheduler.js";
 import * as slack from "./slack.js";
 import type { SlackAttachment } from "./slack.js";
 import * as db from "./db.js";
-import { buildRetryDisabledBlocks } from "./slack-blocks.js";
+import { buildRetryDisabledBlocks, buildPlanExpiredBlocks } from "./slack-blocks.js";
 import { buildThreadKey, getRunningSession, findRunningSessionBySessionId } from "./session-registry.js";
 import { cleanupOldArchives } from "./workspace-storage.js";
 import type { SlackFile } from "./types.js";
@@ -165,6 +165,16 @@ app.action("approve_plan", async ({ action, ack, body }) => {
   const running = findRunningSessionBySessionId(sessionId);
   if (!running?.pendingPlanApproval) {
     console.warn(`approve_plan: no pending approval for session ${sessionId}`);
+
+    // Session expired or already processed — update the Slack message to show expired state
+    const channelId = body.channel?.id;
+    const msg = "message" in body ? (body as unknown as Record<string, unknown>).message as { ts?: string; text?: string } : null;
+    if (channelId && msg?.ts) {
+      const expiredBlocks = buildPlanExpiredBlocks(msg.text || "(plan text unavailable)");
+      await slack
+        .updateMessage(channelId, msg.ts, msg.text || "Plan expired", expiredBlocks)
+        .catch((err) => console.error("Failed to update expired plan:", err));
+    }
     return;
   }
 
