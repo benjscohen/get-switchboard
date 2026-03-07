@@ -125,9 +125,8 @@ export async function findSessionFile(
   const parentDir = path.dirname(baseDir);
   console.log(`[files] findSessionFile: primary scan found nothing, recursive search in ${parentDir}`);
   try {
-    const entries = await fs.readdir(parentDir, { recursive: true });
-    for (const entry of entries) {
-      const name = typeof entry === "string" ? entry : entry.toString();
+    const entries = (await fs.readdir(parentDir, { recursive: true })) as string[];
+    for (const name of entries) {
       if (path.basename(name) === target) {
         const fullPath = path.join(parentDir, name);
         console.log(`[files] findSessionFile: found via recursive fallback: ${fullPath}`);
