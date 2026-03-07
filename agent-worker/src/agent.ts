@@ -73,6 +73,47 @@ const MAX_TEXT_FILE_SIZE = 1024 * 1024; // 1 MB — for prompt embedding
 const MAX_BINARY_FILE_SIZE = 100 * 1024 * 1024; // 100 MB — for disk save
 const ATTACHMENTS_DIR = "attachments"; // subdirectory in tempDir for inbound files
 
+// Directories to skip when scanning for new files created by the agent
+const SNAPSHOT_SKIP_DIRS = new Set([
+  "node_modules", ".git", "__pycache__", ".venv", ".next", ".cache",
+  "dist", "build", ATTACHMENTS_DIR, ".claude",
+]);
+
+// ---------------------------------------------------------------------------
+// Directory snapshot helpers (auto-detect files created by the agent)
+// ---------------------------------------------------------------------------
+
+async function snapshotDir(dir: string): Promise<Set<string>> {
+  const files = new Set<string>();
+  async function walk(current: string) {
+    let entries;
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (SNAPSHOT_SKIP_DIRS.has(entry.name)) continue;
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else {
+        files.add(full);
+      }
+    }
+  }
+  await walk(dir);
+  return files;
+}
+
+function getNewFiles(before: Set<string>, after: Set<string>): string[] {
+  const newFiles: string[] = [];
+  for (const f of after) {
+    if (!before.has(f)) newFiles.push(f);
+  }
+  return newFiles;
+}
+
 // ---------------------------------------------------------------------------
 // Concurrency tracking
 // ---------------------------------------------------------------------------
@@ -767,6 +808,12 @@ export async function processMessage(
             console.log("[mcp-status] not available:", err instanceof Error ? err.message : err);
           }
 
+          // Snapshot working directory before agent runs (to detect new files later)
+          let dirSnapshot: Set<string> = new Set();
+          if (tempDir) {
+            dirSnapshot = await snapshotDir(tempDir);
+          }
+
           // Iterate — handle multiple result messages (one per user turn)
           let claudeSessionId: string | null = null;
           let lastAssistantText = ""; // text from intermediate assistant turns (fallback for empty result)
@@ -837,7 +884,27 @@ export async function processMessage(
                 // Extract FILE_UPLOAD directives before formatting
                 const { cleanText, uploads } = extractFileUploads(text);
 
-                // Upload FILE_UPLOAD directive files first (independent of text post)
+                // Auto-detect new files created by the agent (fallback for missing FILE_UPLOAD directives)
+                if (tempDir) {
+                  try {
+                    const afterSnapshot = await snapshotDir(tempDir);
+                    const newFiles = getNewFiles(dirSnapshot, afterSnapshot);
+                    // Add any auto-detected files not already in explicit uploads
+                    const explicitPaths = new Set(uploads.map((u) => u.path));
+                    for (const f of newFiles) {
+                      if (!explicitPaths.has(f)) {
+                        uploads.push({ path: f });
+                        console.log(`[session ${sessionId}] auto-detected new file: ${f}`);
+                      }
+                    }
+                    // Update snapshot for next turn
+                    dirSnapshot = afterSnapshot;
+                  } catch (err) {
+                    console.error(`[session ${sessionId}] snapshot scan failed:`, err);
+                  }
+                }
+
+                // Upload all files (explicit FILE_UPLOAD directives + auto-detected)
                 if (uploads.length > 0) {
                   await uploadExtractedFiles(uploads, channelId, replyThread, sessionId);
                 }
