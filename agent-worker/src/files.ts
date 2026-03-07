@@ -62,28 +62,25 @@ export async function fetchUserFiles(
 }
 
 // ---------------------------------------------------------------------------
-// Write files to a temporary directory
+// Write SwitchboardFiles into a directory
 // ---------------------------------------------------------------------------
+
+async function writeFilesInto(dir: string, files: SwitchboardFile[]): Promise<void> {
+  for (const file of files) {
+    if (file.isFolder || file.content == null) continue;
+    const filePath = path.join(dir, file.path);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, file.content, "utf-8");
+  }
+}
 
 export async function writeFilesToDisk(
   files: SwitchboardFile[],
 ): Promise<string> {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "sb-"));
-
-  for (const file of files) {
-    if (file.isFolder || file.content == null) continue;
-
-    const filePath = path.join(tempDir, file.path);
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, file.content, "utf-8");
-  }
-
+  await writeFilesInto(tempDir, files);
   return tempDir;
 }
-
-// ---------------------------------------------------------------------------
-// Write files to a stable (deterministic) directory keyed by userId
-// ---------------------------------------------------------------------------
 
 export async function writeFilesToStableDir(
   files: SwitchboardFile[],
@@ -91,12 +88,7 @@ export async function writeFilesToStableDir(
 ): Promise<string> {
   const dir = path.join(os.tmpdir(), `sb-${stableId}`);
   await fs.mkdir(dir, { recursive: true });
-  for (const file of files) {
-    if (file.isFolder || file.content == null) continue;
-    const filePath = path.join(dir, file.path);
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, file.content, "utf-8");
-  }
+  await writeFilesInto(dir, files);
   return dir;
 }
 
@@ -108,13 +100,12 @@ export async function findSessionFile(
   claudeSessionId: string,
   baseDir: string = path.join(os.homedir(), ".claude", "projects"),
 ): Promise<string | null> {
-  const claudeDir = baseDir;
   try {
-    const projects = await fs.readdir(claudeDir);
+    const projects = await fs.readdir(baseDir);
     for (const project of projects) {
-      const file = path.join(claudeDir, project, "sessions", `${claudeSessionId}.json`);
+      const file = path.join(baseDir, project, "sessions", `${claudeSessionId}.json`);
       try {
-        await fs.access(file);
+        await fs.stat(file);
         return file;
       } catch {
         /* not in this project */
