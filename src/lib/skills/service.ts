@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { upsertEmbeddings, deleteEmbedding, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore, EMBEDDING_TABLES } from "@/lib/embeddings";
+import { upsertEmbeddings, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore, EMBEDDING_TABLES } from "@/lib/embeddings";
 export { type ScopedAuth } from "@/lib/shared/scoped-entity";
 
 // ── Types ──
@@ -164,11 +164,6 @@ function queueSkillEmbedding(s: SkillRow): void {
     searchText: buildSkillSearchText(s),
     extraColumns: { name: s.name, description: s.description },
   }]).catch((err) => console.warn("[skills] embedding failed:", err));
-}
-
-function removeSkillEmbedding(id: string): void {
-  deleteEmbedding(SKILL_TABLE, SKILL_ID_COL, id)
-    .catch((err) => console.warn("[skills] remove embedding failed:", err));
 }
 
 // ── CRUD Functions ──
@@ -415,8 +410,6 @@ export async function deleteSkill(auth: SkillAuth, id: string): Promise<ServiceR
   if (error) {
     return { ok: false, error: error.message, status: 500 };
   }
-
-  removeSkillEmbedding(id);
 
   return { ok: true, data: { ok: true } };
 }

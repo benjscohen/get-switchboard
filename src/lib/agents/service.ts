@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { upsertEmbeddings, deleteEmbedding, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore } from "@/lib/embeddings";
+import { upsertEmbeddings, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore } from "@/lib/embeddings";
 import { type ServiceResult, type ScopedAuth, slugify, canEditScopedEntity, canViewScopedEntity } from "@/lib/shared/scoped-entity";
 import { normalizeToolAccess } from "@/lib/agents/tool-access-utils";
 
@@ -135,11 +135,6 @@ function queueAgentEmbedding(a: AgentRow): void {
     searchText: buildAgentSearchText(a),
     extraColumns: { name: a.name, description: a.description },
   }]).catch((err) => console.warn("[agents] embedding failed:", err));
-}
-
-function removeAgentEmbedding(id: string): void {
-  deleteEmbedding("agent_embeddings", "agent_id", id)
-    .catch((err) => console.warn("[agents] remove embedding failed:", err));
 }
 
 // ── CRUD Functions ──
@@ -391,8 +386,6 @@ export async function deleteAgent(auth: AgentAuth, id: string): Promise<ServiceR
   if (error) {
     return { ok: false, error: error.message, status: 500 };
   }
-
-  removeAgentEmbedding(id);
 
   return { ok: true, data: { ok: true } };
 }

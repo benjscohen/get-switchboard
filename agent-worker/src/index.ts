@@ -1,12 +1,14 @@
 import { App, LogLevel } from "@slack/bolt";
 import {
   processMessage,
+  injectFollowUp,
   recoverStaleSessions,
   retrySession,
   getActiveSessionCount,
 } from "./agent.js";
 import * as slack from "./slack.js";
 import { buildRetryDisabledBlocks } from "./slack-blocks.js";
+import { buildThreadKey, getRunningSession } from "./session-registry.js";
 import type { SlackFile } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -62,6 +64,32 @@ app.message(async ({ message, body }) => {
         urlPrivate: f.url_private ?? "",
         size: f.size ?? 0,
       });
+    }
+  }
+
+  // Check if there's a running session for this thread — inject follow-up if so
+  if (threadTs) {
+    const threadKey = buildThreadKey(channelId, threadTs);
+    const running = getRunningSession(threadKey);
+    if (running) {
+      await slack.addReaction(channelId, messageTs, "eyes").catch(() => {});
+      const injected = await injectFollowUp(
+        threadKey,
+        running.sessionId,
+        slackUserId,
+        text,
+        files,
+        messageTs,
+      );
+      if (injected) {
+        await Promise.all([
+          slack.removeReaction(channelId, messageTs, "eyes").catch(() => {}),
+          slack.addReaction(channelId, messageTs, "speech_balloon").catch(() => {}),
+        ]);
+        return;
+      }
+      // If injection failed (session just closed), fall through to normal flow
+      await slack.removeReaction(channelId, messageTs, "eyes").catch(() => {});
     }
   }
 

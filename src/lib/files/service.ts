@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { ServiceResult } from "@/lib/vault/service";
-import { upsertEmbeddings, deleteEmbedding, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore, EMBEDDING_TABLES } from "@/lib/embeddings";
+import { upsertEmbeddings, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore, EMBEDDING_TABLES } from "@/lib/embeddings";
 
 // ── Types ──
 
@@ -198,11 +198,6 @@ function queueFileEmbedding(row: Record<string, unknown>): void {
   }]).catch((err) => console.warn("[files] embedding failed:", err));
 }
 
-function removeFileEmbedding(id: string): void {
-  deleteEmbedding(FILE_TABLE, FILE_ID_COL, id)
-    .catch((err) => console.warn("[files] remove embedding failed:", err));
-}
-
 // ── Internal: ensure parent folders exist ──
 
 async function ensureParentFolders(auth: FileAuth, path: string): Promise<void> {
@@ -388,7 +383,6 @@ export async function deleteFileById(
 
   const { error } = await q;
   if (error) return { ok: false, error: error.message, status: 500 };
-  removeFileEmbedding(id);
   return { ok: true, data: { deleted: true } };
 }
 

@@ -246,20 +246,6 @@ export async function upsertEmbeddings(
   }
 }
 
-// ── Generic delete ──
-
-export async function deleteEmbedding(
-  table: string,
-  idColumn: string,
-  id: string,
-): Promise<void> {
-  try {
-    await supabaseAdmin.from(table).delete().eq(idColumn, id);
-  } catch (err) {
-    console.warn(`[embeddings] deleteEmbedding failed (${table}):`, err);
-  }
-}
-
 // ── Generic RPC search ──
 
 export async function searchByEmbedding(

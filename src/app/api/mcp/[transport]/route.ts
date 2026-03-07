@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { ListToolsRequestSchema, ListPromptsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { ListToolsRequestSchema, ListPromptsRequestSchema, GetPromptRequestSchema, McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { withMcpAuth } from "mcp-handler";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { hashApiKey } from "@/lib/crypto";
@@ -10,8 +10,9 @@ import { allIntegrations } from "@/lib/integrations/registry";
 import { proxyIntegrationRegistry } from "@/lib/integrations/proxy-registry";
 import { loadProxyTools, discoverAndCacheProxyTools, type ProxyTool } from "@/lib/integrations/proxy-tools";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
-import { filterSkillsForUser, skillPromptName, type SkillRecord } from "@/lib/mcp/skill-filtering";
-import { filterAgentsForUser, agentPromptName, type AgentRecord } from "@/lib/mcp/agent-filtering";
+import { interpolateSkillContent } from "@/lib/mcp/skill-filtering";
+import { listSkills } from "@/lib/skills/service";
+import { listAgents } from "@/lib/agents/service";
 import { registerAdminTools } from "@/lib/mcp/admin-tools";
 import { registerVaultTools } from "@/lib/mcp/vault-tools";
 import { registerFileTools } from "@/lib/mcp/file-tools";
@@ -19,10 +20,10 @@ import { registerMemoryTools } from "@/lib/mcp/memory-tools";
 import { registerDiscoverTools } from "@/lib/mcp/discover-tools";
 import { registerCallTool } from "@/lib/mcp/call-tool";
 import { registerSkillTools } from "@/lib/mcp/skill-tools";
-import { registerAgentTools, getAgentPromptEntries } from "@/lib/mcp/agent-tools";
+import { registerAgentTools } from "@/lib/mcp/agent-tools";
 import { registerIntegrationTools } from "@/lib/mcp/integration-tools";
 import { filterToolsForUser, type ToolMeta } from "@/lib/mcp/tool-filtering";
-import { getFilterContext } from "@/lib/mcp/types";
+import { getFilterContext, getFullMcpAuth } from "@/lib/mcp/types";
 import { buildToolIndex, buildIntegrationSummaryLine, ensureToolEmbeddings, type ToolIndexEntry } from "@/lib/mcp/tool-search";
 import { loadIntegrationScopes } from "@/lib/integration-scopes";
 
@@ -53,30 +54,6 @@ let resolvedProxyTools: { tools: ProxyTool[]; fallbackIntegrationIds: Set<string
 let proxyDiscoveryCooldownUntil: number | null = null;
 const discoveredIntegrations = new Set<string>();
 proxyToolsPromise.then((r) => { resolvedProxyTools = r; });
-
-const skillsPromise = supabaseAdmin
-  .from("skills")
-  .select("id, name, slug, description, content, arguments, organization_id, team_id, user_id, enabled")
-  .eq("enabled", true)
-  .then((res) => {
-    if (res.error) console.error("[MCP] skills query error:", res.error);
-    return (res.data ?? []) as SkillRecord[];
-  });
-
-let resolvedSkills: SkillRecord[] | null = null;
-skillsPromise.then((skills) => { resolvedSkills = skills; });
-
-const agentsPromise = supabaseAdmin
-  .from("agents")
-  .select("id, name, slug, description, instructions, tool_access, model, organization_id, team_id, user_id, enabled")
-  .eq("enabled", true)
-  .then((res) => {
-    if (res.error) console.error("[MCP] agents query error:", res.error);
-    return (res.data ?? []) as AgentRecord[];
-  });
-
-let resolvedAgents: AgentRecord[] | null = null;
-agentsPromise.then((agents) => { resolvedAgents = agents; });
 
 // ── Discovery + tools/list handler ──
 
@@ -149,8 +126,6 @@ async function mcpHandler(req: Request): Promise<Response> {
   try {
   if (resolvedCustomTools === null) resolvedCustomTools = await customToolsPromise;
   if (resolvedProxyTools === null) resolvedProxyTools = await proxyToolsPromise;
-  if (resolvedSkills === null) resolvedSkills = await skillsPromise;
-  if (resolvedAgents === null) resolvedAgents = await agentsPromise;
 
   // Auto-discover proxy tools if using fallback (DB is empty)
   if (resolvedProxyTools.fallbackIntegrationIds.size > 0 && !proxyDiscoveryCooldownUntil) {
@@ -210,51 +185,108 @@ You have a durable memory system. Follow these conventions:
     discoveredIntegrations,
     onProxyToolsReload: (r) => { resolvedProxyTools = r; },
   });
-  registerSkillTools(server, toolMeta, resolvedSkills);
-  registerAgentTools(server, toolMeta, resolvedAgents);
+  registerSkillTools(server, toolMeta, []);
+  registerAgentTools(server, toolMeta, []);
   registerAdminTools(server, toolMeta);
   registerVaultTools(server, toolMeta);
   registerFileTools(server, toolMeta);
   registerMemoryTools(server, toolMeta);
-  // Override prompts/list to filter both skills and agents per-user
+  // Override prompts/list and prompts/get to query DB per-request (auth-scoped)
   {
-    const registeredPrompts = (server as unknown as { _registeredPrompts: Record<string, {
-      description?: string;
-      argsSchema?: unknown;
-    }> })._registeredPrompts;
+    server.server.setRequestHandler(ListPromptsRequestSchema, async (_request, extra) => {
+      const auth = getFullMcpAuth(extra);
+      if (!auth) return { prompts: [] };
 
-    server.server.setRequestHandler(ListPromptsRequestSchema, (_request, extra) => {
-      const userId = extra.authInfo?.extra?.userId as string | undefined;
-      const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
-      const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
+      const [skillsResult, agentsResult] = await Promise.all([
+        listSkills(auth),
+        listAgents(auth),
+      ]);
 
-      // Skill prompts
-      const visibleSkills = filterSkillsForUser(resolvedSkills ?? [], { userId, organizationId, teamIds });
-      const skillNames = new Set(visibleSkills.map(skillPromptName));
+      const prompts: Array<{ name: string; description?: string; arguments?: Array<{ name: string; description?: string; required?: boolean }> }> = [];
 
-      const skillPrompts = Object.entries(registeredPrompts)
-        .filter(([name]) => skillNames.has(name))
-        .map(([name, prompt]) => ({
-          name,
-          description: prompt.description,
-          arguments: (resolvedSkills ?? [])
-            .find((s) => skillPromptName(s) === name)
-            ?.arguments.map((a) => ({
-              name: a.name,
-              description: a.description,
-              required: a.required,
-            })) ?? [],
-        }));
+      if (skillsResult.ok) {
+        const allSkills = [...skillsResult.data.organization, ...skillsResult.data.team, ...skillsResult.data.user];
+        for (const s of allSkills) {
+          if (!s.enabled) continue;
+          const scope = s.scope === "organization" ? "org" : s.scope;
+          prompts.push({
+            name: `${scope}:${s.slug}`,
+            description: s.description || s.name,
+            arguments: s.arguments.map((a) => ({ name: a.name, description: a.description, required: a.required })),
+          });
+        }
+      }
 
-      // Agent prompts
-      const visibleAgents = filterAgentsForUser(resolvedAgents ?? [], { userId, organizationId, teamIds });
-      const agentPrompts = visibleAgents.map((agent) => ({
-        name: agentPromptName(agent),
-        description: agent.description || agent.name,
-        arguments: [] as Array<{ name: string; description: string; required: boolean }>,
-      }));
+      if (agentsResult.ok) {
+        const allAgents = [...agentsResult.data.organization, ...agentsResult.data.team, ...agentsResult.data.user];
+        for (const a of allAgents) {
+          if (!a.enabled) continue;
+          const scope = a.scope === "organization" ? "org" : a.scope;
+          prompts.push({
+            name: `agent:${scope}:${a.slug}`,
+            description: a.description || a.name,
+            arguments: [],
+          });
+        }
+      }
 
-      return { prompts: [...skillPrompts, ...agentPrompts] };
+      return { prompts };
+    });
+
+    server.server.setRequestHandler(GetPromptRequestSchema, async (request, extra) => {
+      const auth = getFullMcpAuth(extra);
+      if (!auth) throw new McpError(ErrorCode.InvalidRequest, "Unauthorized");
+
+      const promptName = request.params.name;
+
+      // Determine if this is an agent or skill prompt
+      const isAgent = promptName.startsWith("agent:");
+
+      if (isAgent) {
+        const result = await listAgents(auth);
+        if (!result.ok) throw new McpError(ErrorCode.InternalError, "Failed to load agents");
+
+        const allAgents = [...result.data.organization, ...result.data.team, ...result.data.user];
+        const agent = allAgents.find((a) => {
+          if (!a.enabled) return false;
+          const scope = a.scope === "organization" ? "org" : a.scope;
+          return `agent:${scope}:${a.slug}` === promptName;
+        });
+
+        if (!agent) throw new McpError(ErrorCode.InvalidParams, "Prompt not found");
+
+        const contentParts = [
+          agent.instructions,
+          "",
+          `Tool Access: ${agent.toolAccess.length > 0 ? agent.toolAccess.join(", ") : "none"}`,
+        ];
+        if (agent.model) contentParts.push(`Preferred Model: ${agent.model}`);
+
+        return {
+          messages: [{ role: "user" as const, content: { type: "text" as const, text: contentParts.join("\n") } }],
+        };
+      } else {
+        const result = await listSkills(auth);
+        if (!result.ok) throw new McpError(ErrorCode.InternalError, "Failed to load skills");
+
+        const allSkills = [...result.data.organization, ...result.data.team, ...result.data.user];
+        const skill = allSkills.find((s) => {
+          if (!s.enabled) return false;
+          const scope = s.scope === "organization" ? "org" : s.scope;
+          return `${scope}:${s.slug}` === promptName;
+        });
+
+        if (!skill) throw new McpError(ErrorCode.InvalidParams, "Prompt not found");
+
+        const args = (request.params.arguments ?? {}) as Record<string, string>;
+        const text = skill.arguments.length > 0
+          ? interpolateSkillContent(skill.content, args)
+          : skill.content;
+
+        return {
+          messages: [{ role: "user" as const, content: { type: "text" as const, text } }],
+        };
+      }
     });
   }
 

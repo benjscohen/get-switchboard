@@ -21,7 +21,7 @@ export function Breadcrumbs({ path, onNavigate }: BreadcrumbsProps) {
         const isLast = i === segments.length - 1;
         return (
           <span key={segPath} className="flex items-center gap-1">
-            <span className="text-text-tertiary">/</span>
+            {i > 0 && <span className="text-text-tertiary">/</span>}
             {isLast ? (
               <span className="font-medium text-text-primary">{seg}</span>
             ) : (
