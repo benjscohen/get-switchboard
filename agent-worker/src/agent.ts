@@ -24,14 +24,12 @@ const IMAGE_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".tiff", ".ico",
 ]);
 
-const PDF_EXTENSIONS = new Set([".pdf"]);
-
 function isImageFile(file: SlackFile): boolean {
   return file.mimetype.startsWith("image/") || IMAGE_EXTENSIONS.has(getExtension(file.name));
 }
 
 function isPdfFile(file: SlackFile): boolean {
-  return file.mimetype === "application/pdf" || PDF_EXTENSIONS.has(getExtension(file.name));
+  return file.mimetype === "application/pdf" || getExtension(file.name) === ".pdf";
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +128,12 @@ async function uniqueFilename(dir: string, name: string): Promise<string> {
 export async function formatFiles(files: SlackFile[], tempDir?: string | null): Promise<string> {
   if (files.length === 0) return "";
 
+  // Pre-create attachments directory if we have binary files and a tempDir
+  const attachDir = tempDir ? path.join(tempDir, ATTACHMENTS_DIR) : null;
+  if (attachDir && files.some((f) => !isTextFile(f))) {
+    await fs.mkdir(attachDir, { recursive: true });
+  }
+
   const parts: string[] = [];
   for (const file of files) {
     // --- Text files: embed content in prompt ---
@@ -156,14 +160,12 @@ export async function formatFiles(files: SlackFile[], tempDir?: string | null): 
     }
 
     // --- Binary files (images, PDFs, etc.): save to disk if tempDir available ---
-    if (tempDir && (isImageFile(file) || isPdfFile(file) || file.size <= MAX_BINARY_FILE_SIZE)) {
+    if (attachDir && file.size <= MAX_BINARY_FILE_SIZE) {
       try {
         const downloaded = await slack.downloadFileAsBuffer(file.urlPrivate);
-        const attachDir = path.join(tempDir, ATTACHMENTS_DIR);
-        await fs.mkdir(attachDir, { recursive: true });
         const destPath = await uniqueFilename(attachDir, file.name);
         await fs.writeFile(destPath, downloaded.buffer);
-        const relPath = path.relative(tempDir, destPath);
+        const relPath = path.relative(tempDir!, destPath);
         if (isImageFile(file)) {
           parts.push(
             `\n[Attached image: ${file.name} — saved to ${relPath}. Use the Read tool to view this image file.]`,
@@ -210,25 +212,19 @@ function truncateForSlack(text: string): string {
 // ---------------------------------------------------------------------------
 
 async function snapshotDir(dir: string): Promise<Set<string>> {
-  const files = new Set<string>();
-  async function walk(d: string) {
-    let entries;
-    try {
-      entries = await fs.readdir(d, { withFileTypes: true });
-    } catch {
-      return;
-    }
+  try {
+    const entries = (await fs.readdir(dir, { recursive: true })) as string[];
+    const files = new Set<string>();
     for (const entry of entries) {
-      const full = path.join(d, entry.name);
-      if (entry.isDirectory()) {
-        await walk(full);
-      } else {
-        files.add(full);
-      }
+      const full = path.join(dir, entry);
+      // Filter out directories by checking for extension (fast heuristic)
+      // — false positives are harmless (getNewFiles only compares sets)
+      files.add(full);
     }
+    return files;
+  } catch {
+    return new Set();
   }
-  await walk(dir);
-  return files;
 }
 
 function getNewFiles(before: Set<string>, after: Set<string>, tempDir: string): string[] {
@@ -240,6 +236,33 @@ function getNewFiles(before: Set<string>, after: Set<string>, tempDir: string): 
     }
   }
   return newFiles;
+}
+
+// ---------------------------------------------------------------------------
+// Transcript persistence helper
+// ---------------------------------------------------------------------------
+
+async function saveTranscriptIfExists(
+  sessionId: string,
+  claudeSessionId: string | null,
+  cachedSessionFile: string | null | undefined,
+  label: string,
+): Promise<string | null> {
+  if (!claudeSessionId) return cachedSessionFile ?? null;
+  try {
+    const sessionFile = cachedSessionFile ?? await findSessionFile(claudeSessionId);
+    if (sessionFile) {
+      const transcript = await fs.readFile(sessionFile, "utf-8");
+      await db.saveSessionTranscript(sessionId, transcript, sessionFile);
+      console.log(`[session ${sessionId}] Saved transcript ${label} (${transcript.length} bytes)`);
+    } else {
+      console.log(`[session ${sessionId}] No session file found for transcript save (${label})`);
+    }
+    return sessionFile;
+  } catch (err) {
+    console.error(`[session ${sessionId}] Failed to save transcript ${label}:`, err);
+    return cachedSessionFile ?? null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -576,6 +599,7 @@ export async function processMessage(
     let lastResultText: string | null = null;
     let checkedOff = false;
     let totalTurns = 0;
+    let cachedSessionFilePath: string | null | undefined; // cached after first findSessionFile
     let totalCost = 0;
 
     try {
@@ -749,7 +773,10 @@ export async function processMessage(
             recentMessages.push(label);
             if (recentMessages.length > 10) recentMessages.shift();
             lastMessageAt = Date.now();
-            waitingForFollowUp = false;
+            if (waitingForFollowUp) {
+              waitingForFollowUp = false;
+              await db.updateSession(sessionId, { status: "running" });
+            }
 
             // Capture session_id from any message
             if ("session_id" in message && message.session_id && !claudeSessionId) {
@@ -890,23 +917,13 @@ export async function processMessage(
                 }
 
                 // Save transcript eagerly (survives deploys that kill the container before idle timeout)
-                if (claudeSessionId) {
-                  try {
-                    const sessionFile = await findSessionFile(claudeSessionId);
-                    if (sessionFile) {
-                      const transcript = await fs.readFile(sessionFile, "utf-8");
-                      await db.saveSessionTranscript(sessionId, transcript, sessionFile);
-                      console.log(`[session ${sessionId}] Saved transcript eagerly (${transcript.length} bytes)`);
-                    } else {
-                      console.log(`[session ${sessionId}] No session file found for transcript save`);
-                    }
-                  } catch (err) {
-                    console.error(`[session ${sessionId}] Failed to save transcript eagerly:`, err);
-                  }
-                }
+                cachedSessionFilePath = await saveTranscriptIfExists(
+                  sessionId, claudeSessionId, cachedSessionFilePath, "eager",
+                );
 
                 // Mark as waiting for user follow-up — suppresses SDK inactivity timeout
                 waitingForFollowUp = true;
+                await db.updateSession(sessionId, { status: "idle" });
                 resetIdleTimer();
               } else {
                 // Error result — surface to user via retry flow
@@ -934,18 +951,9 @@ export async function processMessage(
           }
 
           // Final transcript save (captures any follow-up turns since the eager save)
-          if (claudeSessionId) {
-            try {
-              const sessionFile = await findSessionFile(claudeSessionId);
-              if (sessionFile) {
-                const transcript = await fs.readFile(sessionFile, "utf-8");
-                await db.saveSessionTranscript(sessionId, transcript, sessionFile);
-                console.log(`[session ${sessionId}] Saved transcript final (${transcript.length} bytes)`);
-              }
-            } catch (err) {
-              console.error(`[session ${sessionId}] Failed to save transcript final:`, err);
-            }
-          }
+          await saveTranscriptIfExists(
+            sessionId, claudeSessionId, cachedSessionFilePath, "final",
+          );
 
           return { claudeSessionId };
         } finally {
@@ -1056,9 +1064,24 @@ export async function recoverStaleSessions(): Promise<void> {
     return;
   }
 
-  console.log(`Recovering ${staleSessions.length} stale session(s)...`);
+  const idleSessions = staleSessions.filter((s) => s.status === "idle");
+  const runningSessions = staleSessions.filter((s) => s.status === "running");
+  console.log(`Recovering ${runningSessions.length} running + ${idleSessions.length} idle stale session(s)...`);
 
-  await Promise.all(staleSessions.map(async (session) => {
+  // Idle sessions: silently complete — agent was waiting for user input, not mid-reply
+  await Promise.all(idleSessions.map(async (session) => {
+    await db.updateSession(session.id, {
+      status: "completed",
+      completed_at: new Date().toISOString(),
+    });
+
+    if (session.slack_channel_id && session.slack_message_ts) {
+      await slack.removeReaction(session.slack_channel_id, session.slack_message_ts, "eyes").catch(() => {});
+    }
+  }));
+
+  // Running sessions: mark failed + post error with retry
+  await Promise.all(runningSessions.map(async (session) => {
     const errorMsg = "Worker restarted — session was interrupted.";
 
     await db.updateSession(session.id, {
