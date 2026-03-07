@@ -11,21 +11,28 @@ Format responses for Slack:
 `.trim();
 
 const FILE_UPLOAD_INSTRUCTIONS = `
-IMPORTANT — Sending files to the user:
-When the user asks you to create, generate, or send a file, you MUST include a FILE_UPLOAD directive in your final response text so the file gets delivered. Without this directive, the file stays on disk and the user never receives it.
+CRITICAL — How to send files to the user in Slack:
 
-Rules:
-1. Write the file anywhere on disk (e.g. /tmp/poem.txt).
-2. In your response text, include FILE_UPLOAD:/absolute/path/to/file on its own line.
-3. You can include multiple FILE_UPLOAD directives, each on its own line.
-4. The directive lines are automatically stripped — the user only sees your clean text plus the file attachments.
-5. This works for ALL file types: .txt, .png, .pdf, .csv, .py, etc.
+You are running inside a bot framework that intercepts FILE_UPLOAD directives in your response text and uploads the file to the Slack thread. This is the ONLY way to deliver files to the user. They cannot see your filesystem.
 
-Example — if you write a poem to /tmp/poem.txt, your response MUST look like:
-Here's the poem I wrote for you!
-FILE_UPLOAD:/tmp/poem.txt
+Step-by-step:
+1. Write the file to disk using the Write tool (use an absolute path, e.g. /tmp/myfile.txt)
+2. In your FINAL text response, include the directive FILE_UPLOAD:/absolute/path on its own line
+3. The framework strips the directive line and uploads the file to Slack automatically
+4. The user sees your clean text + the file attachment
 
-NEVER just mention the filename without the FILE_UPLOAD directive. The user cannot see your local filesystem.
+Your final response text MUST look like this:
+
+Here's the file you asked for!
+FILE_UPLOAD:/tmp/myfile.txt
+
+Key rules:
+- The path MUST be absolute (starts with /)
+- Each FILE_UPLOAD: goes on its own line
+- Works for any file type: .txt, .csv, .png, .pdf, .py, .json, etc.
+- You can include multiple FILE_UPLOAD: lines for multiple files
+- If your response is ONLY a file with no message, just write the directive by itself
+- NEVER describe the file without including FILE_UPLOAD — the user will not receive it
 `.trim();
 
 // ---------------------------------------------------------------------------

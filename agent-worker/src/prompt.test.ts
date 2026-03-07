@@ -365,12 +365,12 @@ describe("FILE_UPLOAD instructions", () => {
 
   it("explains directive lines are stripped from message", () => {
     const prompt = buildSystemPrompt(null);
-    expect(prompt).toContain("automatically stripped");
+    expect(prompt).toContain("strips the directive");
   });
 
   it("includes an example with absolute path", () => {
     const prompt = buildSystemPrompt(null);
-    expect(prompt).toContain("FILE_UPLOAD:/tmp/poem.txt");
+    expect(prompt).toContain("FILE_UPLOAD:/tmp/myfile.txt");
   });
 
   it("does NOT mention old output/ directory approach", () => {
