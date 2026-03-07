@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-code";
+import { query, AbortError } from "@anthropic-ai/claude-code";
 import * as slack from "./slack.js";
 import * as db from "./db.js";
 import * as fs from "node:fs/promises";
@@ -40,8 +40,7 @@ function isPdfFile(file: SlackFile): boolean {
 
 const MAX_CONCURRENT_SESSIONS = 10;
 const TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes — close session after no follow-ups
-const SDK_INACTIVITY_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes — abort if SDK goes silent
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes — close session after no follow-ups
 
 const TEXT_EXTENSIONS = new Set([
   ".txt",
@@ -336,6 +335,8 @@ export async function injectFollowUp(
   });
 
   // Push into the running session's async generator
+  console.log(`[session ${running.sessionId}] follow-up injected — text_len=${fullText.length}`);
+
   return new Promise<boolean>((outerResolve) => {
     const pushed = running.pushMessage({
       text: fullText,
@@ -579,11 +580,13 @@ export async function processMessage(
       pendingFollowUpTs: [] as string[],
       pushMessage: stream.pushMessage,
       close: stream.close,
+      openGate: stream.openGate,
       isPlanMode: planModeRequested,
       pendingPlanApproval: null as import("./session-registry.js").PendingPlanApproval | null,
       setPermissionMode: null as ((mode: import("@anthropic-ai/claude-code").PermissionMode) => Promise<void>) | null,
     };
     registerSession(threadKey, runningSession);
+    console.log(`[session ${sessionId}] registered — thread=${threadKey} active=${activeCount}`);
 
     // Idle timeout: close the stream if no follow-up arrives within IDLE_TIMEOUT_MS
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -738,21 +741,14 @@ export async function processMessage(
         let lastMessageAt = Date.now();
         let waitingForFollowUp = false; // true after result:success — waiting for user, not SDK
 
-        // Independent heartbeat — fires even when the for-await loop is stuck
+        // Independent heartbeat — logging-only (no inactivity abort; 4-hour hard ceiling is the only timeout)
         const heartbeat = setInterval(() => {
           const elapsed = Math.round((Date.now() - startTime) / 1000);
           const sinceLast = Math.round((Date.now() - lastMessageAt) / 1000);
+          const streamState = stream.getState();
           console.log(
-            `[session ${sessionId}] heartbeat ${elapsed}s — last_msg=${sinceLast}s ago — waiting=${waitingForFollowUp} — counts=${JSON.stringify(Object.fromEntries(msgCounts))}`,
+            `[session ${sessionId}] heartbeat ${elapsed}s — last_msg=${sinceLast}s ago — waiting=${waitingForFollowUp} — gate=${streamState.gateOpen} — queued=${streamState.queueLength} — counts=${JSON.stringify(Object.fromEntries(msgCounts))}`,
           );
-
-          if (!waitingForFollowUp && !runningSession.pendingPlanApproval && Date.now() - lastMessageAt > SDK_INACTIVITY_TIMEOUT_MS) {
-            console.error(
-              `[session ${sessionId}] SDK inactivity timeout — no messages for ${sinceLast}s, aborting`,
-            );
-            clearInterval(heartbeat);
-            abortController.abort();
-          }
         }, 30_000);
 
         try {
@@ -929,10 +925,11 @@ export async function processMessage(
                   saveWorkspaceArchive(tempDir, lookup.userId, claudeSessionId, sessionId);
                 }
 
-                // Mark as waiting for user follow-up — suppresses SDK inactivity timeout
+                // Mark as waiting for user follow-up and open the gate for the next message
                 waitingForFollowUp = true;
                 await db.updateSession(sessionId, { status: "idle" });
                 resetIdleTimer();
+                stream.openGate();
               } else {
                 // Error result — surface to user via retry flow
                 console.error("[claude-code] error result:", JSON.stringify(message));
@@ -988,6 +985,7 @@ export async function processMessage(
           stream = createMessageStream(effectivePrompt);
           runningSession.pushMessage = stream.pushMessage;
           runningSession.close = stream.close;
+          runningSession.openGate = stream.openGate;
           await runConversation();
         } else {
           throw err;
@@ -1011,8 +1009,8 @@ export async function processMessage(
       if (idleTimer) clearTimeout(idleTimer);
       stream.close();
 
-      const isAbort =
-        err instanceof Error && err.name === "AbortError";
+      console.error(`[session ${sessionId}] error caught: type=${err instanceof Error ? err.constructor?.name : typeof err} message=${err instanceof Error ? err.message : String(err)}`);
+      const isAbort = err instanceof AbortError;
       const errorMessage = isAbort
         ? "The agent stopped responding and was automatically terminated. Please try again."
         : err instanceof Error
@@ -1059,7 +1057,9 @@ export async function processMessage(
     }).catch(() => {});
   } finally {
     activeCount--;
-    unregisterSession(buildThreadKey(channelId, threadTs || messageTs));
+    const threadKey = buildThreadKey(channelId, threadTs || messageTs);
+    unregisterSession(threadKey);
+    console.log(`[session ${sessionId}] unregistered — thread=${threadKey} active=${activeCount}`);
     // tempDir is stable (keyed by userId) and reused across sessions — no cleanup
   }
 }

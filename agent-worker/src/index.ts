@@ -6,6 +6,7 @@ import {
   retrySession,
   getActiveSessionCount,
 } from "./agent.js";
+import { startReaper } from "./reaper.js";
 import { startScheduler } from "./scheduler.js";
 import * as slack from "./slack.js";
 import type { SlackAttachment } from "./slack.js";
@@ -114,6 +115,7 @@ app.message(async ({ message, body }) => {
         return;
       }
       // If injection failed (session just closed), fall through to normal flow
+      console.log(`[follow-up] injection failed for thread=${threadKey}, falling through to new session`);
       await slack.removeReaction(channelId, messageTs, "eyes").catch(() => {});
     }
   }
@@ -195,6 +197,7 @@ async function start() {
   }).catch((err) => console.error("Workspace cleanup failed:", err));
 
   startScheduler();
+  startReaper();
 
   await app.start();
   console.log(

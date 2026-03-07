@@ -28,6 +28,7 @@ export interface RunningSession {
   pendingFollowUpTs: string[];
   pushMessage: (msg: PendingFollowUp) => boolean;
   close: () => void;
+  openGate: () => void;
   isPlanMode: boolean;
   pendingPlanApproval: PendingPlanApproval | null;
   setPermissionMode: ((mode: PermissionMode) => Promise<void>) | null;
