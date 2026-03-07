@@ -613,6 +613,7 @@ export async function processMessage(
     let planApproved = false;
     let planExecutionStarted = false;
     let approvedPlanText: string | null = null;
+    let statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread });
 
     try {
       const systemPrompt = buildSystemPrompt(claudeMdContent, undefined, {
@@ -747,8 +748,8 @@ export async function processMessage(
         };
       };
 
-      // Create streaming status updater for live progress in Slack
-      let statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread });
+      // Reset streaming status updater for this conversation run
+      statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread });
 
       const runConversation = async () => {
         const conversation = query({
