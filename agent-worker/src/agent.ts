@@ -881,6 +881,7 @@ export async function processMessage(
                       sessionId,
                       role: "assistant",
                       content: uploads.map((u) => `[Uploaded ${u.path}]`).join("\n"),
+                      slackTs: null,
                       metadata: { turns: message.num_turns, cost: message.total_cost_usd },
                     });
                   }
