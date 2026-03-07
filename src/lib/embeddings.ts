@@ -207,7 +207,7 @@ export async function upsertEmbeddings(
       .in(idColumn, ids);
 
     const existingMap = new Map<string, string>();
-    for (const row of (existing ?? []) as Record<string, unknown>[]) {
+    for (const row of ((existing ?? []) as unknown as Record<string, unknown>[])) {
       existingMap.set(row[idColumn] as string, row.search_text as string);
     }
 
