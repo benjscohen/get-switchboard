@@ -232,7 +232,7 @@ describe("GET /api/integrations/callback", () => {
     const location = new URL(res.headers.get("Location")!);
 
     expect(res.status).toBe(307);
-    expect(location.pathname).toBe("/mcp");
+    expect(location.pathname).toBe("/tools");
     expect(location.searchParams.get("connected")).toBe("google-calendar");
   });
 

@@ -9,7 +9,7 @@ export default async function SettingsOrganizationPage() {
   if (!auth) redirect("/login");
 
   const orgId = auth.profile?.organization_id;
-  if (!orgId) redirect("/mcp");
+  if (!orgId) redirect("/tools");
 
   const [{ data: org }, { data: domains }] = await Promise.all([
     supabaseAdmin
@@ -24,7 +24,7 @@ export default async function SettingsOrganizationPage() {
       .order("is_primary", { ascending: false }),
   ]);
 
-  if (!org) redirect("/mcp");
+  if (!org) redirect("/tools");
 
   return (
     <div className="space-y-6">

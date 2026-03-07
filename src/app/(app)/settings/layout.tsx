@@ -17,7 +17,7 @@ export default async function SettingsLayout({
     profile?.org_role === "owner" || profile?.org_role === "admin";
   const isSuperAdmin = profile?.role === "admin";
 
-  if (!isOrgAdmin && !isSuperAdmin) redirect("/mcp");
+  if (!isOrgAdmin && !isSuperAdmin) redirect("/tools");
 
   const tabs: { href: string; label: string }[] = [];
 

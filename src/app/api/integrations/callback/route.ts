@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   if (!code || !state) {
     return NextResponse.redirect(
-      `${getAppOrigin(req)}/mcp?error=missing_params`
+      `${getAppOrigin(req)}/tools?error=missing_params`
     );
   }
 
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   const raw = cookieStore.get(OAUTH_STATE_COOKIE)?.value;
   if (!raw) {
     return NextResponse.redirect(
-      `${getAppOrigin(req)}/mcp?error=missing_state`
+      `${getAppOrigin(req)}/tools?error=missing_state`
     );
   }
 
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     stored = JSON.parse(raw);
   } catch {
     return NextResponse.redirect(
-      `${getAppOrigin(req)}/mcp?error=invalid_state`
+      `${getAppOrigin(req)}/tools?error=invalid_state`
     );
   }
 
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 
   if (stored.state !== state) {
     return NextResponse.redirect(
-      `${getAppOrigin(req)}/mcp?error=state_mismatch`
+      `${getAppOrigin(req)}/tools?error=state_mismatch`
     );
   }
 
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
       : stored.integrationId;
     if (!isUserInScope(scopes, stored.userId, userProfile.org_role, scopeId)) {
       return NextResponse.redirect(
-        `${getAppOrigin(req)}/mcp?error=access_denied`
+        `${getAppOrigin(req)}/tools?error=access_denied`
       );
     }
   }
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
     const proxyIntegration = proxyIntegrationRegistry.get(stored.integrationId);
     if (!proxyIntegration?.oauth) {
       return NextResponse.redirect(
-        `${getAppOrigin(req)}/mcp?error=unknown_integration`
+        `${getAppOrigin(req)}/tools?error=unknown_integration`
       );
     }
 
@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
         : undefined;
       if (!proxyClientId) {
         return NextResponse.redirect(
-          `${getAppOrigin(req)}/mcp?error=not_configured`
+          `${getAppOrigin(req)}/tools?error=not_configured`
         );
       }
     } else {
@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
 
       if (!clientRow) {
         return NextResponse.redirect(
-          `${getAppOrigin(req)}/mcp?error=not_configured`
+          `${getAppOrigin(req)}/tools?error=not_configured`
         );
       }
       proxyClientId = clientRow.client_id;
@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
     const integration = integrationRegistry.get(stored.integrationId);
     if (!integration) {
       return NextResponse.redirect(
-        `${getAppOrigin(req)}/mcp?error=unknown_integration`
+        `${getAppOrigin(req)}/tools?error=unknown_integration`
       );
     }
 
@@ -140,7 +140,7 @@ export async function GET(req: NextRequest) {
 
     if (!clientId || !clientSecret) {
       return NextResponse.redirect(
-        `${getAppOrigin(req)}/mcp?error=not_configured`
+        `${getAppOrigin(req)}/tools?error=not_configured`
       );
     }
 
@@ -165,7 +165,7 @@ export async function GET(req: NextRequest) {
     const errorBody = await tokenRes.text();
     console.error("Token exchange failed:", tokenRes.status, errorBody);
     return NextResponse.redirect(
-      `${getAppOrigin(req)}/mcp?error=token_exchange_failed`
+      `${getAppOrigin(req)}/tools?error=token_exchange_failed`
     );
   }
 
@@ -191,7 +191,7 @@ export async function GET(req: NextRequest) {
   if (!accessToken) {
     console.error("No access token in response:", JSON.stringify(tokens));
     return NextResponse.redirect(
-      `${getAppOrigin(req)}/mcp?error=token_exchange_failed`
+      `${getAppOrigin(req)}/tools?error=token_exchange_failed`
     );
   }
 
@@ -223,11 +223,11 @@ export async function GET(req: NextRequest) {
   if (upsertError) {
     console.error("Connection upsert failed:", upsertError);
     return NextResponse.redirect(
-      `${getAppOrigin(req)}/mcp?error=save_failed`
+      `${getAppOrigin(req)}/tools?error=save_failed`
     );
   }
 
   return NextResponse.redirect(
-    `${getAppOrigin(req)}/mcp?connected=${stored.integrationId}`
+    `${getAppOrigin(req)}/tools?connected=${stored.integrationId}`
   );
 }

@@ -8,7 +8,7 @@ export default async function SettingsTeamsPage() {
   if (!auth) redirect("/login");
 
   const orgId = auth.profile?.organization_id;
-  if (!orgId) redirect("/mcp");
+  if (!orgId) redirect("/tools");
 
   const { data: teamsRaw } = await supabaseAdmin
     .from("teams")

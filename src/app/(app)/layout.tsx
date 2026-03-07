@@ -28,7 +28,7 @@ export default async function AppLayout({
       <header className="border-b border-border bg-bg/80 backdrop-blur-xl">
         <Container className="flex h-14 items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/mcp" className="flex items-center gap-2 text-lg font-bold">
+            <Link href="/tools" className="flex items-center gap-2 text-lg font-bold">
               <svg
                 width="20"
                 height="20"
@@ -80,7 +80,7 @@ export default async function AppLayout({
               </span>
             )}
             <MainNav links={[
-              { href: "/mcp", label: "MCP" },
+              { href: "/tools", label: "Tools" },
               { href: "/skills", label: "Skills" },
               { href: "/agents", label: "Agents" },
               { href: "/schedules", label: "Schedules" },

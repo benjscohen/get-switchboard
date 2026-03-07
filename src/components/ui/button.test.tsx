@@ -20,9 +20,9 @@ vi.mock("next/link", () => ({
 
 describe("Button", () => {
   it("renders a <Link> when href is provided", () => {
-    render(<Button href="/mcp">Go</Button>);
+    render(<Button href="/tools">Go</Button>);
     const link = screen.getByTestId("next-link");
-    expect(link).toHaveAttribute("href", "/mcp");
+    expect(link).toHaveAttribute("href", "/tools");
     expect(link).toHaveTextContent("Go");
   });
 

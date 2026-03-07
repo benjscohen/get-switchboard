@@ -30,13 +30,13 @@ export function DashboardToasts() {
         ERROR_MESSAGES[errorCode] ?? "Something went wrong. Please try again.",
         "error"
       );
-      router.replace("/mcp", { scroll: false });
+      router.replace("/tools", { scroll: false });
     } else if (connected) {
       const name = connected
         .replace(/-/g, " ")
         .replace(/\b\w/g, (c) => c.toUpperCase());
       addToast(`Successfully connected ${name}!`, "success");
-      router.replace("/mcp", { scroll: false });
+      router.replace("/tools", { scroll: false });
     }
   }, [searchParams, router, addToast]);
 

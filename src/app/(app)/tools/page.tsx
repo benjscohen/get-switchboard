@@ -317,7 +317,7 @@ export default async function DashboardPage() {
   return (
     <Container className="py-10">
       <DashboardToasts />
-      <h1 className="mb-8 text-2xl font-bold">MCP</h1>
+      <h1 className="mb-8 text-2xl font-bold">Tools</h1>
       <div className="space-y-6">
         <ConnectCard
           origin={origin}
