@@ -71,9 +71,34 @@ export async function proxyToolCall(
       undefined,
       { signal: abort.signal }
     );
-    const content = ((result.content ?? []) as Array<{ type: string; text: string }>).map(
-      (c) => ({ type: "text" as const, text: c.text ?? "" })
-    );
+    const rawContent = (result.content ?? []) as Array<Record<string, unknown>>;
+    const content = rawContent.map((c) => {
+      // TextContent: { type: "text", text: "..." }
+      if (c.type === "text" && typeof c.text === "string") {
+        return { type: "text" as const, text: c.text };
+      }
+      // EmbeddedResource: { type: "resource", resource: { text?: string, blob?: string, uri: string } }
+      if (c.type === "resource" && c.resource && typeof c.resource === "object") {
+        const res = c.resource as Record<string, unknown>;
+        if (typeof res.text === "string") {
+          return { type: "text" as const, text: res.text };
+        }
+        if (typeof res.blob === "string") {
+          return { type: "text" as const, text: `[Base64 content: ${res.mimeType ?? "unknown type"}]\n${res.blob}` };
+        }
+        return { type: "text" as const, text: `[Resource: ${res.uri ?? "unknown"}]` };
+      }
+      // ImageContent / AudioContent: { type: "image"|"audio", data: "base64...", mimeType: "..." }
+      if ((c.type === "image" || c.type === "audio") && typeof c.data === "string") {
+        return { type: "text" as const, text: `[${c.type}: ${c.mimeType ?? "unknown type"}]` };
+      }
+      // ResourceLink: { type: "resource_link", uri: "...", name: "..." }
+      if (c.type === "resource_link" && typeof c.uri === "string") {
+        return { type: "text" as const, text: `[Resource link: ${c.name ?? c.uri}]` };
+      }
+      // Fallback: stringify anything else
+      return { type: "text" as const, text: typeof c.text === "string" ? c.text : JSON.stringify(c) };
+    });
     return {
       content,
       isError: Boolean(result.isError),
