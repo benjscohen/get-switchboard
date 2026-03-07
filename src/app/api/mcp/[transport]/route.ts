@@ -133,6 +133,7 @@ async function mcpHandler(req: Request): Promise<Response> {
     for (const proxy of allProxyIntegrations) {
       if (proxy.oauth) continue;
       if (proxy.keyMode === "org") continue;
+      if (proxy.keyMode === "per_user") continue;
       discoverAndCacheProxyTools(proxy.id, proxy.serverUrl)
         .then(() => loadProxyTools().then((result) => { resolvedProxyTools = result; }))
         .catch(() => {});
