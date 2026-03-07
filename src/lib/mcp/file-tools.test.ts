@@ -10,6 +10,7 @@ vi.mock("@/lib/files/service", () => ({
   moveFile: vi.fn(),
   listDirectory: vi.fn(),
   searchFiles: vi.fn(),
+  searchFilesWithEmbeddings: vi.fn(),
   createFolder: vi.fn(),
   deleteFolder: vi.fn(),
   resolveFileId: vi.fn(),
@@ -26,6 +27,7 @@ import {
   moveFile,
   listDirectory,
   searchFiles,
+  searchFilesWithEmbeddings,
   createFolder,
   deleteFolder,
   resolveFileId,
@@ -299,11 +301,11 @@ describe("registerFileTools", () => {
 
     it("passes search params and returns results", async () => {
       const results = [{ id: "f1", path: "/notes.md" }];
-      vi.mocked(searchFiles).mockResolvedValue({ ok: true, data: results });
+      vi.mocked(searchFilesWithEmbeddings).mockResolvedValue({ ok: true, data: results });
       const result = await call({ query: "hello", path: "/projects" });
       expect(result.isError).toBeUndefined();
       expect(JSON.parse(result.content[0].text)).toEqual(results);
-      expect(searchFiles).toHaveBeenCalledWith(
+      expect(searchFilesWithEmbeddings).toHaveBeenCalledWith(
         expect.objectContaining({ userId: "user-1" }),
         { query: "hello", path: "/projects" },
       );
@@ -311,7 +313,7 @@ describe("registerFileTools", () => {
 
     it("returns error on failure", async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(searchFiles).mockResolvedValue({ ok: false, error: "Search failed", status: 500 } as any);
+      vi.mocked(searchFilesWithEmbeddings).mockResolvedValue({ ok: false, error: "Search failed", status: 500 } as any);
       const result = await call({ query: "test" });
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toBe("Search failed");

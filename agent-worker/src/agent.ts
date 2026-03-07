@@ -224,21 +224,6 @@ export async function processMessage(
   activeSessions.set(lookup.userId, sessionId);
   activeCount++;
 
-  // 8. Post "Working on it..." message
-  let statusTs: string;
-  try {
-    statusTs = await slack.postMessage(
-      channelId,
-      "Working on it...",
-      threadTs || messageTs,
-    );
-  } catch (err) {
-    console.error("Failed to post status message:", err);
-    activeSessions.delete(lookup.userId);
-    activeCount--;
-    return;
-  }
-
   const replyThread = threadTs || messageTs;
 
   let tempDir: string | null = null;
@@ -315,9 +300,11 @@ export async function processMessage(
     let totalTurns = 0;
 
     try {
+      const systemPrompt = buildSystemPrompt(claudeMdContent);
+
       const buildQueryOptions = () => ({
         model: lookup.model,
-        customSystemPrompt: buildSystemPrompt(claudeMdContent),
+        customSystemPrompt: systemPrompt,
         ...(tempDir ? { cwd: tempDir } : {}),
         mcpServers: {
           switchboard: {
@@ -426,11 +413,12 @@ export async function processMessage(
 
       const status = isAbort ? "timeout" : "failed";
 
-      await slack.updateMessage(
+      const errorTs = await slack.postMessage(
         channelId,
-        statusTs,
         `Sorry, something went wrong: ${errorMessage}`,
+        replyThread,
       );
+      await slack.removeReaction(channelId, messageTs, "eyes").catch(() => {});
       await slack.addReaction(channelId, messageTs, "x").catch(() => {});
 
       await db.updateSession(sessionId, {
@@ -443,19 +431,20 @@ export async function processMessage(
         sessionId,
         role: "assistant",
         content: errorMessage,
-        slackTs: statusTs,
+        slackTs: errorTs,
         metadata: { error: true },
       });
 
       return;
     }
 
-    // 13. Success: update Slack message with result
-    await slack.updateMessage(
+    // 13. Success: post result as a new message (triggers notification)
+    const resultTs = await slack.postMessage(
       channelId,
-      statusTs,
       truncateForSlack(resultText),
+      replyThread,
     );
+    await slack.removeReaction(channelId, messageTs, "eyes").catch(() => {});
     await slack.addReaction(channelId, messageTs, "white_check_mark").catch(() => {});
 
     // 14. Update session as completed
@@ -471,7 +460,7 @@ export async function processMessage(
       sessionId,
       role: "assistant",
       content: resultText,
-      slackTs: statusTs,
+      slackTs: resultTs,
       metadata: { totalTurns },
     });
   } catch (err) {
@@ -480,12 +469,13 @@ export async function processMessage(
       err instanceof Error ? err.message : "An unexpected error occurred";
 
     await slack
-      .updateMessage(
+      .postMessage(
         channelId,
-        statusTs,
         `Sorry, something went wrong: ${errorMessage}`,
+        replyThread,
       )
       .catch(() => {});
+    await slack.removeReaction(channelId, messageTs, "eyes").catch(() => {});
     await slack.addReaction(channelId, messageTs, "x").catch(() => {});
 
     await db
@@ -528,10 +518,18 @@ export async function recoverStaleSessions(): Promise<void> {
 
     // Notify in Slack thread if possible
     if (session.slack_channel_id && session.slack_thread_ts) {
+      const promptSnippet = session.prompt
+        ? session.prompt.length > 200
+          ? session.prompt.slice(0, 200) + "..."
+          : session.prompt
+        : null;
+      const message = promptSnippet
+        ? `Sorry, my previous session was interrupted by a restart. Your request was: *${promptSnippet}*\nPlease send your request again.`
+        : "Sorry, my previous session was interrupted by a restart. Please send your request again.";
       await slack
         .postMessage(
           session.slack_channel_id,
-          "Sorry, my previous session was interrupted by a restart. Please send your request again.",
+          message,
           session.slack_thread_ts,
         )
         .catch((err) =>

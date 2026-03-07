@@ -1,8 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ListPromptsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import {
-  filterSkillsForUser,
   skillPromptName,
   interpolateSkillContent,
   type SkillRecord,
@@ -15,6 +13,7 @@ import {
   listSkillVersions,
   getSkillVersion,
   rollbackSkill,
+  searchSkills,
 } from "@/lib/skills/service";
 import type { ToolMeta } from "./tool-filtering";
 import { withToolLogging } from "./tool-logging";
@@ -50,9 +49,9 @@ export function registerSkillTools(
   // Register manage_skills tool (consolidated CRUD)
   server.tool(
     "manage_skills",
-    "Manage skills (prompt templates). CRUD plus version history and rollback. Use 'history' to view the audit trail (requires write access).",
+    "Manage skills (prompt templates). CRUD, search, version history, and rollback. Use 'search' with name as query string to find skills semantically.",
     {
-      operation: z.enum(["list", "get", "create", "update", "delete", "history", "version", "rollback"])
+      operation: z.enum(["list", "get", "create", "update", "delete", "history", "version", "rollback", "search"])
         .describe("Skill operation to perform"),
       id: z.string().optional()
         .describe("Skill ID (required for update, delete, history, version, rollback)"),
@@ -188,40 +187,17 @@ export function registerSkillTools(
           if (!result.ok) return err(result.error);
           return ok(JSON.stringify(result.data, null, 2) + "\n\nRollback applied. MCP prompt changes take effect after server restart.");
         }
+
+        case "search": {
+          if (!args.name) return err("Missing required field: name (used as search query)");
+
+          const result = await searchSkills(auth, args.name, { limit: 10 });
+          if (!result.ok) return err(result.error);
+          return ok(result.data);
+        }
       }
     })
   );
-
-  // Override prompts/list to filter per-user
-  const registeredPrompts = (server as unknown as { _registeredPrompts: Record<string, {
-    description?: string;
-    argsSchema?: unknown;
-  }> })._registeredPrompts;
-
-  server.server.setRequestHandler(ListPromptsRequestSchema, (_request, extra) => {
-    const userId = extra.authInfo?.extra?.userId as string | undefined;
-    const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
-    const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
-
-    const visible = filterSkillsForUser(skills, { userId, organizationId, teamIds });
-    const visibleNames = new Set(visible.map(skillPromptName));
-
-    const prompts = Object.entries(registeredPrompts)
-      .filter(([name]) => visibleNames.has(name))
-      .map(([name, prompt]) => ({
-        name,
-        description: prompt.description,
-        arguments: skills
-          .find((s) => skillPromptName(s) === name)
-          ?.arguments.map((a) => ({
-            name: a.name,
-            description: a.description,
-            required: a.required,
-          })) ?? [],
-      }));
-
-    return { prompts };
-  });
 
   // Mark skill tool as platform tool (always visible, no connection required)
   toolMeta.set("manage_skills", { integrationId: "platform", orgId: null });

@@ -7,6 +7,7 @@ import {
   moveFile,
   listDirectory,
   searchFiles,
+  searchFilesWithEmbeddings,
   createFolder,
   deleteFolder,
   resolveFileId,
@@ -128,7 +129,7 @@ export function registerFileTools(
       const auth = getMcpAuth(extra);
       if (!auth) return unauthorized();
 
-      const result = await searchFiles(auth, { query: args.query, path: args.path });
+      const result = await searchFilesWithEmbeddings(auth, { query: args.query, path: args.path });
       if (!result.ok) return err(result.error);
       return ok(result.data);
     }),

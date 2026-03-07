@@ -5,38 +5,32 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { scopePrefix, scopeBadgeLabel } from "@/lib/shared/scope-utils";
 
-interface SkillArgument {
-  name: string;
-  description: string;
-  required: boolean;
-}
-
-interface Skill {
+interface Agent {
   id: string;
   name: string;
   slug: string;
   description: string | null;
-  content: string;
-  arguments: SkillArgument[];
+  instructions: string;
+  toolAccess: string[];
+  model: string | null;
   scope: "organization" | "team" | "user";
   teamId?: string;
   enabled: boolean;
 }
 
-interface SkillListProps {
-  skills: Skill[];
+interface AgentListProps {
+  agents: Agent[];
   canEdit: boolean;
   teamNames: Record<string, string>;
-  onEdit: (skill: Skill) => void;
+  onEdit: (agent: Agent) => void;
   onDelete: (id: string) => void;
   onToggle: (id: string, enabled: boolean) => void;
-  onHistory: (skill: Skill) => void;
-  onPreview: (skill: Skill) => void;
+  onHistory: (agent: Agent) => void;
+  onPreview: (agent: Agent) => void;
 }
 
-
-export function SkillList({
-  skills,
+export function AgentList({
+  agents,
   canEdit,
   teamNames,
   onEdit,
@@ -44,65 +38,68 @@ export function SkillList({
   onToggle,
   onHistory,
   onPreview,
-}: SkillListProps) {
-  if (skills.length === 0) {
+}: AgentListProps) {
+  if (agents.length === 0) {
     return null;
   }
 
   return (
     <div className="space-y-3">
-      {skills.map((skill) => (
+      {agents.map((agent) => (
         <Card
-          key={skill.id}
+          key={agent.id}
           hover={false}
           className="p-4 cursor-pointer transition-colors hover:bg-bg-hover/50"
           role="button"
           tabIndex={0}
-          onClick={() => onPreview(skill)}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPreview(skill); } }}
+          onClick={() => onPreview(agent)}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPreview(agent); } }}
         >
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-medium">{skill.name}</h3>
+                <h3 className="text-sm font-medium">{agent.name}</h3>
                 <Badge>
-                  {scopePrefix(skill.scope)}:{skill.slug}
+                  agent:{scopePrefix(agent.scope)}:{agent.slug}
                 </Badge>
-                <Badge variant="accent">{scopeBadgeLabel(skill.scope, skill.teamId, teamNames)}</Badge>
-                {skill.arguments.length > 0 && (
+                <Badge variant="accent">{scopeBadgeLabel(agent.scope, agent.teamId, teamNames)}</Badge>
+                {agent.toolAccess.length > 0 && (
                   <span className="text-xs text-text-tertiary">
-                    {skill.arguments.length} arg{skill.arguments.length !== 1 ? "s" : ""}
+                    {agent.toolAccess.length} tool{agent.toolAccess.length !== 1 ? "s" : ""}
                   </span>
                 )}
-                {!skill.enabled && (
+                {agent.model && (
+                  <span className="text-xs text-text-tertiary">{agent.model}</span>
+                )}
+                {!agent.enabled && (
                   <span className="text-xs text-text-tertiary">(disabled)</span>
                 )}
               </div>
-              {skill.description && (
-                <p className="mt-1 text-xs text-text-secondary">{skill.description}</p>
+              {agent.description && (
+                <p className="mt-1 text-xs text-text-secondary">{agent.description}</p>
               )}
             </div>
             {canEdit && (
               <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
                 <button
-                  onClick={() => onToggle(skill.id, !skill.enabled)}
+                  onClick={() => onToggle(agent.id, !agent.enabled)}
                   className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                    skill.enabled ? "bg-accent" : "bg-border"
+                    agent.enabled ? "bg-accent" : "bg-border"
                   }`}
                 >
                   <span
                     className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-                      skill.enabled ? "translate-x-4.5" : "translate-x-0.5"
+                      agent.enabled ? "translate-x-4.5" : "translate-x-0.5"
                     }`}
                   />
                 </button>
-                <Button size="sm" variant="ghost" onClick={() => onHistory(skill)}>
+                <Button size="sm" variant="ghost" onClick={() => onHistory(agent)}>
                   History
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => onEdit(skill)}>
+                <Button size="sm" variant="ghost" onClick={() => onEdit(agent)}>
                   Edit
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => onDelete(skill.id)}>
+                <Button size="sm" variant="ghost" onClick={() => onDelete(agent.id)}>
                   Delete
                 </Button>
               </div>

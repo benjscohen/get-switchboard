@@ -191,6 +191,34 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   deep_researcher_start: "write",
   deep_researcher_check: "read",
 
+  // ── GitHub ──
+  get_file_contents: "read",
+  create_or_update_file: "write",
+  push_files: "write",
+  search_repositories: "read",
+  create_repository: "write",
+  fork_repository: "write",
+  create_branch: "write",
+  list_commits: "read",
+  create_issue: "write",
+  list_issues: "read",
+  get_issue: "read",
+  update_issue: "write",
+  add_issue_comment: "write",
+  search_issues: "read",
+  create_pull_request: "write",
+  list_pull_requests: "read",
+  get_pull_request: "read",
+  get_pull_request_files: "read",
+  get_pull_request_status: "read",
+  get_pull_request_comments: "read",
+  get_pull_request_reviews: "read",
+  create_pull_request_review: "write",
+  merge_pull_request: "destructive",
+  update_pull_request_branch: "write",
+  search_code: "read",
+  search_users: "read",
+
   // ── Skill tools ──
   manage_skills: "write",
 
@@ -225,6 +253,9 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   submit_feedback: "write",
   discover_tools: "read",
 };
+
+/** Set of tool names with explicit risk classifications (for completeness tests). */
+export const explicitlyClassifiedTools = new Set(Object.keys(toolRiskMap));
 
 // Pattern-based heuristic for tools not in the static map.
 // Checked in order — first match wins.

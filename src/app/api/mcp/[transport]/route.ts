@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { ListToolsRequestSchema, ListPromptsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { withMcpAuth } from "mcp-handler";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { hashApiKey } from "@/lib/crypto";
@@ -10,7 +10,8 @@ import { allIntegrations } from "@/lib/integrations/registry";
 import { proxyIntegrationRegistry } from "@/lib/integrations/proxy-registry";
 import { loadProxyTools, discoverAndCacheProxyTools, type ProxyTool } from "@/lib/integrations/proxy-tools";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
-import type { SkillRecord } from "@/lib/mcp/skill-filtering";
+import { filterSkillsForUser, skillPromptName, type SkillRecord } from "@/lib/mcp/skill-filtering";
+import { filterAgentsForUser, agentPromptName, type AgentRecord } from "@/lib/mcp/agent-filtering";
 import { registerAdminTools } from "@/lib/mcp/admin-tools";
 import { registerVaultTools } from "@/lib/mcp/vault-tools";
 import { registerFileTools } from "@/lib/mcp/file-tools";
@@ -18,6 +19,7 @@ import { registerMemoryTools } from "@/lib/mcp/memory-tools";
 import { registerDiscoverTools } from "@/lib/mcp/discover-tools";
 import { registerCallTool } from "@/lib/mcp/call-tool";
 import { registerSkillTools } from "@/lib/mcp/skill-tools";
+import { registerAgentTools, getAgentPromptEntries } from "@/lib/mcp/agent-tools";
 import { registerIntegrationTools } from "@/lib/mcp/integration-tools";
 import { filterToolsForUser, type ToolMeta } from "@/lib/mcp/tool-filtering";
 import { getFilterContext } from "@/lib/mcp/types";
@@ -63,6 +65,18 @@ const skillsPromise = supabaseAdmin
 
 let resolvedSkills: SkillRecord[] | null = null;
 skillsPromise.then((skills) => { resolvedSkills = skills; });
+
+const agentsPromise = supabaseAdmin
+  .from("agents")
+  .select("id, name, slug, description, instructions, tool_access, model, organization_id, team_id, user_id, enabled")
+  .eq("enabled", true)
+  .then((res) => {
+    if (res.error) console.error("[MCP] agents query error:", res.error);
+    return (res.data ?? []) as AgentRecord[];
+  });
+
+let resolvedAgents: AgentRecord[] | null = null;
+agentsPromise.then((agents) => { resolvedAgents = agents; });
 
 // ── Discovery + tools/list handler ──
 
@@ -135,6 +149,7 @@ async function mcpHandler(req: Request): Promise<Response> {
   if (resolvedCustomTools === null) resolvedCustomTools = await customToolsPromise;
   if (resolvedProxyTools === null) resolvedProxyTools = await proxyToolsPromise;
   if (resolvedSkills === null) resolvedSkills = await skillsPromise;
+  if (resolvedAgents === null) resolvedAgents = await agentsPromise;
 
   // Auto-discover proxy tools if using fallback (DB is empty)
   if (resolvedProxyTools.fallbackIntegrationIds.size > 0 && !proxyDiscoveryCooldownUntil) {
@@ -162,6 +177,7 @@ async function mcpHandler(req: Request): Promise<Response> {
 
 - **Files & Memory**: A versioned file system for documents and persistent memory.
 - **Skills**: Reusable prompt templates (manage_skills).
+- **Agents**: Reusable AI agent configurations. Use /agent:name to load one (manage_agents).
 - **Vault**: Encrypted secrets storage. Share with teammates, teams, or the org.
 
 ## Memory Conventions
@@ -194,10 +210,53 @@ You have a durable memory system. Follow these conventions:
     onProxyToolsReload: (r) => { resolvedProxyTools = r; },
   });
   registerSkillTools(server, toolMeta, resolvedSkills);
+  registerAgentTools(server, toolMeta, resolvedAgents);
   registerAdminTools(server, toolMeta);
   registerVaultTools(server, toolMeta);
   registerFileTools(server, toolMeta);
   registerMemoryTools(server, toolMeta);
+  // Override prompts/list to filter both skills and agents per-user
+  {
+    const registeredPrompts = (server as unknown as { _registeredPrompts: Record<string, {
+      description?: string;
+      argsSchema?: unknown;
+    }> })._registeredPrompts;
+
+    server.server.setRequestHandler(ListPromptsRequestSchema, (_request, extra) => {
+      const userId = extra.authInfo?.extra?.userId as string | undefined;
+      const organizationId = extra.authInfo?.extra?.organizationId as string | undefined;
+      const teamIds = extra.authInfo?.extra?.teamIds as string[] | undefined;
+
+      // Skill prompts
+      const visibleSkills = filterSkillsForUser(resolvedSkills ?? [], { userId, organizationId, teamIds });
+      const skillNames = new Set(visibleSkills.map(skillPromptName));
+
+      const skillPrompts = Object.entries(registeredPrompts)
+        .filter(([name]) => skillNames.has(name))
+        .map(([name, prompt]) => ({
+          name,
+          description: prompt.description,
+          arguments: (resolvedSkills ?? [])
+            .find((s) => skillPromptName(s) === name)
+            ?.arguments.map((a) => ({
+              name: a.name,
+              description: a.description,
+              required: a.required,
+            })) ?? [],
+        }));
+
+      // Agent prompts
+      const visibleAgents = filterAgentsForUser(resolvedAgents ?? [], { userId, organizationId, teamIds });
+      const agentPrompts = visibleAgents.map((agent) => ({
+        name: agentPromptName(agent),
+        description: agent.description || agent.name,
+        arguments: [] as Array<{ name: string; description: string; required: boolean }>,
+      }));
+
+      return { prompts: [...skillPrompts, ...agentPrompts] };
+    });
+  }
+
   buildAndRegisterDiscovery(server);
 
   await server.connect(transport);

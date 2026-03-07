@@ -57,6 +57,28 @@ export async function addReaction(
   }
 }
 
+/**
+ * Remove a reaction emoji from a message.
+ */
+export async function removeReaction(
+  channel: string,
+  ts: string,
+  emoji: string,
+): Promise<void> {
+  try {
+    await client.reactions.remove({
+      channel,
+      timestamp: ts,
+      name: emoji,
+    });
+  } catch (err: unknown) {
+    const error = err as { data?: { error?: string } };
+    if (error.data?.error !== "no_reaction") {
+      throw err;
+    }
+  }
+}
+
 export interface ThreadMessage {
   role: "user" | "assistant";
   text: string;

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/api-auth";
-
-const ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"] as const;
+import { ALLOWED_MODEL_IDS } from "@/lib/agent-models";
 
 export async function GET() {
   const authResult = await requireAuth();
@@ -29,9 +28,9 @@ export async function PATCH(request: Request) {
   const body = await request.json();
   const model = body.model;
 
-  if (!model || !ALLOWED_MODELS.includes(model)) {
+  if (!model || !ALLOWED_MODEL_IDS.includes(model)) {
     return NextResponse.json(
-      { error: `model must be one of: ${ALLOWED_MODELS.join(", ")}` },
+      { error: `model must be one of: ${ALLOWED_MODEL_IDS.join(", ")}` },
       { status: 400 }
     );
   }

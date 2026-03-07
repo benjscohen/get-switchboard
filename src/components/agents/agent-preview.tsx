@@ -6,26 +6,21 @@ import { MarkdownContent } from "@/components/ui/markdown-content";
 import { useEscapeKey } from "@/hooks/use-escape-key";
 import { scopePrefix, scopeBadgeLabel } from "@/lib/shared/scope-utils";
 
-interface SkillArgument {
-  name: string;
-  description: string;
-  required: boolean;
-}
-
-interface Skill {
+interface Agent {
   id: string;
   name: string;
   slug: string;
   description: string | null;
-  content: string;
-  arguments: SkillArgument[];
+  instructions: string;
+  toolAccess: string[];
+  model: string | null;
   scope: "organization" | "team" | "user";
   teamId?: string;
   enabled: boolean;
 }
 
-interface SkillPreviewProps {
-  skill: Skill;
+interface AgentPreviewProps {
+  agent: Agent;
   teamNames: Record<string, string>;
   onEdit: () => void;
   onHistory: () => void;
@@ -33,7 +28,7 @@ interface SkillPreviewProps {
 }
 
 
-export function SkillPreview({ skill, teamNames, onEdit, onHistory, onClose }: SkillPreviewProps) {
+export function AgentPreview({ agent, teamNames, onEdit, onHistory, onClose }: AgentPreviewProps) {
   useEscapeKey(onClose);
 
   return (
@@ -48,10 +43,10 @@ export function SkillPreview({ skill, teamNames, onEdit, onHistory, onClose }: S
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border p-6 pb-4">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold">{skill.name}</h2>
-            <Badge>{scopePrefix(skill.scope)}:{skill.slug}</Badge>
-            <Badge variant="accent">{scopeBadgeLabel(skill.scope, skill.teamId, teamNames)}</Badge>
-            {!skill.enabled && (
+            <h2 className="text-lg font-semibold">{agent.name}</h2>
+            <Badge>agent:{scopePrefix(agent.scope)}:{agent.slug}</Badge>
+            <Badge variant="accent">{scopeBadgeLabel(agent.scope, agent.teamId, teamNames)}</Badge>
+            {!agent.enabled && (
               <Badge variant="default">Disabled</Badge>
             )}
           </div>
@@ -64,39 +59,42 @@ export function SkillPreview({ skill, teamNames, onEdit, onHistory, onClose }: S
 
         {/* Body */}
         <div className="space-y-4 p-6">
-          {skill.description && (
-            <p className="text-sm text-text-secondary">{skill.description}</p>
+          {agent.description && (
+            <p className="text-sm text-text-secondary">{agent.description}</p>
           )}
 
-          {skill.arguments.length > 0 && (
+          {agent.toolAccess.length > 0 && (
             <div>
               <h3 className="mb-2 text-xs font-medium text-text-secondary uppercase tracking-wider">
-                Arguments
+                Tool Access
               </h3>
-              <div className="space-y-1">
-                {skill.arguments.map((arg) => (
-                  <div key={arg.name} className="flex items-center gap-2 text-sm">
-                    <code className="rounded bg-bg-hover px-1.5 py-0.5 text-xs font-mono">
-                      {arg.name}
-                    </code>
-                    {arg.required && (
-                      <span className="text-xs text-accent">required</span>
-                    )}
-                    {arg.description && (
-                      <span className="text-text-secondary">{arg.description}</span>
-                    )}
-                  </div>
+              <div className="flex flex-wrap gap-1.5">
+                {agent.toolAccess.map((tool) => (
+                  <span key={tool} className="rounded-md bg-bg-hover px-2 py-0.5 text-xs font-mono">
+                    {tool}
+                  </span>
                 ))}
               </div>
             </div>
           )}
 
+          {agent.model && (
+            <div>
+              <h3 className="mb-2 text-xs font-medium text-text-secondary uppercase tracking-wider">
+                Model
+              </h3>
+              <span className="rounded-md bg-accent/10 px-2 py-0.5 text-xs text-accent">
+                {agent.model}
+              </span>
+            </div>
+          )}
+
           <div>
             <h3 className="mb-2 text-xs font-medium text-text-secondary uppercase tracking-wider">
-              Content
+              Instructions
             </h3>
             <div className="rounded-lg border border-border bg-bg p-4">
-              <MarkdownContent content={skill.content} highlightArgs />
+              <MarkdownContent content={agent.instructions} />
             </div>
           </div>
         </div>

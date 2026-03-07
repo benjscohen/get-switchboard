@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { ServiceResult } from "@/lib/vault/service";
+import { upsertEmbeddings, deleteEmbedding, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore, EMBEDDING_TABLES } from "@/lib/embeddings";
 
 // ── Types ──
 
@@ -158,6 +159,50 @@ function formatListItem(row: Record<string, unknown>): FileListItem {
   };
 }
 
+// ── Embedding Helpers ──
+
+export function shouldEmbedFile(row: Record<string, unknown>): boolean {
+  if (row.is_folder) return false;
+  const mime = (row.mime_type as string) || "text/plain";
+  if (mime.startsWith("image/") || mime.startsWith("audio/") || mime.startsWith("video/") || mime === "application/octet-stream") {
+    return false;
+  }
+  return true;
+}
+
+export function buildFileSearchText(row: Record<string, unknown>): string {
+  const parts = [
+    `File: ${row.name as string}`,
+    `Path: ${row.path as string}`,
+  ];
+  const mime = row.mime_type as string;
+  if (mime && mime !== "text/plain") parts.push(`Type: ${mime}`);
+  const content = row.content as string | null;
+  if (content) parts.push(`Content: ${content.slice(0, 8000)}`);
+  const metadata = row.metadata as Record<string, unknown> | null;
+  if (metadata && typeof metadata === "object") {
+    const tags = metadata.tags;
+    if (Array.isArray(tags)) parts.push(`Tags: ${tags.join(", ")}`);
+  }
+  return parts.join("\n");
+}
+
+const { table: FILE_TABLE, idColumn: FILE_ID_COL } = EMBEDDING_TABLES.files;
+
+function queueFileEmbedding(row: Record<string, unknown>): void {
+  if (!shouldEmbedFile(row)) return;
+  upsertEmbeddings(FILE_TABLE, FILE_ID_COL, [{
+    id: row.id as string,
+    searchText: buildFileSearchText(row),
+    extraColumns: { path: row.path as string, name: row.name as string },
+  }]).catch((err) => console.warn("[files] embedding failed:", err));
+}
+
+function removeFileEmbedding(id: string): void {
+  deleteEmbedding(FILE_TABLE, FILE_ID_COL, id)
+    .catch((err) => console.warn("[files] remove embedding failed:", err));
+}
+
 // ── Internal: ensure parent folders exist ──
 
 async function ensureParentFolders(auth: FileAuth, path: string): Promise<void> {
@@ -307,6 +352,8 @@ export async function writeFile(
   });
   if (versionError) console.error("Failed to record file version:", versionError.message);
 
+  queueFileEmbedding(data);
+
   return { ok: true, data: formatFile(data) };
 }
 
@@ -341,6 +388,7 @@ export async function deleteFileById(
 
   const { error } = await q;
   if (error) return { ok: false, error: error.message, status: 500 };
+  removeFileEmbedding(id);
   return { ok: true, data: { deleted: true } };
 }
 
@@ -395,6 +443,8 @@ export async function updateFileById(
     changed_by: auth.userId,
   });
   if (versionError) console.error("Failed to record file version:", versionError.message);
+
+  queueFileEmbedding(data);
 
   return { ok: true, data: formatFile(data) };
 }
@@ -479,6 +529,8 @@ export async function moveFile(
     });
     if (versionError) console.error("Failed to record file version:", versionError.message);
 
+    queueFileEmbedding(updated);
+
     return { ok: true, data: formatFile(updated) };
   }
 
@@ -510,6 +562,8 @@ export async function moveFile(
     change_summary: `Moved from ${normalizedFrom} to ${normalizedTo}`,
   });
   if (moveVersionError) console.error("Failed to record file version:", moveVersionError.message);
+
+  queueFileEmbedding(updated);
 
   return { ok: true, data: formatFile(updated) };
 }
@@ -788,6 +842,8 @@ export async function rollbackFile(
   });
   if (versionError) console.error("Failed to record file version:", versionError.message);
 
+  queueFileEmbedding(updated);
+
   return { ok: true, data: formatFile(updated) };
 }
 
@@ -914,7 +970,109 @@ export async function bulkWriteFiles(
     if (batchVersionError) console.error("Failed to record file versions:", batchVersionError.message);
   }
 
+  // Batch embed non-folder files
+  const embeddableFiles = upserted.filter(shouldEmbedFile);
+  if (embeddableFiles.length > 0) {
+    upsertEmbeddings(
+      FILE_TABLE,
+      FILE_ID_COL,
+      embeddableFiles.map((f) => ({
+        id: f.id as string,
+        searchText: buildFileSearchText(f),
+        extraColumns: { path: f.path as string, name: f.name as string },
+      })),
+    ).catch((err) => console.warn("[files] bulk embedding failed:", err));
+  }
+
   return { ok: true, data: { upserted: upserted.length, paths: upserted.map((r) => r.path as string) } };
+}
+
+// ── Semantic file search ──
+
+export async function searchFilesWithEmbeddings(
+  auth: FileAuth,
+  opts: { query: string; path?: string; limit?: number },
+): Promise<ServiceResult<FileListItem[]>> {
+  const limit = opts.limit ?? 20;
+  const { rpc, filterParam } = EMBEDDING_TABLES.files;
+
+  // Fetch visible file metadata only (no content — avoids loading large blobs)
+  let q = supabaseAdmin
+    .from("files")
+    .select("id, path, name, is_folder, mime_type, current_version, updated_at")
+    .eq("user_id", auth.userId)
+    .eq("is_folder", false);
+  q = orgFilter(q, auth);
+
+  if (opts.path) {
+    const normalized = normalizePath(opts.path);
+    q = q.like("path", normalized + "%");
+  }
+
+  q = q.limit(500);
+
+  const { data: files, error } = await q;
+  if (error) return { ok: false, error: error.message, status: 500 };
+  if (!files || files.length === 0) return { ok: true, data: [] };
+
+  const fileIds = files.map((f) => f.id as string);
+
+  // Semantic search via pgvector
+  const queryEmbedding = await getQueryEmbedding(opts.query);
+  const semanticScores = new Map<string, number>();
+  if (queryEmbedding.length > 0) {
+    const dbResults = await searchByEmbedding(rpc, queryEmbedding, fileIds, filterParam, limit * 3);
+    for (const r of dbResults) semanticScores.set(r.id, r.similarity);
+  }
+
+  // Keyword search on name + path (lightweight, no content needed)
+  const queryKeywords = extractKeywords(opts.query);
+  const kwScores = new Map<string, number>();
+  if (queryKeywords.length > 0) {
+    for (const f of files) {
+      const nameAndPath = `${f.name as string} ${f.path as string}`;
+      const entryKeywords = extractKeywords(nameAndPath);
+      const score = keywordScore(queryKeywords, entryKeywords);
+      if (score > 0) kwScores.set(f.id as string, score);
+    }
+  }
+
+  // Hybrid scoring
+  const hasSemantic = semanticScores.size > 0;
+  const scored = files.map((f) => {
+    const id = f.id as string;
+    const semantic = semanticScores.get(id) ?? 0;
+    const kw = kwScores.get(id) ?? 0;
+    const score = hybridScore(semantic, kw, 0, hasSemantic);
+    return { file: f, score };
+  });
+
+  const threshold = hasSemantic ? 0.15 : 0.05;
+  const filtered = scored
+    .filter((r) => r.score >= threshold)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  // Fetch content only for the final results (for formatListItem's size calc)
+  const resultIds = filtered.map((r) => r.file.id as string);
+  if (resultIds.length > 0) {
+    const { data: contentRows } = await supabaseAdmin
+      .from("files")
+      .select("id, content")
+      .in("id", resultIds);
+    const contentMap = new Map<string, string | null>();
+    for (const row of contentRows ?? []) {
+      contentMap.set(row.id, row.content);
+    }
+    for (const r of filtered) {
+      (r.file as Record<string, unknown>).content = contentMap.get(r.file.id as string) ?? null;
+    }
+  }
+
+  return {
+    ok: true,
+    data: filtered.map((r) => formatListItem(r.file)),
+  };
 }
 
 // ── Markdown Formatting (for /api/fs export) ──

@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { Container } from "@/components/ui/container";
 import { IntegrationList, type UserKeyItem } from "@/components/dashboard/integration-list";
 import { ConnectCard } from "@/components/dashboard/connect-card";
+import { AgentTokenCard } from "@/components/dashboard/agent-token-card";
 import { DashboardToasts } from "@/components/dashboard/dashboard-toasts";
 import { DiscoveryModeToggle } from "@/components/dashboard/discovery-mode-toggle";
 import { allIntegrations, isIntegrationConfigured } from "@/lib/integrations/registry";
@@ -118,6 +119,12 @@ export default async function DashboardPage() {
     isAgentKey: (k as { is_agent_key?: boolean }).is_agent_key ?? false,
   }));
 
+  const now = new Date();
+  const agentKey = initialKeys.find(
+    (k) => k.isAgentKey && !k.revokedAt && new Date(k.expiresAt) > now
+  ) ?? null;
+  const personalKeys = initialKeys.filter((k) => !k.isAgentKey);
+
   const preferredAgentModel = profile?.preferred_agent_model ?? "claude-sonnet-4-6";
 
   const userKeySet = new Set((userKeys ?? []).map((k) => k.server_id));
@@ -219,6 +226,7 @@ export default async function DashboardPage() {
   const platformTools: Array<{ name: string; description: string }> = [
     { name: "submit_feedback", description: "Submit feedback to the Switchboard team" },
     { name: "manage_skills", description: "List, get, create, update, or delete skills" },
+    { name: "manage_agents", description: "List, get, create, update, or delete agent definitions" },
     { name: "vault_list_secrets", description: "List vault secrets" },
     { name: "vault_get_secret", description: "Get a secret with decrypted values" },
     { name: "vault_set_secret", description: "Create or update a secret" },
@@ -312,9 +320,8 @@ export default async function DashboardPage() {
       <div className="space-y-6">
         <ConnectCard
           origin={origin}
-          initialKeys={initialKeys}
+          initialKeys={personalKeys}
           availableIntegrations={availableIntegrations}
-          preferredAgentModel={preferredAgentModel}
           connectionStats={{
             connected: integrations.filter(i => i.connected).length
               + proxyIntegrations.filter(i => i.connected).length
@@ -328,6 +335,17 @@ export default async function DashboardPage() {
               }).length,
             total: integrations.length + proxyIntegrations.length + userKeyIntegrations.length,
           }}
+        />
+        <AgentTokenCard
+          initialAgentKey={agentKey ? {
+            id: agentKey.id,
+            keyPrefix: agentKey.keyPrefix,
+            createdAt: agentKey.createdAt,
+            expiresAt: agentKey.expiresAt,
+            permissions: agentKey.permissions ?? null,
+          } : null}
+          preferredAgentModel={preferredAgentModel}
+          availableIntegrations={availableIntegrations}
         />
         <DiscoveryModeToggle initialValue={profile?.discovery_mode ?? false} />
         <IntegrationList

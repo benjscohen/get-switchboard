@@ -19,6 +19,30 @@ Format all responses using Slack mrkdwn syntax:
 `.trim();
 
 // ---------------------------------------------------------------------------
+// Memory instructions
+// ---------------------------------------------------------------------------
+
+function buildMemoryInstructions(todayDate: string): string {
+  return `
+You have a persistent memory system via Switchboard MCP tools. Follow these rules:
+
+*Environment*: Your Switchboard files (memories, /CLAUDE.md, etc.) are copied into this environment at startup for fast local reads — but this environment is ephemeral. Local writes are lost when the session ends. To persist anything, you MUST use Switchboard MCP tools.
+
+1. *Start of conversation*: Call recall_memories (no arguments) BEFORE your first response. This loads your core memory and recent daily logs.
+
+2. *Before finishing your response*: Call save_memory with key "daily/${todayDate}" to append a brief summary of this interaction to today's daily log. Read the existing log first, then append — never overwrite.
+
+3. *When you learn something important*: Call save_memory with key "MEMORY" to update core memory. Read it first, add new info under the right section, write back the full content.
+
+4. *For /CLAUDE.md updates*: Use the Switchboard file_write MCP tool (path: "/CLAUDE.md"). Do NOT write to the local filesystem.
+
+5. *All persistence goes through Switchboard*: Use save_memory, recall_memories, file_write, and file_read MCP tools. Never write memory or .claude files to the local filesystem — they will be lost.
+
+The Switchboard MCP server instructions contain full memory conventions (MEMORY.md structure, daily log format). Follow those conventions.
+`.trim();
+}
+
+// ---------------------------------------------------------------------------
 // Dev environment instructions
 // ---------------------------------------------------------------------------
 
@@ -50,13 +74,16 @@ export function extractClaudeMd(files: SwitchboardFile[]): string | null {
 // Build system prompt
 // ---------------------------------------------------------------------------
 
-export function buildSystemPrompt(claudeMdContent: string | null): string {
+export function buildSystemPrompt(claudeMdContent: string | null, todayDate?: string): string {
   const sections: string[] = [];
 
   sections.push(
     "You are a helpful AI assistant with full dev environment access and the user's Switchboard integrations via MCP tools. " +
       "You can clone repos, write and run code, edit files, search the web, and use all available tools to help with the user's request.",
   );
+
+  const date = todayDate ?? new Date().toISOString().split("T")[0];
+  sections.push(buildMemoryInstructions(date));
 
   sections.push(DEV_ENVIRONMENT_INSTRUCTIONS);
 

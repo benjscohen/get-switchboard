@@ -1,5 +1,23 @@
 import { getToolRisk, type ToolRiskLevel } from "./tool-risk";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  EMBEDDING_MODEL,
+  EMBEDDING_DIMENSIONS,
+  STOP_WORDS,
+  extractKeywords,
+  cosineSimilarity,
+  getQueryEmbedding,
+} from "@/lib/embeddings";
+
+// Re-export shared embedding utilities for backward compat
+export {
+  EMBEDDING_MODEL,
+  EMBEDDING_DIMENSIONS,
+  STOP_WORDS,
+  extractKeywords,
+  cosineSimilarity,
+  getQueryEmbedding,
+} from "@/lib/embeddings";
 
 // ── Types ──
 
@@ -56,6 +74,7 @@ export const CATEGORY_SYNONYMS: Record<string, string[]> = {
   crm: ["CRM", "sales", "contacts", "deals", "pipeline", "customer relationship", "leads", "accounts"],
   documentation: ["docs", "library docs", "API reference", "code examples", "SDK docs", "package docs"],
   search: ["web search", "semantic search", "AI search", "research", "lookup", "internet search", "find information"],
+  code: ["source control", "git", "repository", "repo", "version control", "SCM", "pull request", "PR", "issues", "commits"],
 };
 
 export const CATEGORY_MAP: Record<string, string> = {
@@ -76,6 +95,7 @@ export const CATEGORY_MAP: Record<string, string> = {
   "linkedin-ads": "advertising",
   context7: "documentation",
   exa: "search",
+  github: "code",
   platform: "platform",
   vault: "secrets",
 };
@@ -86,11 +106,6 @@ export const ACTION_VERBS = new Set([
   "export", "download", "copy", "move", "import", "watch", "stop", "patch",
   "append", "sort", "filter", "validate", "format", "rsvp", "share",
   "unshare", "about", "quick",
-]);
-
-export const STOP_WORDS = new Set([
-  "the", "a", "an", "and", "or", "for", "to", "in", "on", "of",
-  "with", "by", "from", "at", "is", "it", "this", "that",
 ]);
 
 export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: string }> = {
@@ -294,6 +309,112 @@ export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: stri
     aliases: "search slack, find message, look up in slack, search channels",
   },
 
+  // GitHub
+  get_file_contents: {
+    useWhen: "User wants to read a file from a GitHub repository, view source code, or get file contents",
+    aliases: "read file, view source, get code, file contents, repo file",
+  },
+  create_or_update_file: {
+    useWhen: "User wants to create or update a file in a GitHub repository, commit a file change",
+    aliases: "create file, update file, commit file, edit repo file, push file",
+  },
+  push_files: {
+    useWhen: "User wants to push multiple files to a GitHub repository in a single commit",
+    aliases: "push files, commit files, bulk commit, push changes, batch file update",
+  },
+  search_repositories: {
+    useWhen: "User wants to search for GitHub repositories, find a repo, or look up projects",
+    aliases: "find repo, search repos, look up repository, discover projects",
+  },
+  create_repository: {
+    useWhen: "User wants to create a new GitHub repository or start a new project",
+    aliases: "new repo, create repo, init repository, start project, new github project",
+  },
+  fork_repository: {
+    useWhen: "User wants to fork a GitHub repository or create a copy of a repo",
+    aliases: "fork repo, copy repository, fork project, clone repo",
+  },
+  create_branch: {
+    useWhen: "User wants to create a new branch in a GitHub repository",
+    aliases: "new branch, create branch, branch off, feature branch, git branch",
+  },
+  list_commits: {
+    useWhen: "User wants to see commit history, list recent commits, or view changes in a repo",
+    aliases: "commit history, recent commits, view commits, git log, changes",
+  },
+  create_issue: {
+    useWhen: "User wants to create a GitHub issue, file a bug report, or open a feature request",
+    aliases: "new issue, file bug, open issue, report bug, feature request, create ticket",
+  },
+  list_issues: {
+    useWhen: "User wants to list issues in a GitHub repository, see open bugs, or view tickets",
+    aliases: "show issues, open issues, list bugs, view tickets, repo issues",
+  },
+  get_issue: {
+    useWhen: "User wants to view a specific GitHub issue, read issue details, or check issue status",
+    aliases: "view issue, issue details, read issue, check issue, issue info",
+  },
+  update_issue: {
+    useWhen: "User wants to update a GitHub issue, change issue status, or edit issue details",
+    aliases: "edit issue, close issue, reopen issue, update ticket, change issue status",
+  },
+  add_issue_comment: {
+    useWhen: "User wants to comment on a GitHub issue or add a note to an issue",
+    aliases: "comment on issue, reply to issue, add note, issue comment",
+  },
+  search_issues: {
+    useWhen: "User wants to search for GitHub issues or pull requests across repositories",
+    aliases: "find issue, search bugs, look up issue, search tickets",
+  },
+  create_pull_request: {
+    useWhen: "User wants to create a pull request, open a PR, or submit code for review",
+    aliases: "new PR, open pull request, create PR, submit for review, merge request",
+  },
+  list_pull_requests: {
+    useWhen: "User wants to list pull requests in a repository, see open PRs, or view pending reviews",
+    aliases: "show PRs, open pull requests, list PRs, pending reviews, repo PRs",
+  },
+  get_pull_request: {
+    useWhen: "User wants to view a specific pull request, read PR details, or check PR status",
+    aliases: "view PR, PR details, read pull request, check PR, PR info",
+  },
+  get_pull_request_files: {
+    useWhen: "User wants to see which files were changed in a pull request or view PR diff",
+    aliases: "PR files, changed files, PR diff, files changed, PR changes",
+  },
+  get_pull_request_status: {
+    useWhen: "User wants to check CI status, build checks, or merge status of a pull request",
+    aliases: "PR status, CI checks, build status, merge status, PR checks",
+  },
+  get_pull_request_comments: {
+    useWhen: "User wants to read comments on a pull request or view PR discussion",
+    aliases: "PR comments, review comments, PR discussion, PR feedback",
+  },
+  get_pull_request_reviews: {
+    useWhen: "User wants to see reviews on a pull request or check approval status",
+    aliases: "PR reviews, review status, approvals, code review, PR approval",
+  },
+  create_pull_request_review: {
+    useWhen: "User wants to review a pull request, approve or request changes on a PR",
+    aliases: "review PR, approve PR, request changes, code review, PR feedback",
+  },
+  merge_pull_request: {
+    useWhen: "User wants to merge a pull request, complete a PR, or land changes",
+    aliases: "merge PR, complete pull request, land changes, merge code, accept PR",
+  },
+  update_pull_request_branch: {
+    useWhen: "User wants to update a pull request branch with the latest base branch changes",
+    aliases: "update PR branch, rebase PR, sync branch, update from main",
+  },
+  search_code: {
+    useWhen: "User wants to search for code across GitHub repositories, find code snippets",
+    aliases: "find code, search source, code search, grep github, find in code",
+  },
+  search_users: {
+    useWhen: "User wants to search for GitHub users or find a developer's profile",
+    aliases: "find user, search developers, look up user, github profile",
+  },
+
   // Exa Search
   web_search_exa: {
     useWhen: "User wants to search the web, find information online, or look something up",
@@ -377,14 +498,6 @@ export function extractAction(toolName: string): string {
   return parts[parts.length - 1];
 }
 
-export function extractKeywords(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((w) => w.length > 1 && !STOP_WORDS.has(w));
-}
-
 export function buildSearchText(
   toolName: string,
   description: string,
@@ -452,27 +565,6 @@ export function buildToolIndex(
       keywords,
     };
   });
-}
-
-// ── Similarity functions ──
-
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  if (denominator === 0) return 0;
-
-  return dotProduct / denominator;
 }
 
 // ── Search functions ──
@@ -693,64 +785,6 @@ export function buildIntegrationSummaryLine(
   let line = parts.join("; ");
   if (line.length > 400) line = line.slice(0, 397) + "...";
   return line;
-}
-
-// ── Embedding support ──
-
-export const EMBEDDING_MODEL = "text-embedding-3-large";
-export const EMBEDDING_DIMENSIONS = 1536;
-
-// LRU cache for query embeddings
-const embeddingCache = new Map<string, { embedding: number[]; ts: number }>();
-const CACHE_MAX = 100;
-
-export async function getQueryEmbedding(query: string): Promise<number[]> {
-  const cached = embeddingCache.get(query);
-  if (cached) {
-    cached.ts = Date.now();
-    return cached.embedding;
-  }
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return [];
-
-  try {
-    const res = await fetch("https://api.openai.com/v1/embeddings", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: EMBEDDING_MODEL,
-        input: query,
-        dimensions: EMBEDDING_DIMENSIONS,
-      }),
-    });
-
-    if (!res.ok) return [];
-
-    const data = await res.json();
-    const embedding: number[] = data.data?.[0]?.embedding ?? [];
-
-    // Evict oldest if at capacity
-    if (embeddingCache.size >= CACHE_MAX) {
-      let oldestKey = "";
-      let oldestTs = Infinity;
-      for (const [k, v] of embeddingCache) {
-        if (v.ts < oldestTs) {
-          oldestTs = v.ts;
-          oldestKey = k;
-        }
-      }
-      if (oldestKey) embeddingCache.delete(oldestKey);
-    }
-
-    embeddingCache.set(query, { embedding, ts: Date.now() });
-    return embedding;
-  } catch {
-    return [];
-  }
 }
 
 // ── pgvector search ──

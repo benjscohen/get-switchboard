@@ -225,11 +225,12 @@ export async function getStaleRunningSessions(): Promise<
     id: string;
     slack_channel_id: string;
     slack_thread_ts: string | null;
+    prompt: string | null;
   }>
 > {
   const { data, error } = await supabase
     .from("agent_sessions")
-    .select("id, slack_channel_id, slack_thread_ts")
+    .select("id, slack_channel_id, slack_thread_ts, prompt")
     .eq("status", "running");
 
   if (error) {
@@ -241,5 +242,6 @@ export async function getStaleRunningSessions(): Promise<
     id: string;
     slack_channel_id: string;
     slack_thread_ts: string | null;
+    prompt: string | null;
   }>;
 }

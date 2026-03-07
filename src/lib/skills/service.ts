@@ -1,4 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { upsertEmbeddings, deleteEmbedding, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore, EMBEDDING_TABLES } from "@/lib/embeddings";
+export { type ScopedAuth } from "@/lib/shared/scoped-entity";
 
 // ── Types ──
 
@@ -136,6 +138,37 @@ function canViewSkill(auth: SkillAuth, skill: SkillRow): boolean {
   if (skill.organization_id) return skill.organization_id === auth.organizationId;
   if (skill.team_id) return (auth.teamIds ?? []).includes(skill.team_id);
   return false;
+}
+
+// ── Embedding Helpers ──
+
+export function buildSkillSearchText(s: SkillRow): string {
+  const parts = [
+    `Skill: ${s.name}`,
+    `Slug: ${s.slug}`,
+  ];
+  if (s.description) parts.push(`Description: ${s.description}`);
+  parts.push(`Content: ${s.content.slice(0, 2000)}`);
+  if (s.arguments.length > 0) {
+    const argText = s.arguments.map((a) => `${a.name}: ${a.description}`).join(", ");
+    parts.push(`Arguments: ${argText}`);
+  }
+  return parts.join("\n");
+}
+
+const { table: SKILL_TABLE, idColumn: SKILL_ID_COL } = EMBEDDING_TABLES.skills;
+
+function queueSkillEmbedding(s: SkillRow): void {
+  upsertEmbeddings(SKILL_TABLE, SKILL_ID_COL, [{
+    id: s.id,
+    searchText: buildSkillSearchText(s),
+    extraColumns: { name: s.name, description: s.description },
+  }]).catch((err) => console.warn("[skills] embedding failed:", err));
+}
+
+function removeSkillEmbedding(id: string): void {
+  deleteEmbedding(SKILL_TABLE, SKILL_ID_COL, id)
+    .catch((err) => console.warn("[skills] remove embedding failed:", err));
 }
 
 // ── CRUD Functions ──
@@ -291,6 +324,8 @@ export async function createSkill(auth: SkillAuth, input: CreateSkillInput): Pro
   });
   if (versionError) console.error("Failed to record skill version:", versionError.message);
 
+  queueSkillEmbedding(s);
+
   return { ok: true, data: formatSkill(s), status: 201 };
 }
 
@@ -357,6 +392,8 @@ export async function updateSkill(auth: SkillAuth, id: string, input: UpdateSkil
   });
   if (versionError) console.error("Failed to record skill version:", versionError.message);
 
+  queueSkillEmbedding(u);
+
   return { ok: true, data: formatSkill(u) };
 }
 
@@ -378,6 +415,8 @@ export async function deleteSkill(auth: SkillAuth, id: string): Promise<ServiceR
   if (error) {
     return { ok: false, error: error.message, status: 500 };
   }
+
+  removeSkillEmbedding(id);
 
   return { ok: true, data: { ok: true } };
 }
@@ -489,5 +528,76 @@ export async function rollbackSkill(
   });
   if (versionError) console.error("Failed to record skill version:", versionError.message);
 
+  queueSkillEmbedding(updated as SkillRow);
+
   return { ok: true, data: formatSkill(updated as SkillRow) };
+}
+
+// ── Search ──
+
+export async function searchSkills(
+  auth: SkillAuth,
+  query: string,
+  opts?: { limit?: number },
+): Promise<ServiceResult<Array<ReturnType<typeof formatSkill> & { score: number }>>> {
+  const limit = opts?.limit ?? 10;
+  const { rpc, filterParam } = EMBEDDING_TABLES.skills;
+
+  // Reuse listSkills to get all visible skills
+  const listResult = await listSkills(auth);
+  if (!listResult.ok) return listResult as ServiceResult<never>;
+
+  const allFormatted = [
+    ...listResult.data.organization,
+    ...listResult.data.team,
+    ...listResult.data.user,
+  ];
+
+  if (allFormatted.length === 0) return { ok: true, data: [] };
+
+  const skillIds = allFormatted.map((s) => s.id);
+
+  // Semantic search
+  const queryEmbedding = await getQueryEmbedding(query);
+  const semanticScores = new Map<string, number>();
+  if (queryEmbedding.length > 0) {
+    const dbResults = await searchByEmbedding(rpc, queryEmbedding, skillIds, filterParam, limit * 3);
+    for (const r of dbResults) semanticScores.set(r.id, r.similarity);
+  }
+
+  // Keyword search using shared helper
+  const queryKeywords = extractKeywords(query);
+  const kwScores = new Map<string, number>();
+  if (queryKeywords.length > 0) {
+    for (const s of allFormatted) {
+      const searchText = [s.name, s.slug, s.description ?? "", s.content.slice(0, 2000)].join(" ");
+      const entryKeywords = extractKeywords(searchText);
+      const nameLower = s.name.toLowerCase();
+      const queryLower = query.toLowerCase();
+      const nameBonus = nameLower.includes(queryLower) || queryLower.includes(nameLower) ? 0.2 : 0;
+      const score = keywordScore(queryKeywords, entryKeywords) + nameBonus;
+      if (score > 0) kwScores.set(s.id, score);
+    }
+  }
+
+  // Hybrid scoring
+  const hasSemantic = semanticScores.size > 0;
+  const scored = allFormatted.map((s) => {
+    const semantic = semanticScores.get(s.id) ?? 0;
+    const kw = kwScores.get(s.id) ?? 0;
+    const nameBonus = s.name.toLowerCase() === query.toLowerCase() ? 0.3 : 0;
+    const score = hybridScore(semantic, kw, nameBonus, hasSemantic);
+    return { skill: s, score };
+  });
+
+  const threshold = hasSemantic ? 0.2 : 0.1;
+  const filtered = scored
+    .filter((r) => r.score >= threshold)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  return {
+    ok: true,
+    data: filtered.map((r) => ({ ...r.skill, score: r.score })),
+  };
 }
