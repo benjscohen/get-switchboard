@@ -281,7 +281,10 @@ describe("findSessionFile", () => {
   });
 
   it("returns null when base dir does not exist", async () => {
-    const result = await findSessionFile("any-id", "/tmp/nonexistent-claude-dir-xyz");
+    // Use a scoped temp dir so the recursive fallback doesn't scan all of /tmp
+    const scopedRoot = await fs.mkdtemp(path.join(os.tmpdir(), "claude-scoped-"));
+    testDir = scopedRoot;
+    const result = await findSessionFile("any-id", path.join(scopedRoot, "nonexistent"));
     expect(result).toBeNull();
   });
 
@@ -300,10 +303,11 @@ describe("findSessionFile", () => {
   });
 
   it("returns null when session file does not exist in any project", async () => {
-    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-projects-"));
-    testDir = baseDir;
-    const sessionsDir = path.join(baseDir, "some-project", "sessions");
-    await fs.mkdir(sessionsDir, { recursive: true });
+    // Scoped parent so recursive fallback only searches within our temp dir
+    const scopedRoot = await fs.mkdtemp(path.join(os.tmpdir(), "claude-scoped-"));
+    testDir = scopedRoot;
+    const baseDir = path.join(scopedRoot, "projects");
+    await fs.mkdir(path.join(baseDir, "some-project", "sessions"), { recursive: true });
 
     const result = await findSessionFile("missing-session-xyz", baseDir);
     expect(result).toBeNull();
@@ -324,5 +328,62 @@ describe("findSessionFile", () => {
 
     const result = await findSessionFile(sessionId, baseDir);
     expect(result).toBe(sessionFile);
+  });
+
+  it("finds session file via recursive fallback in non-standard location", async () => {
+    // Simulate ~/.claude/ with a non-standard subdirectory structure
+    const claudeRoot = await fs.mkdtemp(path.join(os.tmpdir(), "claude-root-"));
+    testDir = claudeRoot;
+    const baseDir = path.join(claudeRoot, "projects");
+    await fs.mkdir(baseDir, { recursive: true });
+
+    // Put session file in an unexpected nested path (not projects/<name>/sessions/)
+    const weirdDir = path.join(claudeRoot, "something", "nested", "deep");
+    await fs.mkdir(weirdDir, { recursive: true });
+
+    const sessionId = "fallback-session-456";
+    const sessionFile = path.join(weirdDir, `${sessionId}.json`);
+    await fs.writeFile(sessionFile, '{"fallback": true}', "utf-8");
+
+    const result = await findSessionFile(sessionId, baseDir);
+    expect(result).toBe(sessionFile);
+  });
+
+  it("recursive fallback returns null when no match exists", async () => {
+    const claudeRoot = await fs.mkdtemp(path.join(os.tmpdir(), "claude-root-"));
+    testDir = claudeRoot;
+    const baseDir = path.join(claudeRoot, "projects");
+    await fs.mkdir(baseDir, { recursive: true });
+
+    // Put some other files but not the one we're looking for
+    const otherDir = path.join(claudeRoot, "other");
+    await fs.mkdir(otherDir, { recursive: true });
+    await fs.writeFile(path.join(otherDir, "different-file.json"), "{}", "utf-8");
+
+    const result = await findSessionFile("totally-missing-id", baseDir);
+    expect(result).toBeNull();
+  });
+
+  it("primary scan is preferred over recursive fallback", async () => {
+    const claudeRoot = await fs.mkdtemp(path.join(os.tmpdir(), "claude-root-"));
+    testDir = claudeRoot;
+    const baseDir = path.join(claudeRoot, "projects");
+
+    const sessionId = "dual-location-session";
+
+    // Put in standard location (primary scan)
+    const standardDir = path.join(baseDir, "my-project", "sessions");
+    await fs.mkdir(standardDir, { recursive: true });
+    const standardFile = path.join(standardDir, `${sessionId}.json`);
+    await fs.writeFile(standardFile, '{"source": "primary"}', "utf-8");
+
+    // Also put in non-standard location (recursive fallback would find this)
+    const altDir = path.join(claudeRoot, "alt-location");
+    await fs.mkdir(altDir, { recursive: true });
+    await fs.writeFile(path.join(altDir, `${sessionId}.json`), '{"source": "fallback"}', "utf-8");
+
+    const result = await findSessionFile(sessionId, baseDir);
+    // Should find the primary one, not the fallback
+    expect(result).toBe(standardFile);
   });
 });

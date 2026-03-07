@@ -120,12 +120,9 @@ export async function fetchThreadHistory(
 }
 
 /**
- * Download a file from Slack using the bot token for authentication.
- * Returns text content for text files, "[Binary file]" for others.
+ * Shared authenticated fetch for Slack file downloads.
  */
-export async function downloadFile(
-  urlPrivate: string,
-): Promise<{ content: string; filename: string; mimeType: string }> {
+async function authenticatedFetch(urlPrivate: string): Promise<Response> {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) {
     throw new Error("SLACK_BOT_TOKEN is not set");
@@ -139,10 +136,25 @@ export async function downloadFile(
     throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
   }
 
-  const contentType = response.headers.get("content-type") || "";
+  return response;
+}
+
+function parseFilename(response: Response): string {
   const disposition = response.headers.get("content-disposition") || "";
-  const filenameMatch = disposition.match(/filename="?([^";\n]+)"?/);
-  const filename = filenameMatch?.[1] || "unknown";
+  const match = disposition.match(/filename="?([^";\n]+)"?/);
+  return match?.[1] || "unknown";
+}
+
+/**
+ * Download a file from Slack as text content.
+ * Returns text content for text files, "[Binary file]" for others.
+ */
+export async function downloadFile(
+  urlPrivate: string,
+): Promise<{ content: string; filename: string; mimeType: string }> {
+  const response = await authenticatedFetch(urlPrivate);
+  const contentType = response.headers.get("content-type") || "";
+  const filename = parseFilename(response);
 
   const isText =
     contentType.startsWith("text/") ||
@@ -160,6 +172,48 @@ export async function downloadFile(
   }
 
   return { content: "[Binary file]", filename, mimeType: contentType };
+}
+
+/**
+ * Download a file from Slack as a Buffer (for binary files: images, PDFs, etc.).
+ */
+export async function downloadFileAsBuffer(
+  urlPrivate: string,
+): Promise<{ buffer: Buffer; filename: string; mimeType: string }> {
+  const response = await authenticatedFetch(urlPrivate);
+  const contentType = response.headers.get("content-type") || "";
+  const filename = parseFilename(response);
+  const arrayBuffer = await response.arrayBuffer();
+  return { buffer: Buffer.from(arrayBuffer), filename, mimeType: contentType };
+}
+
+/**
+ * Upload a file to a Slack channel/thread.
+ * Requires `files:write` bot token scope.
+ */
+export async function uploadFile(opts: {
+  channelId: string;
+  threadTs?: string;
+  filename: string;
+  content: string | Buffer;
+  title?: string;
+  initialComment?: string;
+}): Promise<void> {
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const args: any = {
+    channel_id: opts.channelId,
+    filename: opts.filename,
+    ...(opts.title && { title: opts.title }),
+    ...(opts.initialComment && { initial_comment: opts.initialComment }),
+  };
+  if (opts.threadTs) args.thread_ts = opts.threadTs;
+  if (typeof opts.content === "string") {
+    args.content = opts.content;
+  } else {
+    args.file = opts.content;
+  }
+  await client.filesUploadV2(args);
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 /**

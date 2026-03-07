@@ -100,20 +100,45 @@ export async function findSessionFile(
   claudeSessionId: string,
   baseDir: string = path.join(os.homedir(), ".claude", "projects"),
 ): Promise<string | null> {
+  const target = `${claudeSessionId}.json`;
+  console.log(`[files] findSessionFile: id=${claudeSessionId} HOME=${os.homedir()} baseDir=${baseDir}`);
+
+  // Primary scan: ~/.claude/projects/<project>/sessions/<id>.json
   try {
     const projects = await fs.readdir(baseDir);
+    console.log(`[files] findSessionFile: found ${projects.length} project dirs: ${projects.join(", ")}`);
     for (const project of projects) {
-      const file = path.join(baseDir, project, "sessions", `${claudeSessionId}.json`);
+      const file = path.join(baseDir, project, "sessions", target);
       try {
         await fs.stat(file);
+        console.log(`[files] findSessionFile: found via primary scan: ${file}`);
         return file;
       } catch {
         /* not in this project */
       }
     }
-  } catch {
-    /* no projects dir */
+  } catch (err) {
+    console.log(`[files] findSessionFile: baseDir readdir failed:`, err);
   }
+
+  // Recursive fallback: search parent dir (~/.claude/) for <id>.json
+  const parentDir = path.dirname(baseDir);
+  console.log(`[files] findSessionFile: primary scan found nothing, recursive search in ${parentDir}`);
+  try {
+    const entries = await fs.readdir(parentDir, { recursive: true });
+    for (const entry of entries) {
+      const name = typeof entry === "string" ? entry : entry.toString();
+      if (path.basename(name) === target) {
+        const fullPath = path.join(parentDir, name);
+        console.log(`[files] findSessionFile: found via recursive fallback: ${fullPath}`);
+        return fullPath;
+      }
+    }
+  } catch (err) {
+    console.log(`[files] findSessionFile: recursive fallback failed:`, err);
+  }
+
+  console.log(`[files] findSessionFile: not found anywhere`);
   return null;
 }
 

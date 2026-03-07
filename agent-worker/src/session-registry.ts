@@ -24,6 +24,7 @@ export interface PendingPlanApproval {
 export interface RunningSession {
   sessionId: string;
   claudeSessionId: string | null;
+  tempDir: string | null;
   pendingFollowUpTs: string[];
   pushMessage: (msg: PendingFollowUp) => boolean;
   close: () => void;

@@ -17,6 +17,24 @@ import type { PlanDecision } from "./session-registry.js";
 import type { SlackFile, UserLookup } from "./types.js";
 
 // ---------------------------------------------------------------------------
+// Image / PDF / text detection helpers
+// ---------------------------------------------------------------------------
+
+const IMAGE_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".tiff", ".ico",
+]);
+
+const PDF_EXTENSIONS = new Set([".pdf"]);
+
+function isImageFile(file: SlackFile): boolean {
+  return file.mimetype.startsWith("image/") || IMAGE_EXTENSIONS.has(getExtension(file.name));
+}
+
+function isPdfFile(file: SlackFile): boolean {
+  return file.mimetype === "application/pdf" || PDF_EXTENSIONS.has(getExtension(file.name));
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -51,7 +69,9 @@ const TEXT_EXTENSIONS = new Set([
   ".h",
 ]);
 
-const MAX_FILE_SIZE = 1024 * 1024; // 1 MB
+const MAX_TEXT_FILE_SIZE = 1024 * 1024; // 1 MB — for prompt embedding
+const MAX_BINARY_FILE_SIZE = 100 * 1024 * 1024; // 100 MB — for disk save
+const ATTACHMENTS_DIR = "attachments"; // subdirectory in tempDir for inbound files
 
 // ---------------------------------------------------------------------------
 // Concurrency tracking
@@ -73,51 +93,100 @@ function getExtension(filename: string): string {
 }
 
 function isTextFile(file: SlackFile): boolean {
-  const ext = getExtension(file.name);
-  return TEXT_EXTENSIONS.has(ext) || file.mimetype.startsWith("text/");
+  if (file.mimetype.startsWith("text/")) return true;
+  const mime = file.mimetype;
+  if (
+    mime.includes("json") || mime.includes("xml") || mime.includes("javascript") ||
+    mime.includes("typescript") || mime.includes("yaml") || mime.includes("csv") ||
+    mime.includes("svg")
+  ) return true;
+  return TEXT_EXTENSIONS.has(getExtension(file.name));
 }
 
-export async function formatFiles(files: SlackFile[]): Promise<string> {
+/**
+ * Deduplicate a filename within a directory by appending a counter suffix.
+ */
+async function uniqueFilename(dir: string, name: string): Promise<string> {
+  let candidate = path.join(dir, name);
+  try {
+    await fs.access(candidate);
+  } catch {
+    return candidate; // doesn't exist — use as-is
+  }
+  const ext = path.extname(name);
+  const base = name.slice(0, name.length - ext.length);
+  let i = 1;
+  while (true) {
+    candidate = path.join(dir, `${base}-${i}${ext}`);
+    try {
+      await fs.access(candidate);
+      i++;
+    } catch {
+      return candidate;
+    }
+  }
+}
+
+export async function formatFiles(files: SlackFile[], tempDir?: string | null): Promise<string> {
   if (files.length === 0) return "";
 
   const parts: string[] = [];
   for (const file of files) {
-    if (!isTextFile(file)) {
-      parts.push(`\n[Attached file: ${file.name} (${file.mimetype}, binary)]`);
-      continue;
-    }
-    if (file.size > MAX_FILE_SIZE) {
+    // --- Text files: embed content in prompt ---
+    if (isTextFile(file)) {
       try {
         const downloaded = await slack.downloadFile(file.urlPrivate);
-        const truncated = downloaded.content.slice(0, MAX_FILE_SIZE);
-        parts.push(
-          `\n--- ${file.name} (truncated to ${MAX_FILE_SIZE} bytes) ---\n${truncated}\n--- end ${file.name} ---`,
-        );
+        if (downloaded.content === "[Binary file]") {
+          parts.push(`\n[Attached file: ${file.name} (${file.mimetype}, binary)]`);
+        } else if (downloaded.content.length > MAX_TEXT_FILE_SIZE) {
+          const truncated = downloaded.content.slice(0, MAX_TEXT_FILE_SIZE);
+          parts.push(
+            `\n--- ${file.name} (truncated to ${MAX_TEXT_FILE_SIZE} bytes) ---\n${truncated}\n--- end ${file.name} ---`,
+          );
+        } else {
+          parts.push(
+            `\n--- ${file.name} ---\n${downloaded.content}\n--- end ${file.name} ---`,
+          );
+        }
       } catch (err) {
         console.error(`Failed to download file ${file.name}:`, err);
-        parts.push(
-          `\n[Attached file: ${file.name} (${file.mimetype}, download failed)]`,
-        );
+        parts.push(`\n[Attached file: ${file.name} (${file.mimetype}, download failed)]`);
       }
       continue;
     }
-    try {
-      const downloaded = await slack.downloadFile(file.urlPrivate);
-      if (downloaded.content === "[Binary file]") {
-        parts.push(
-          `\n[Attached file: ${file.name} (${file.mimetype}, binary)]`,
-        );
-      } else {
-        parts.push(
-          `\n--- ${file.name} ---\n${downloaded.content}\n--- end ${file.name} ---`,
-        );
+
+    // --- Binary files (images, PDFs, etc.): save to disk if tempDir available ---
+    if (tempDir && (isImageFile(file) || isPdfFile(file) || file.size <= MAX_BINARY_FILE_SIZE)) {
+      try {
+        const downloaded = await slack.downloadFileAsBuffer(file.urlPrivate);
+        const attachDir = path.join(tempDir, ATTACHMENTS_DIR);
+        await fs.mkdir(attachDir, { recursive: true });
+        const destPath = await uniqueFilename(attachDir, file.name);
+        await fs.writeFile(destPath, downloaded.buffer);
+        const relPath = path.relative(tempDir, destPath);
+        if (isImageFile(file)) {
+          parts.push(
+            `\n[Attached image: ${file.name} — saved to ${relPath}. Use the Read tool to view this image file.]`,
+          );
+        } else if (isPdfFile(file)) {
+          parts.push(
+            `\n[Attached PDF: ${file.name} — saved to ${relPath}. Use the Read tool to read this PDF file.]`,
+          );
+        } else {
+          parts.push(
+            `\n[Attached file: ${file.name} (${file.mimetype}) — saved to ${relPath}. Use the Read tool to access this file.]`,
+          );
+        }
+        console.log(`[files] Saved attachment ${file.name} → ${destPath}`);
+      } catch (err) {
+        console.error(`Failed to save file ${file.name}:`, err);
+        parts.push(`\n[Attached file: ${file.name} (${file.mimetype}, save failed)]`);
       }
-    } catch (err) {
-      console.error(`Failed to download file ${file.name}:`, err);
-      parts.push(
-        `\n[Attached file: ${file.name} (${file.mimetype}, download failed)]`,
-      );
+      continue;
     }
+
+    // --- Fallback: no tempDir or too large ---
+    parts.push(`\n[Attached file: ${file.name} (${file.mimetype}, binary)]`);
   }
   return parts.join("\n");
 }
@@ -134,6 +203,43 @@ function truncateForSlack(text: string): string {
     text.slice(0, SLACK_MAX_TEXT) +
     "\n\n... (response truncated due to Slack message length limit)"
   );
+}
+
+// ---------------------------------------------------------------------------
+// Directory snapshot helpers (for detecting new files created by Claude)
+// ---------------------------------------------------------------------------
+
+async function snapshotDir(dir: string): Promise<Set<string>> {
+  const files = new Set<string>();
+  async function walk(d: string) {
+    let entries;
+    try {
+      entries = await fs.readdir(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else {
+        files.add(full);
+      }
+    }
+  }
+  await walk(dir);
+  return files;
+}
+
+function getNewFiles(before: Set<string>, after: Set<string>, tempDir: string): string[] {
+  const attachDir = path.join(tempDir, ATTACHMENTS_DIR);
+  const newFiles: string[] = [];
+  for (const f of after) {
+    if (!before.has(f) && !f.startsWith(attachDir + path.sep) && !f.startsWith(attachDir)) {
+      newFiles.push(f);
+    }
+  }
+  return newFiles;
 }
 
 // ---------------------------------------------------------------------------
@@ -203,7 +309,7 @@ export async function injectFollowUp(
   const running = getRunningSession(threadKey);
   if (!running) return false;
 
-  const fileContent = await formatFiles(files);
+  const fileContent = await formatFiles(files, running.tempDir);
   const fullText = fileContent ? `${text}\n${fileContent}` : text;
 
   // Store user message in DB
@@ -297,22 +403,18 @@ export async function processMessage(
     }
   }
 
-  // 6. Download and format file attachments (skip on retry — prompt already has file content)
-  let fullPrompt: string;
-  if (retryOf) {
-    fullPrompt = text;
-  } else {
-    const fileContent = await formatFiles(files);
-    fullPrompt = fileContent ? `${text}\n${fileContent}` : text;
-  }
-
-  // 6b. Detect plan mode prefix
-  const planModeRequested = /^\s*plan\s*:/i.test(fullPrompt);
-  let effectivePrompt = fullPrompt;
+  // 6. Detect plan mode prefix early (before file formatting, which needs tempDir)
+  const planModeRequested = /^\s*plan\s*:/i.test(text);
+  const textWithoutPlanPrefix = planModeRequested
+    ? text.replace(/^\s*plan\s*:\s*/i, "")
+    : text;
   if (planModeRequested) {
-    effectivePrompt = fullPrompt.replace(/^\s*plan\s*:\s*/i, "");
     await slack.addReaction(channelId, messageTs, "memo").catch(() => {});
   }
+
+  // File formatting is deferred until after tempDir creation (step 12)
+  // so binary files can be saved to disk.
+  let effectivePrompt = textWithoutPlanPrefix;
 
   // 7. Create session row
   let sessionId: string;
@@ -409,6 +511,14 @@ export async function processMessage(
       console.error("[files] Failed to pull user files:", err);
     }
 
+    // 12a. Now that tempDir exists, format file attachments (skip on retry)
+    if (!retryOf && files.length > 0) {
+      const fileContent = await formatFiles(files, tempDir);
+      if (fileContent) {
+        effectivePrompt = `${effectivePrompt}\n${fileContent}`;
+      }
+    }
+
     // 12b. Restore session transcript from DB if resuming (survives deploys)
     if (resumeSessionId) {
       try {
@@ -434,6 +544,7 @@ export async function processMessage(
     const runningSession = {
       sessionId,
       claudeSessionId: null as string | null,
+      tempDir,
       pendingFollowUpTs: [] as string[],
       pushMessage: stream.pushMessage,
       close: stream.close,
@@ -455,7 +566,13 @@ export async function processMessage(
       }, IDLE_TIMEOUT_MS);
     };
 
-    // 15. Run Claude Code SDK (multi-turn)
+    // 15. Snapshot tempDir before conversation (to detect new files later)
+    let dirSnapshot: Set<string> = new Set();
+    if (tempDir) {
+      dirSnapshot = await snapshotDir(tempDir);
+    }
+
+    // 16. Run Claude Code SDK (multi-turn)
     let lastResultText: string | null = null;
     let checkedOff = false;
     let totalTurns = 0;
@@ -701,6 +818,50 @@ export async function processMessage(
                     slackTs: resultTs,
                     metadata: { turns: message.num_turns, cost: message.total_cost_usd },
                   });
+
+                  // Upload full response as file if it was truncated
+                  if (text.length > SLACK_MAX_TEXT) {
+                    try {
+                      await slack.uploadFile({
+                        channelId,
+                        threadTs: replyThread,
+                        filename: "response.md",
+                        content: text,
+                        title: "Full response",
+                      });
+                      console.log(`[session ${sessionId}] uploaded full response as response.md`);
+                    } catch (uploadErr) {
+                      console.error(`[session ${sessionId}] failed to upload response.md:`, uploadErr);
+                    }
+                  }
+
+                  // Upload new files created by Claude during this turn
+                  if (tempDir) {
+                    try {
+                      const afterSnapshot = await snapshotDir(tempDir);
+                      const newFiles = getNewFiles(dirSnapshot, afterSnapshot, tempDir);
+                      for (const filePath of newFiles) {
+                        try {
+                          const content = await fs.readFile(filePath);
+                          const fname = path.basename(filePath);
+                          await slack.uploadFile({
+                            channelId,
+                            threadTs: replyThread,
+                            filename: fname,
+                            content,
+                            title: fname,
+                          });
+                          console.log(`[session ${sessionId}] uploaded new file: ${fname}`);
+                        } catch (fileUploadErr) {
+                          console.error(`[session ${sessionId}] failed to upload ${filePath}:`, fileUploadErr);
+                        }
+                      }
+                      // Add new files to snapshot so multi-turn sessions don't re-upload
+                      for (const f of newFiles) dirSnapshot.add(f);
+                    } catch (snapErr) {
+                      console.error(`[session ${sessionId}] failed to snapshot/upload new files:`, snapErr);
+                    }
+                  }
 
                   // Swap eyes → checkmark on the message that triggered this reply
                   if (!checkedOff) {

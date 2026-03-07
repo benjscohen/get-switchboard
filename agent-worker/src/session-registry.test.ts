@@ -11,6 +11,7 @@ function makeSession(overrides?: Partial<RunningSession>): RunningSession {
   return {
     sessionId: "sess-1",
     claudeSessionId: null,
+    tempDir: null,
     pendingFollowUpTs: [],
     pushMessage: () => true,
     close: () => {},
