@@ -482,35 +482,49 @@ export async function processMessage(
       },
     });
 
-    // 11. Pre-flight MCP connectivity check
+    // 11. Pre-flight MCP connectivity check (retry once on failure — cold start may not be ready)
     try {
       const mcpUrl = process.env.SWITCHBOARD_MCP_URL!.trim();
       console.log(`[mcp-preflight] Testing ${mcpUrl} ...`);
-      const preflight = await fetch(mcpUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json, text/event-stream",
-          Authorization: `Bearer ${lookup.agentKey}`,
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "initialize",
-          params: {
-            protocolVersion: "2025-03-26",
-            capabilities: {},
-            clientInfo: { name: "switchboard-agent-preflight", version: "1.0.0" },
+
+      const doPreflight = async () => {
+        const resp = await fetch(mcpUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json, text/event-stream",
+            Authorization: `Bearer ${lookup.agentKey}`,
           },
-        }),
-      });
-      console.log(`[mcp-preflight] status=${preflight.status} content-type=${preflight.headers.get("content-type")}`);
-      if (!preflight.ok) {
-        const body = await preflight.text();
-        console.error(`[mcp-preflight] FAILED: ${body}`);
-      } else {
-        const body = await preflight.text();
-        console.log(`[mcp-preflight] OK: ${body.slice(0, 500)}`);
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "initialize",
+            params: {
+              protocolVersion: "2025-03-26",
+              capabilities: {},
+              clientInfo: { name: "switchboard-agent-preflight", version: "1.0.0" },
+            },
+          }),
+        });
+        if (!resp.ok) {
+          const body = await resp.text();
+          throw new Error(`status=${resp.status} body=${body}`);
+        }
+        return resp;
+      };
+
+      try {
+        const resp = await doPreflight();
+        console.log(`[mcp-preflight] OK: ${(await resp.text()).slice(0, 500)}`);
+      } catch (firstErr) {
+        console.warn(`[mcp-preflight] First attempt failed: ${firstErr instanceof Error ? firstErr.message : firstErr}`);
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const resp = await doPreflight();
+          console.log(`[mcp-preflight] OK (retry): ${(await resp.text()).slice(0, 500)}`);
+        } catch (retryErr) {
+          console.error(`[mcp-preflight] FAILED after retry: ${retryErr instanceof Error ? retryErr.message : retryErr}`);
+        }
       }
     } catch (err) {
       console.error("[mcp-preflight] Network error:", err);
@@ -672,6 +686,7 @@ export async function processMessage(
                       });
 
                       // Block until user approves or provides revision feedback
+                      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
                       const decision = await new Promise<PlanDecision>((resolve) => {
                         runningSession.pendingPlanApproval = {
                           plan,
@@ -777,6 +792,7 @@ export async function processMessage(
             lastMessageAt = Date.now();
             if (waitingForFollowUp) {
               waitingForFollowUp = false;
+              if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
               await db.updateSession(sessionId, { status: "running" });
             }
 
