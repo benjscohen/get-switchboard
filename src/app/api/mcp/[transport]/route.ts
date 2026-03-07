@@ -193,6 +193,16 @@ You have a durable memory system. Follow these conventions:
   registerMemoryTools(server, toolMeta);
   // Override prompts/list and prompts/get to query DB per-request (auth-scoped)
   {
+    // Build canonical prompt names from formatted entities (single source of truth)
+    const skillName = (s: { scope: string; slug: string }) => {
+      const p = s.scope === "organization" ? "org" : s.scope;
+      return `${p}:${s.slug}`;
+    };
+    const agentName = (a: { scope: string; slug: string }) => {
+      const p = a.scope === "organization" ? "org" : a.scope;
+      return `agent:${p}:${a.slug}`;
+    };
+
     server.server.setRequestHandler(ListPromptsRequestSchema, async (_request, extra) => {
       const auth = getFullMcpAuth(extra);
       if (!auth) return { prompts: [] };
@@ -208,9 +218,8 @@ You have a durable memory system. Follow these conventions:
         const allSkills = [...skillsResult.data.organization, ...skillsResult.data.team, ...skillsResult.data.user];
         for (const s of allSkills) {
           if (!s.enabled) continue;
-          const scope = s.scope === "organization" ? "org" : s.scope;
           prompts.push({
-            name: `${scope}:${s.slug}`,
+            name: skillName(s),
             description: s.description || s.name,
             arguments: s.arguments.map((a) => ({ name: a.name, description: a.description, required: a.required })),
           });
@@ -221,9 +230,8 @@ You have a durable memory system. Follow these conventions:
         const allAgents = [...agentsResult.data.organization, ...agentsResult.data.team, ...agentsResult.data.user];
         for (const a of allAgents) {
           if (!a.enabled) continue;
-          const scope = a.scope === "organization" ? "org" : a.scope;
           prompts.push({
-            name: `agent:${scope}:${a.slug}`,
+            name: agentName(a),
             description: a.description || a.name,
             arguments: [],
           });
@@ -238,8 +246,6 @@ You have a durable memory system. Follow these conventions:
       if (!auth) throw new McpError(ErrorCode.InvalidRequest, "Unauthorized");
 
       const promptName = request.params.name;
-
-      // Determine if this is an agent or skill prompt
       const isAgent = promptName.startsWith("agent:");
 
       if (isAgent) {
@@ -247,11 +253,7 @@ You have a durable memory system. Follow these conventions:
         if (!result.ok) throw new McpError(ErrorCode.InternalError, "Failed to load agents");
 
         const allAgents = [...result.data.organization, ...result.data.team, ...result.data.user];
-        const agent = allAgents.find((a) => {
-          if (!a.enabled) return false;
-          const scope = a.scope === "organization" ? "org" : a.scope;
-          return `agent:${scope}:${a.slug}` === promptName;
-        });
+        const agent = allAgents.find((a) => a.enabled && agentName(a) === promptName);
 
         if (!agent) throw new McpError(ErrorCode.InvalidParams, "Prompt not found");
 
@@ -270,11 +272,7 @@ You have a durable memory system. Follow these conventions:
         if (!result.ok) throw new McpError(ErrorCode.InternalError, "Failed to load skills");
 
         const allSkills = [...result.data.organization, ...result.data.team, ...result.data.user];
-        const skill = allSkills.find((s) => {
-          if (!s.enabled) return false;
-          const scope = s.scope === "organization" ? "org" : s.scope;
-          return `${scope}:${s.slug}` === promptName;
-        });
+        const skill = allSkills.find((s) => s.enabled && skillName(s) === promptName);
 
         if (!skill) throw new McpError(ErrorCode.InvalidParams, "Prompt not found");
 

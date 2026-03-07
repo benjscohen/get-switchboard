@@ -20,6 +20,7 @@ import type { SlackFile, UserLookup } from "./types.js";
 const MAX_CONCURRENT_SESSIONS = 10;
 const TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes — close session after no follow-ups
+const SDK_INACTIVITY_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes — abort if SDK goes silent
 
 const TEXT_EXTENSIONS = new Set([
   ".txt",
@@ -472,8 +473,24 @@ export async function processMessage(
         const startTime = Date.now();
         const msgCounts = new Map<string, number>();
         const recentMessages: string[] = []; // last 10 type:subtype labels
-        const PROGRESS_INTERVAL_MS = 30_000;
-        let lastProgressLog = Date.now();
+        let lastMessageAt = Date.now();
+
+        // Independent heartbeat — fires even when the for-await loop is stuck
+        const heartbeat = setInterval(() => {
+          const elapsed = Math.round((Date.now() - startTime) / 1000);
+          const sinceLast = Math.round((Date.now() - lastMessageAt) / 1000);
+          console.log(
+            `[session ${sessionId}] heartbeat ${elapsed}s — last_msg=${sinceLast}s ago — counts=${JSON.stringify(Object.fromEntries(msgCounts))}`,
+          );
+
+          if (Date.now() - lastMessageAt > SDK_INACTIVITY_TIMEOUT_MS) {
+            console.error(
+              `[session ${sessionId}] SDK inactivity timeout — no messages for ${sinceLast}s, aborting`,
+            );
+            clearInterval(heartbeat);
+            abortController.abort();
+          }
+        }, 30_000);
 
         // Iterate — handle multiple result messages (one per user turn)
         let claudeSessionId: string | null = null;
@@ -483,14 +500,7 @@ export async function processMessage(
           msgCounts.set(label, (msgCounts.get(label) || 0) + 1);
           recentMessages.push(label);
           if (recentMessages.length > 10) recentMessages.shift();
-
-          // Progress heartbeat
-          const now = Date.now();
-          if (now - lastProgressLog >= PROGRESS_INTERVAL_MS) {
-            const elapsed = Math.round((now - startTime) / 1000);
-            console.log(`[session ${sessionId}] progress ${elapsed}s — counts: ${JSON.stringify(Object.fromEntries(msgCounts))}`);
-            lastProgressLog = now;
-          }
+          lastMessageAt = Date.now();
 
           // Capture session_id from any message
           if ("session_id" in message && message.session_id && !claudeSessionId) {
@@ -513,25 +523,37 @@ export async function processMessage(
           if (message.type === "result") {
             if (message.subtype === "success") {
               const text = message.result || "(No response generated)";
+              console.log(
+                `[session ${sessionId}] result:success — len=${text.length} preview=${JSON.stringify(text.slice(0, 200))}`,
+              );
               lastResultText = text;
               totalTurns += message.num_turns;
               totalCost += message.total_cost_usd;
 
-              // Post result to Slack
-              const resultTs = await slack.postMessage(
-                channelId,
-                truncateForSlack(slack.markdownToSlack(text)),
-                replyThread,
-              );
+              try {
+                const resultTs = await slack.postMessage(
+                  channelId,
+                  truncateForSlack(slack.markdownToSlack(text)),
+                  replyThread,
+                );
+                console.log(`[session ${sessionId}] posted to Slack ts=${resultTs}`);
 
-              // Store assistant message
-              await db.createMessage({
-                sessionId,
-                role: "assistant",
-                content: text,
-                slackTs: resultTs,
-                metadata: { turns: message.num_turns, cost: message.total_cost_usd },
-              });
+                await db.createMessage({
+                  sessionId,
+                  role: "assistant",
+                  content: text,
+                  slackTs: resultTs,
+                  metadata: { turns: message.num_turns, cost: message.total_cost_usd },
+                });
+              } catch (slackErr) {
+                console.error(`[session ${sessionId}] failed to post result to Slack:`, slackErr);
+                // Retry with plain text (no markdown conversion, truncated)
+                try {
+                  await slack.postMessage(channelId, text.slice(0, 3900), replyThread);
+                } catch (retryErr) {
+                  console.error(`[session ${sessionId}] retry also failed:`, retryErr);
+                }
+              }
 
               // Reset idle timer — wait for potential follow-up
               resetIdleTimer();
@@ -550,6 +572,7 @@ export async function processMessage(
         }
 
         // Summary log after loop completes
+        clearInterval(heartbeat);
         const elapsed = Math.round((Date.now() - startTime) / 1000);
         console.log(
           `[session ${sessionId}] conversation done — elapsed=${elapsed}s counts=${JSON.stringify(Object.fromEntries(msgCounts))} hasResult=${!!lastResultText} resultLen=${lastResultText?.length ?? 0}`,
@@ -603,7 +626,7 @@ export async function processMessage(
       const isAbort =
         err instanceof Error && err.name === "AbortError";
       const errorMessage = isAbort
-        ? "Request timed out after 4 hours."
+        ? "The agent stopped responding and was automatically terminated. Please try again."
         : err instanceof Error
           ? err.message
           : "An unknown error occurred";
