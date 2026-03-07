@@ -5,11 +5,13 @@ import { firecrawlIntegration } from "./firecrawl";
 import { githubIntegration } from "./github";
 import { granolaIntegration } from "./granola";
 import { shortcutIntegration } from "./shortcut";
+import { datadogIntegration } from "./datadog";
 import { slackIntegration } from "./slack";
 import { supabaseIntegration } from "./supabase";
 
 const proxyIntegrations: ProxyIntegrationConfig[] = [
   context7Integration,
+  datadogIntegration,
   exaIntegration,
   firecrawlIntegration,
   githubIntegration,

@@ -21,6 +21,7 @@ export function IntegrationsCard() {
   const [loading, setLoading] = useState(true);
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const fetchIntegrations = useCallback(async () => {
     try {
@@ -42,11 +43,18 @@ export function IntegrationsCard() {
     const key = keyInputs[integrationId];
     if (!key?.trim()) return;
     setSaving((s) => ({ ...s, [integrationId]: true }));
-    await fetch("/api/org/integrations", {
+    const res = await fetch("/api/org/integrations", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ integrationId, apiKey: key.trim() }),
     });
+    const data = await res.json();
+    if (!res.ok) {
+      setErrors((e) => ({ ...e, [integrationId]: data.error ?? "Failed to save key" }));
+      setSaving((s) => ({ ...s, [integrationId]: false }));
+      return;
+    }
+    setErrors(({ [integrationId]: _, ...rest }) => rest);
     setKeyInputs((k) => ({ ...k, [integrationId]: "" }));
     setSaving((s) => ({ ...s, [integrationId]: false }));
     fetchIntegrations();
@@ -141,9 +149,12 @@ export function IntegrationsCard() {
                     onClick={() => saveKey(i.id)}
                     disabled={saving[i.id] || !keyInputs[i.id]?.trim()}
                   >
-                    {saving[i.id] ? "Saving..." : "Save Key"}
+                    {saving[i.id] ? "Validating..." : "Save Key"}
                   </Button>
                 </div>
+                {errors[i.id] && (
+                  <p className="text-xs text-red-500 mt-2">{errors[i.id]}</p>
+                )}
               </div>
             )}
           </div>

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { discoverTools } from "@/lib/mcp/proxy-client";
+import { runHealthCheck } from "@/lib/mcp/health-check";
 import { validatePermissionsPayload } from "@/lib/permissions";
 import { getFullCatalog } from "@/lib/integrations/catalog";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
@@ -479,6 +480,30 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
     })
   );
   toolMeta.set("admin_org_integrations", { integrationId: "admin:org", orgId: null });
+
+  // ── mcp_health_check ──
+  server.tool(
+    "mcp_health_check",
+    "Run a health check on all upstream MCP servers. Discovers tools, compares against cached schemas, and analyzes recent error logs. Read-only. Requires org admin.",
+    {
+      scope: z.enum(["proxy", "custom", "all"]).default("all"),
+      include_usage_analysis: z.boolean().default(true),
+      days: z.number().default(1).describe("Number of days of usage logs to analyze"),
+    },
+    withToolLogging("mcp_health_check", "admin:org", async (args, extra) => {
+      const auth = requireOrgAdminMcp(extra);
+      if (isError(auth)) return auth;
+
+      const report = await runHealthCheck({
+        scope: args.scope,
+        include_usage_analysis: args.include_usage_analysis,
+        days: args.days,
+        organizationId: auth.organizationId,
+      });
+      return ok(report);
+    })
+  );
+  toolMeta.set("mcp_health_check", { integrationId: "admin:org", orgId: null });
 
   // ═══════════════════════════════════════
   // Tier 2: Super Admin Tools (role = admin)

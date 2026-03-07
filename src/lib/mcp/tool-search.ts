@@ -78,6 +78,7 @@ export const CATEGORY_SYNONYMS: Record<string, string[]> = {
   database: ["SQL", "PostgreSQL", "DB", "tables", "migrations", "schema", "queries", "edge functions", "Supabase"],
   code: ["source control", "git", "repository", "repo", "version control", "SCM", "pull request", "PR", "issues", "commits"],
   deployment: ["deploy", "hosting", "infrastructure", "devops", "cloud", "PaaS", "CI/CD", "environments", "services"],
+  monitoring: ["observability", "APM", "logs", "metrics", "traces", "dashboards", "monitors", "incidents", "alerts", "infrastructure", "Datadog"],
 };
 
 export const CATEGORY_MAP: Record<string, string> = {
@@ -97,6 +98,7 @@ export const CATEGORY_MAP: Record<string, string> = {
   "hubspot-crm": "crm",
   "linkedin-ads": "advertising",
   context7: "documentation",
+  datadog: "monitoring",
   exa: "search",
   github: "code",
   supabase: "database",
@@ -590,6 +592,64 @@ export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: stri
   railway_list_deployments: {
     useWhen: "User wants to see deployment history or check deployment status on Railway",
     aliases: "deployment history, recent deploys, deployment status, railway deployments",
+  },
+
+  // Datadog
+  datadog__get_logs: {
+    useWhen: "User wants to search Datadog logs, find log entries, or troubleshoot with log data",
+    aliases: "search logs, find logs, log search, troubleshoot logs, datadog logs",
+  },
+  datadog__list_dashboards: {
+    useWhen: "User wants to see Datadog dashboards, find a dashboard, or check monitoring dashboards",
+    aliases: "show dashboards, view dashboards, datadog dashboards, monitoring dashboards",
+  },
+  datadog__get_monitors: {
+    useWhen: "User wants to check Datadog monitors, see alert status, or view monitor health",
+    aliases: "check monitors, view alerts, monitor status, datadog monitors, alert status",
+  },
+  datadog__list_incidents: {
+    useWhen: "User wants to see Datadog incidents, check active incidents, or review incident history",
+    aliases: "show incidents, active incidents, incident list, datadog incidents, outages",
+  },
+  datadog__get_metrics: {
+    useWhen: "User wants to query Datadog metrics, check metric values, or get time series data",
+    aliases: "query metrics, check metrics, metric data, datadog metrics, time series",
+  },
+  datadog__get_dashboard: {
+    useWhen: "User wants to view a specific Datadog dashboard by ID",
+    aliases: "view dashboard, open dashboard, dashboard details, datadog dashboard",
+  },
+  datadog__list_hosts: {
+    useWhen: "User wants to see infrastructure hosts monitored by Datadog",
+    aliases: "show hosts, infrastructure hosts, server list, datadog hosts",
+  },
+  datadog__get_incident: {
+    useWhen: "User wants to get details of a specific Datadog incident",
+    aliases: "incident details, view incident, incident info, datadog incident",
+  },
+  datadog__list_metrics: {
+    useWhen: "User wants to see available metrics in Datadog",
+    aliases: "available metrics, metric names, list metrics, datadog metrics list",
+  },
+  datadog__list_spans: {
+    useWhen: "User wants to search APM trace spans in Datadog",
+    aliases: "search spans, trace spans, APM spans, datadog spans",
+  },
+  datadog__get_trace: {
+    useWhen: "User wants to view a specific APM trace in Datadog",
+    aliases: "view trace, trace details, APM trace, datadog trace",
+  },
+  datadog__list_notebooks: {
+    useWhen: "User wants to see Datadog notebooks for documentation and analysis",
+    aliases: "show notebooks, datadog notebooks, analysis notebooks",
+  },
+  datadog__list_events: {
+    useWhen: "User wants to see events in Datadog",
+    aliases: "show events, datadog events, event stream, event list",
+  },
+  datadog__list_services: {
+    useWhen: "User wants to see APM services monitored by Datadog",
+    aliases: "show services, APM services, service catalog, datadog services",
   },
 
   // Memory

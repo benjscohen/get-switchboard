@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { encrypt } from "@/lib/encryption";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 import { getOrgKeyIntegrations } from "@/lib/integrations/registry";
+import { validateIntegrationKey } from "@/lib/integrations/validate-key";
 
 export async function GET() {
   const auth = await requireOrgAdmin();
@@ -74,9 +75,9 @@ export async function PUT(request: Request) {
   }
 
   // Validate integration exists and accepts org-level keys
-  const isProxyOrg = allProxyIntegrations.some((i) => i.id === integrationId && i.keyMode === "org");
+  const proxyInt = allProxyIntegrations.find((i) => i.id === integrationId && i.keyMode === "org");
   const isBuiltinOrg = getOrgKeyIntegrations().some((i) => i.id === integrationId);
-  if (!isProxyOrg && !isBuiltinOrg) {
+  if (!proxyInt && !isBuiltinOrg) {
     return NextResponse.json(
       { error: "Unknown integration" },
       { status: 400 }
@@ -105,6 +106,15 @@ export async function PUT(request: Request) {
       { error: "apiKey is required" },
       { status: 400 }
     );
+  }
+
+  // Validate the key before saving
+  const validation = await validateIntegrationKey(integrationId, apiKey.trim(), {
+    type: "org",
+    serverUrl: proxyInt?.serverUrl,
+  });
+  if (!validation.valid) {
+    return NextResponse.json({ error: validation.error }, { status: 422 });
   }
 
   const encrypted = encrypt(apiKey.trim());

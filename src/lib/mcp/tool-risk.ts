@@ -188,6 +188,22 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   railway_list_deployments: "read",
   railway_get_logs: "read",
 
+  // ── Datadog ──
+  datadog__list_dashboards: "read",
+  datadog__get_dashboard: "read",
+  datadog__get_monitors: "read",
+  datadog__get_logs: "read",
+  datadog__list_hosts: "read",
+  datadog__list_incidents: "read",
+  datadog__get_incident: "read",
+  datadog__list_metrics: "read",
+  datadog__get_metrics: "read",
+  datadog__list_spans: "read",
+  datadog__get_trace: "read",
+  datadog__list_notebooks: "read",
+  datadog__list_events: "read",
+  datadog__list_services: "read",
+
   // ── Context7 ──
   "context7__resolve-library-id": "read",
   "context7__get-library-docs": "read",
@@ -286,6 +302,9 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   save_memory: "write",
   recall_memories: "read",
   forget_memory: "destructive",
+
+  // ── Admin tools ──
+  mcp_health_check: "read",
 
   // ── Platform tools ──
   submit_feedback: "write",

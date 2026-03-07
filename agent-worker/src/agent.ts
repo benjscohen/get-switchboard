@@ -421,7 +421,7 @@ export async function processMessage(
   }
 
   // 6. Detect plan mode prefix early (before file formatting, which needs tempDir)
-  const planModeRequested = /^\s*plan\s*:/i.test(text);
+  let planModeRequested = /^\s*plan\s*:/i.test(text);
   const textWithoutPlanPrefix = planModeRequested
     ? text.replace(/^\s*plan\s*:\s*/i, "")
     : text;
@@ -608,6 +608,9 @@ export async function processMessage(
     let totalTurns = 0;
     let cachedSessionFilePath: string | null | undefined; // cached after first findSessionFile
     let totalCost = 0;
+    let planApproved = false;
+    let planExecutionStarted = false;
+    let approvedPlanText: string | null = null;
 
     try {
       const systemPrompt = buildSystemPrompt(claudeMdContent, undefined, {
@@ -695,6 +698,8 @@ export async function processMessage(
                         }
 
                         console.log(`[session ${sessionId}] Plan approved — switching to bypassPermissions`);
+                        planApproved = true;
+                        approvedPlanText = plan;
                         return {
                           hookSpecificOutput: {
                             hookEventName: "PreToolUse" as const,
@@ -833,6 +838,22 @@ export async function processMessage(
                 lastResultText = text;
                 totalTurns += message.num_turns;
                 totalCost += message.total_cost_usd;
+
+                // Plan approved → suppress summary (plan already shown in approval blocks),
+                // save to DB, and let conversation end — execution restarts with clean context below.
+                if (planModeRequested && planApproved && !planExecutionStarted) {
+                  console.log(`[session ${sessionId}] plan approved — suppressing summary, will restart for execution`);
+
+                  await db.createMessage({
+                    sessionId,
+                    role: "assistant",
+                    content: text,
+                    slackTs: null,
+                    metadata: { turns: message.num_turns, cost: message.total_cost_usd, isPlanSummary: true },
+                  });
+
+                  continue;
+                }
 
                 // Extract FILE_UPLOAD directives before formatting
                 const { cleanText, uploads } = extractFileUploads(text);
@@ -991,6 +1012,45 @@ export async function processMessage(
         } else {
           throw err;
         }
+      }
+
+      // Plan approved — start fresh execution conversation with clean context.
+      if (planModeRequested && planApproved && !planExecutionStarted) {
+        console.log(`[session ${sessionId}] plan approved — starting execution with clean context`);
+
+        // Post execution-started message + remove plan-phase reaction in parallel
+        await Promise.all([
+          slack.postMessage(channelId, ":rocket: Plan approved — executing now...", replyThread),
+          slack.removeReaction(channelId, messageTs, "memo").catch(() => {}),
+        ]);
+
+        stream.close();
+        const executionPrompt = [
+          "The following plan was approved by the user. Execute it now.",
+          "",
+          "## Approved Plan",
+          approvedPlanText,
+          "",
+          "Proceed with execution immediately — do not ask for further confirmation.",
+        ].join("\n");
+
+        stream = createMessageStream(executionPrompt);
+        runningSession.pushMessage = stream.pushMessage;
+        runningSession.close = stream.close;
+        runningSession.openGate = stream.openGate;
+
+        planModeRequested = false;   // buildQueryOptions() returns bypassPermissions
+        planExecutionStarted = true;
+
+        await db.createMessage({
+          sessionId,
+          role: "user",
+          content: executionPrompt,
+          slackTs: null,
+          metadata: { isAutoInjected: true, planExecution: true },
+        });
+
+        await runConversation();
       }
 
       clearTimeout(timeoutId);
