@@ -82,6 +82,51 @@ export async function writeFilesToDisk(
 }
 
 // ---------------------------------------------------------------------------
+// Write files to a stable (deterministic) directory keyed by userId
+// ---------------------------------------------------------------------------
+
+export async function writeFilesToStableDir(
+  files: SwitchboardFile[],
+  stableId: string,
+): Promise<string> {
+  const dir = path.join(os.tmpdir(), `sb-${stableId}`);
+  await fs.mkdir(dir, { recursive: true });
+  for (const file of files) {
+    if (file.isFolder || file.content == null) continue;
+    const filePath = path.join(dir, file.path);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, file.content, "utf-8");
+  }
+  return dir;
+}
+
+// ---------------------------------------------------------------------------
+// Session file lookup (Claude stores transcripts under ~/.claude/projects/)
+// ---------------------------------------------------------------------------
+
+export async function findSessionFile(
+  claudeSessionId: string,
+  baseDir: string = path.join(os.homedir(), ".claude", "projects"),
+): Promise<string | null> {
+  const claudeDir = baseDir;
+  try {
+    const projects = await fs.readdir(claudeDir);
+    for (const project of projects) {
+      const file = path.join(claudeDir, project, "sessions", `${claudeSessionId}.json`);
+      try {
+        await fs.access(file);
+        return file;
+      } catch {
+        /* not in this project */
+      }
+    }
+  } catch {
+    /* no projects dir */
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Cleanup
 // ---------------------------------------------------------------------------
 

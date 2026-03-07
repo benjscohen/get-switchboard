@@ -252,6 +252,49 @@ export async function getThreadSession(
 }
 
 // ---------------------------------------------------------------------------
+// Session transcript persistence (for resume across deploys)
+// ---------------------------------------------------------------------------
+
+export async function saveSessionTranscript(
+  sessionId: string,
+  transcript: string,
+  filePath: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("agent_sessions")
+    .update({ session_transcript: transcript, session_file_path: filePath })
+    .eq("id", sessionId);
+
+  if (error) {
+    console.error(`Failed to save transcript for session ${sessionId}:`, error);
+  }
+}
+
+export async function getSessionTranscript(
+  claudeSessionId: string,
+): Promise<{ transcript: string; filePath: string } | null> {
+  const { data, error } = await supabase
+    .from("agent_sessions")
+    .select("session_transcript, session_file_path")
+    .eq("claude_session_id", claudeSessionId)
+    .not("session_transcript", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Error fetching session transcript:", error);
+    return null;
+  }
+
+  if (!data?.session_transcript || !data?.session_file_path) return null;
+  return {
+    transcript: data.session_transcript as string,
+    filePath: data.session_file_path as string,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Crash recovery: find sessions that were running when the worker died
 // ---------------------------------------------------------------------------
 

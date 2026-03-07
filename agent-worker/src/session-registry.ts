@@ -12,6 +12,7 @@ export interface PendingFollowUp {
 export interface RunningSession {
   sessionId: string;
   claudeSessionId: string | null;
+  pendingFollowUpTs: string[];
   pushMessage: (msg: PendingFollowUp) => boolean;
   close: () => void;
 }

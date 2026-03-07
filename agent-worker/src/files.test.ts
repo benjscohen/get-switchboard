@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import * as os from "node:os";
 import {
   fetchUserFiles,
   writeFilesToDisk,
+  writeFilesToStableDir,
+  findSessionFile,
   cleanupTempDir,
-  type SwitchboardFile,
+  type SwitchboardFile
 } from "./files.js";
 
 // ---------------------------------------------------------------------------
@@ -200,5 +203,126 @@ describe("cleanupTempDir", () => {
 
   it("does not throw on non-existent directory", async () => {
     await expect(cleanupTempDir("/tmp/nonexistent-sb-test-dir")).resolves.not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// writeFilesToStableDir
+// ---------------------------------------------------------------------------
+
+describe("writeFilesToStableDir", () => {
+  const stableId = `test-stable-${Date.now()}`;
+  let stableDir: string | null = null;
+
+  afterEach(async () => {
+    if (stableDir) {
+      await fs.rm(stableDir, { recursive: true, force: true }).catch(() => {});
+      stableDir = null;
+    }
+  });
+
+  it("creates a deterministic directory based on stableId", async () => {
+    const files: SwitchboardFile[] = [
+      { path: "/hello.txt", content: "world", isFolder: false },
+    ];
+
+    stableDir = await writeFilesToStableDir(files, stableId);
+
+    expect(stableDir).toBe(path.join(os.tmpdir(), `sb-${stableId}`));
+    const content = await fs.readFile(path.join(stableDir, "hello.txt"), "utf-8");
+    expect(content).toBe("world");
+  });
+
+  it("returns the same directory on repeated calls (idempotent)", async () => {
+    const files: SwitchboardFile[] = [
+      { path: "/a.txt", content: "v1", isFolder: false },
+    ];
+
+    stableDir = await writeFilesToStableDir(files, stableId);
+    const dir2 = await writeFilesToStableDir(
+      [{ path: "/a.txt", content: "v2", isFolder: false }],
+      stableId,
+    );
+
+    expect(dir2).toBe(stableDir);
+    // Content should be overwritten
+    const content = await fs.readFile(path.join(stableDir, "a.txt"), "utf-8");
+    expect(content).toBe("v2");
+  });
+
+  it("skips folders and null-content files", async () => {
+    const files: SwitchboardFile[] = [
+      { path: "/dir", content: null, isFolder: true },
+      { path: "/empty.txt", content: null, isFolder: false },
+      { path: "/real.txt", content: "data", isFolder: false },
+    ];
+
+    stableDir = await writeFilesToStableDir(files, stableId);
+
+    const realExists = await fs.stat(path.join(stableDir, "real.txt")).then(() => true).catch(() => false);
+    const emptyExists = await fs.stat(path.join(stableDir, "empty.txt")).then(() => true).catch(() => false);
+    expect(realExists).toBe(true);
+    expect(emptyExists).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findSessionFile
+// ---------------------------------------------------------------------------
+
+describe("findSessionFile", () => {
+  let testDir: string | null = null;
+
+  afterEach(async () => {
+    if (testDir) {
+      await fs.rm(testDir, { recursive: true, force: true }).catch(() => {});
+      testDir = null;
+    }
+  });
+
+  it("returns null when base dir does not exist", async () => {
+    const result = await findSessionFile("any-id", "/tmp/nonexistent-claude-dir-xyz");
+    expect(result).toBeNull();
+  });
+
+  it("finds a session file in the projects directory", async () => {
+    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-projects-"));
+    testDir = baseDir;
+    const sessionsDir = path.join(baseDir, "test-project", "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
+
+    const sessionId = "test-session-abc123";
+    const sessionFile = path.join(sessionsDir, `${sessionId}.json`);
+    await fs.writeFile(sessionFile, '{"test": true}', "utf-8");
+
+    const result = await findSessionFile(sessionId, baseDir);
+    expect(result).toBe(sessionFile);
+  });
+
+  it("returns null when session file does not exist in any project", async () => {
+    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-projects-"));
+    testDir = baseDir;
+    const sessionsDir = path.join(baseDir, "some-project", "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
+
+    const result = await findSessionFile("missing-session-xyz", baseDir);
+    expect(result).toBeNull();
+  });
+
+  it("searches across multiple projects", async () => {
+    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-projects-"));
+    testDir = baseDir;
+
+    // Create two projects, session file only in the second
+    await fs.mkdir(path.join(baseDir, "proj-a", "sessions"), { recursive: true });
+    const sessionsDir = path.join(baseDir, "proj-b", "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
+
+    const sessionId = "multi-project-session";
+    const sessionFile = path.join(sessionsDir, `${sessionId}.json`);
+    await fs.writeFile(sessionFile, "{}", "utf-8");
+
+    const result = await findSessionFile(sessionId, baseDir);
+    expect(result).toBe(sessionFile);
   });
 });

@@ -82,10 +82,7 @@ app.message(async ({ message, body }) => {
         messageTs,
       );
       if (injected) {
-        await Promise.all([
-          slack.removeReaction(channelId, messageTs, "eyes").catch(() => {}),
-          slack.addReaction(channelId, messageTs, "speech_balloon").catch(() => {}),
-        ]);
+        running.pendingFollowUpTs.push(messageTs);
         return;
       }
       // If injection failed (session just closed), fall through to normal flow

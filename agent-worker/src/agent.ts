@@ -1,7 +1,9 @@
 import { query } from "@anthropic-ai/claude-code";
 import * as slack from "./slack.js";
 import * as db from "./db.js";
-import { fetchUserFiles, writeFilesToDisk, cleanupTempDir } from "./files.js";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { fetchUserFiles, writeFilesToStableDir, findSessionFile } from "./files.js";
 import { extractClaudeMd, buildSystemPrompt } from "./prompt.js";
 import { buildErrorWithRetryBlocks } from "./slack-blocks.js";
 import { createMessageStream } from "./message-stream.js";
@@ -389,12 +391,26 @@ export async function processMessage(
     try {
       const userFiles = await fetchUserFiles(lookup.agentKey);
       if (userFiles) {
-        tempDir = await writeFilesToDisk(userFiles);
+        tempDir = await writeFilesToStableDir(userFiles, lookup.userId);
         claudeMdContent = extractClaudeMd(userFiles);
         console.log(`[files] Wrote ${userFiles.length} file(s) to ${tempDir}`);
       }
     } catch (err) {
       console.error("[files] Failed to pull user files:", err);
+    }
+
+    // 12b. Restore session transcript from DB if resuming (survives deploys)
+    if (resumeSessionId) {
+      try {
+        const saved = await db.getSessionTranscript(resumeSessionId);
+        if (saved) {
+          await fs.mkdir(path.dirname(saved.filePath), { recursive: true });
+          await fs.writeFile(saved.filePath, saved.transcript, "utf-8");
+          console.log(`[thread] Restored transcript for ${resumeSessionId} → ${saved.filePath}`);
+        }
+      } catch (err) {
+        console.error(`[thread] Failed to restore transcript:`, err);
+      }
     }
 
     // 13. Set up timeout via AbortController
@@ -403,11 +419,12 @@ export async function processMessage(
 
     // 14. Create message stream + register in session registry
     const threadKey = buildThreadKey(channelId, threadTs || messageTs);
-    const stream = createMessageStream(fullPrompt);
+    let stream = createMessageStream(fullPrompt);
 
     const runningSession = {
       sessionId,
       claudeSessionId: null as string | null,
+      pendingFollowUpTs: [] as string[],
       pushMessage: stream.pushMessage,
       close: stream.close,
     };
@@ -425,6 +442,7 @@ export async function processMessage(
 
     // 15. Run Claude Code SDK (multi-turn)
     let lastResultText: string | null = null;
+    let checkedOff = false;
     let totalTurns = 0;
     let totalCost = 0;
 
@@ -486,137 +504,168 @@ export async function processMessage(
         }, 30_000);
 
         try {
-        // Check MCP server status (with timeout — SDK hangs here if process already exited)
-        try {
-          const mcpStatus = await Promise.race([
-            conversation.mcpServerStatus(),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("mcpServerStatus timeout")), 10_000),
-            ),
-          ]);
-          console.log("[mcp-status]", JSON.stringify(mcpStatus));
-        } catch (err) {
-          console.log("[mcp-status] not available:", err instanceof Error ? err.message : err);
-        }
-
-        // Iterate — handle multiple result messages (one per user turn)
-        let claudeSessionId: string | null = null;
-        let lastAssistantText = ""; // text from intermediate assistant turns (fallback for empty result)
-        for await (const message of conversation) {
-          // Track message counts
-          const label = `${message.type}:${"subtype" in message ? (message as { subtype?: string }).subtype : "-"}`;
-          msgCounts.set(label, (msgCounts.get(label) || 0) + 1);
-          recentMessages.push(label);
-          if (recentMessages.length > 10) recentMessages.shift();
-          lastMessageAt = Date.now();
-          waitingForFollowUp = false;
-
-          // Capture session_id from any message
-          if ("session_id" in message && message.session_id && !claudeSessionId) {
-            claudeSessionId = message.session_id;
-            stream.setSessionId(claudeSessionId);
-            runningSession.claudeSessionId = claudeSessionId;
-            await db.updateSession(sessionId, { claude_session_id: claudeSessionId });
+          // Check MCP server status (with timeout — SDK hangs here if process already exited)
+          try {
+            const mcpStatus = await Promise.race([
+              conversation.mcpServerStatus(),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("mcpServerStatus timeout")), 10_000),
+              ),
+            ]);
+            console.log("[mcp-status]", JSON.stringify(mcpStatus));
+          } catch (err) {
+            console.log("[mcp-status] not available:", err instanceof Error ? err.message : err);
           }
 
-          if (message.type === "system") {
-            console.log("[claude-code system]", JSON.stringify(message));
-          }
+          // Iterate — handle multiple result messages (one per user turn)
+          let claudeSessionId: string | null = null;
+          let lastAssistantText = ""; // text from intermediate assistant turns (fallback for empty result)
+          for await (const message of conversation) {
+            // Track message counts
+            const label = `${message.type}:${"subtype" in message ? (message as { subtype?: string }).subtype : "-"}`;
+            msgCounts.set(label, (msgCounts.get(label) || 0) + 1);
+            recentMessages.push(label);
+            if (recentMessages.length > 10) recentMessages.shift();
+            lastMessageAt = Date.now();
+            waitingForFollowUp = false;
 
-          // Log assistant message metadata and capture text content
-          if (message.type === "assistant") {
-            const msg = message as {
-              message?: {
-                id?: string;
-                content?: Array<{ type: string; text?: string }>;
-                stop_reason?: string;
+            // Capture session_id from any message
+            if ("session_id" in message && message.session_id && !claudeSessionId) {
+              claudeSessionId = message.session_id;
+              stream.setSessionId(claudeSessionId);
+              runningSession.claudeSessionId = claudeSessionId;
+              await db.updateSession(sessionId, { claude_session_id: claudeSessionId });
+            }
+
+            if (message.type === "system") {
+              console.log("[claude-code system]", JSON.stringify(message));
+            }
+
+            // Log assistant message metadata and capture text content
+            if (message.type === "assistant") {
+              const msg = message as {
+                message?: {
+                  id?: string;
+                  content?: Array<{ type: string; text?: string }>;
+                  stop_reason?: string;
+                };
               };
-            };
-            const blocks = msg.message?.content || [];
-            const blockTypes = blocks.map((b) => b.type).join(",") || "?";
-            console.log(
-              `[session ${sessionId}] assistant msg id=${msg.message?.id} blocks=[${blockTypes}] stop=${msg.message?.stop_reason || "?"}`,
-            );
-
-            // Accumulate text from assistant messages — SDK result.result may be
-            // empty when text was produced in an intermediate turn (before tool calls)
-            const textContent = blocks
-              .filter((b) => b.type === "text" && b.text)
-              .map((b) => b.text!)
-              .join("");
-            if (textContent) lastAssistantText = textContent;
-          }
-
-          if (message.type === "result") {
-            if (message.subtype === "success") {
-              const text = message.result || lastAssistantText || "(No response generated)";
-              if (!message.result) {
-                console.warn(
-                  `[session ${sessionId}] result.result empty — using ${lastAssistantText ? `lastAssistantText (len=${lastAssistantText.length})` : "fallback"}`,
-                );
-              }
+              const blocks = msg.message?.content || [];
+              const blockTypes = blocks.map((b) => b.type).join(",") || "?";
               console.log(
-                `[session ${sessionId}] result:success — len=${text.length} preview=${JSON.stringify(text.slice(0, 200))}`,
+                `[session ${sessionId}] assistant msg id=${msg.message?.id} blocks=[${blockTypes}] stop=${msg.message?.stop_reason || "?"}`,
               );
-              lastAssistantText = ""; // reset for next turn
-              lastResultText = text;
-              totalTurns += message.num_turns;
-              totalCost += message.total_cost_usd;
 
-              try {
-                const resultTs = await slack.postMessage(
-                  channelId,
-                  truncateForSlack(slack.markdownToSlack(text)),
-                  replyThread,
-                );
-                console.log(`[session ${sessionId}] posted to Slack ts=${resultTs}`);
+              // Accumulate text from assistant messages — SDK result.result may be
+              // empty when text was produced in an intermediate turn (before tool calls)
+              const textContent = blocks
+                .filter((b) => b.type === "text" && b.text)
+                .map((b) => b.text!)
+                .join("");
+              if (textContent) lastAssistantText = textContent;
+            }
 
-                await db.createMessage({
-                  sessionId,
-                  role: "assistant",
-                  content: text,
-                  slackTs: resultTs,
-                  metadata: { turns: message.num_turns, cost: message.total_cost_usd },
-                });
-              } catch (slackErr) {
-                console.error(`[session ${sessionId}] failed to post result to Slack:`, slackErr);
-                // Retry with plain text (no markdown conversion, truncated)
-                try {
-                  await slack.postMessage(channelId, text.slice(0, 3900), replyThread);
-                } catch (retryErr) {
-                  console.error(`[session ${sessionId}] retry also failed:`, retryErr);
+            if (message.type === "result") {
+              if (message.subtype === "success") {
+                const text = message.result || lastAssistantText || "(No response generated)";
+                if (!message.result) {
+                  console.warn(
+                    `[session ${sessionId}] result.result empty — using ${lastAssistantText ? `lastAssistantText (len=${lastAssistantText.length})` : "fallback"}`,
+                  );
                 }
-              }
+                console.log(
+                  `[session ${sessionId}] result:success — len=${text.length} preview=${JSON.stringify(text.slice(0, 200))}`,
+                );
+                lastAssistantText = ""; // reset for next turn
+                lastResultText = text;
+                totalTurns += message.num_turns;
+                totalCost += message.total_cost_usd;
 
-              // Mark as waiting for user follow-up — suppresses SDK inactivity timeout
-              waitingForFollowUp = true;
-              resetIdleTimer();
-            } else {
-              // Error result — surface to user via retry flow
-              console.error("[claude-code] error result:", JSON.stringify(message));
-              throw new Error(
-                `Agent encountered an error (${message.subtype}): ${
-                  "error" in message && message.error
-                    ? String(message.error)
-                    : "no details available"
-                }`,
-              );
+                try {
+                  const resultTs = await slack.postMessage(
+                    channelId,
+                    truncateForSlack(slack.markdownToSlack(text)),
+                    replyThread,
+                  );
+                  console.log(`[session ${sessionId}] posted to Slack ts=${resultTs}`);
+
+                  await db.createMessage({
+                    sessionId,
+                    role: "assistant",
+                    content: text,
+                    slackTs: resultTs,
+                    metadata: { turns: message.num_turns, cost: message.total_cost_usd },
+                  });
+
+                  // Swap eyes → checkmark on the message that triggered this reply
+                  if (!checkedOff) {
+                    // First result — check off the original user message
+                    checkedOff = true;
+                    await Promise.all([
+                      slack.removeReaction(channelId, messageTs, "eyes").catch(() => {}),
+                      slack.addReaction(channelId, messageTs, "white_check_mark").catch(() => {}),
+                    ]);
+                  } else if (runningSession.pendingFollowUpTs.length > 0) {
+                    // Subsequent result — check off the earliest pending follow-up
+                    const followUpTs = runningSession.pendingFollowUpTs.shift()!;
+                    await Promise.all([
+                      slack.removeReaction(channelId, followUpTs, "eyes").catch(() => {}),
+                      slack.addReaction(channelId, followUpTs, "white_check_mark").catch(() => {}),
+                    ]);
+                  }
+                } catch (slackErr) {
+                  console.error(`[session ${sessionId}] failed to post result to Slack:`, slackErr);
+                  // Retry with plain text (no markdown conversion, truncated)
+                  try {
+                    await slack.postMessage(channelId, text.slice(0, 3900), replyThread);
+                  } catch (retryErr) {
+                    console.error(`[session ${sessionId}] retry also failed:`, retryErr);
+                  }
+                }
+
+                // Mark as waiting for user follow-up — suppresses SDK inactivity timeout
+                waitingForFollowUp = true;
+                resetIdleTimer();
+              } else {
+                // Error result — surface to user via retry flow
+                console.error("[claude-code] error result:", JSON.stringify(message));
+                throw new Error(
+                  `Agent encountered an error (${message.subtype}): ${
+                    "error" in message && message.error
+                      ? String(message.error)
+                      : "no details available"
+                  }`,
+                );
+              }
             }
           }
-        }
 
-        // Summary log after loop completes
-        const elapsed = Math.round((Date.now() - startTime) / 1000);
-        console.log(
-          `[session ${sessionId}] conversation done — elapsed=${elapsed}s counts=${JSON.stringify(Object.fromEntries(msgCounts))} hasResult=${!!lastResultText} resultLen=${lastResultText?.length ?? 0}`,
-        );
-        if (!lastResultText) {
-          console.warn(
-            `[session ${sessionId}] no result text captured — recent messages: [${recentMessages.join(", ")}]`,
+          // Summary log after loop completes
+          const elapsed = Math.round((Date.now() - startTime) / 1000);
+          console.log(
+            `[session ${sessionId}] conversation done — elapsed=${elapsed}s counts=${JSON.stringify(Object.fromEntries(msgCounts))} hasResult=${!!lastResultText} resultLen=${lastResultText?.length ?? 0}`,
           );
-        }
+          if (!lastResultText) {
+            console.warn(
+              `[session ${sessionId}] no result text captured — recent messages: [${recentMessages.join(", ")}]`,
+            );
+          }
 
-        return { claudeSessionId };
+          // Save session transcript for future resume across deploys
+          if (claudeSessionId) {
+            try {
+              const sessionFile = await findSessionFile(claudeSessionId);
+              if (sessionFile) {
+                const transcript = await fs.readFile(sessionFile, "utf-8");
+                await db.saveSessionTranscript(sessionId, transcript, sessionFile);
+                console.log(`[session ${sessionId}] Saved transcript (${transcript.length} bytes)`);
+              }
+            } catch (err) {
+              console.error(`[session ${sessionId}] Failed to save transcript:`, err);
+            }
+          }
+
+          return { claudeSessionId };
         } finally {
           clearInterval(heartbeat);
         }
@@ -633,6 +682,11 @@ export async function processMessage(
             err instanceof Error ? err.message : err,
           );
           resumeSessionId = null;
+          // Recreate stream — the previous one's async generator is consumed/done
+          stream.close();
+          stream = createMessageStream(fullPrompt);
+          runningSession.pushMessage = stream.pushMessage;
+          runningSession.close = stream.close;
           await runConversation();
         } else {
           throw err;
@@ -676,11 +730,13 @@ export async function processMessage(
       return;
     }
 
-    // 16. Finalize: mark completed + swap emoji on the original message
-    await Promise.all([
-      slack.removeReaction(channelId, messageTs, "eyes").catch(() => {}),
-      slack.addReaction(channelId, messageTs, "white_check_mark").catch(() => {}),
-    ]);
+    // 16. Finalize: swap emoji on the original message if not already checked off
+    if (!checkedOff) {
+      await Promise.all([
+        slack.removeReaction(channelId, messageTs, "eyes").catch(() => {}),
+        slack.addReaction(channelId, messageTs, "white_check_mark").catch(() => {}),
+      ]);
+    }
 
     await db.updateSession(sessionId, {
       status: "completed",
@@ -703,11 +759,7 @@ export async function processMessage(
   } finally {
     activeCount--;
     unregisterSession(buildThreadKey(channelId, threadTs || messageTs));
-    if (tempDir) {
-      cleanupTempDir(tempDir).catch((err) =>
-        console.error("[files] Cleanup failed:", err),
-      );
-    }
+    // tempDir is stable (keyed by userId) and reused across sessions — no cleanup
   }
 }
 
