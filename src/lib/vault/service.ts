@@ -42,6 +42,12 @@ interface UpdateSecretInput {
   fields?: SecretField[];
 }
 
+export interface ShareSummary {
+  users: number;
+  teams: number;
+  organizations: number;
+}
+
 interface SecretListItem {
   id: string;
   name: string;
@@ -53,6 +59,7 @@ interface SecretListItem {
   updatedAt: string;
   ownership?: "owned" | "shared";
   sharedBy?: string;
+  shareSummary?: ShareSummary;
 }
 
 interface SecretDetail extends SecretListItem {
@@ -101,6 +108,30 @@ async function fetchFieldMeta(
     .in("secret_id", secretIds)
     .order("sort_order");
   return fields ?? [];
+}
+
+async function fetchShareSummaries(
+  secretIds: string[]
+): Promise<Map<string, ShareSummary>> {
+  const map = new Map<string, ShareSummary>();
+  if (secretIds.length === 0) return map;
+
+  const { data: shares } = await supabaseAdmin
+    .from("vault_shares")
+    .select("secret_id, user_id, team_id, organization_id")
+    .in("secret_id", secretIds);
+
+  if (!shares) return map;
+
+  for (const s of shares) {
+    const summary = map.get(s.secret_id) ?? { users: 0, teams: 0, organizations: 0 };
+    if (s.user_id) summary.users++;
+    else if (s.team_id) summary.teams++;
+    else if (s.organization_id) summary.organizations++;
+    map.set(s.secret_id, summary);
+  }
+
+  return map;
 }
 
 function toSecretListItem(
@@ -286,11 +317,18 @@ async function fetchOwnedAndSharedSecrets(
     }
   }
 
-  const fieldMeta = await fetchFieldMeta(allSecretIds);
+  const ownedIds = ownedSecrets.map((s) => s.id);
+  const [fieldMeta, shareSummaries] = await Promise.all([
+    fetchFieldMeta(allSecretIds),
+    fetchShareSummaries(ownedIds),
+  ]);
   const fieldsBySecret = buildFieldMap(fieldMeta);
 
   for (const s of ownedSecrets) {
-    result.push(toSecretListItem(s, fieldsBySecret, include === "all" ? "owned" : undefined));
+    const item = toSecretListItem(s, fieldsBySecret, include === "all" ? "owned" : undefined);
+    const summary = shareSummaries.get(s.id);
+    if (summary) item.shareSummary = summary;
+    result.push(item);
   }
   for (const s of sharedSecrets) {
     result.push(toSecretListItem(s, fieldsBySecret, "shared", sharedOwnerNames.get(s.user_id)));
@@ -399,6 +437,19 @@ export async function createSecret(
     return { ok: false, error: "At least one field is required", status: 400 };
   }
 
+  // Validate field names
+  const fieldNamesSeen = new Set<string>();
+  for (const f of input.fields) {
+    if (!f.name?.trim()) {
+      return { ok: false, error: "All fields must have a non-empty name", status: 400 };
+    }
+    const lower = f.name.trim().toLowerCase();
+    if (fieldNamesSeen.has(lower)) {
+      return { ok: false, error: `Duplicate field name: "${f.name.trim()}"`, status: 400 };
+    }
+    fieldNamesSeen.add(lower);
+  }
+
   const { data: secret, error } = await supabaseAdmin
     .from("vault_secrets")
     .insert({
@@ -420,7 +471,7 @@ export async function createSecret(
 
   const fieldRows = input.fields.map((f, i) => ({
     secret_id: secret.id,
-    field_name: f.name,
+    field_name: f.name.trim(),
     encrypted_value: encrypt(f.value),
     sensitive: f.sensitive ?? true,
     sort_order: i,
@@ -456,6 +507,21 @@ export async function updateSecret(
     return { ok: false, error: "At least one field is required", status: 400 };
   }
 
+  // Validate field names
+  if (input.fields) {
+    const fieldNamesSeen = new Set<string>();
+    for (const f of input.fields) {
+      if (!f.name?.trim()) {
+        return { ok: false, error: "All fields must have a non-empty name", status: 400 };
+      }
+      const lower = f.name.trim().toLowerCase();
+      if (fieldNamesSeen.has(lower)) {
+        return { ok: false, error: `Duplicate field name: "${f.name.trim()}"`, status: 400 };
+      }
+      fieldNamesSeen.add(lower);
+    }
+  }
+
   // Update metadata
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.name !== undefined) updates.name = input.name.trim();
@@ -485,7 +551,7 @@ export async function updateSecret(
     if (input.fields.length > 0) {
       const fieldRows = input.fields.map((f, i) => ({
         secret_id: id,
-        field_name: f.name,
+        field_name: f.name.trim(),
         encrypted_value: encrypt(f.value),
         sensitive: f.sensitive ?? true,
         sort_order: i,

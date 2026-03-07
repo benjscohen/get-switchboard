@@ -19,7 +19,7 @@ interface VaultFormProps {
     category?: string;
     tags?: string[];
     fields: Array<{ name: string; value: string; sensitive?: boolean }>;
-  }) => void;
+  }) => Promise<{ ok: boolean; error?: string }>;
   onClose: () => void;
 }
 
@@ -46,6 +46,8 @@ export function VaultForm({ secret, onSave, onClose }: VaultFormProps) {
   );
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState<number | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Map<number, string>>(new Map());
+  const [formError, setFormError] = useState("");
 
   function addField() {
     setFields([...fields, { name: "", value: "", sensitive: true, revealed: false }]);
@@ -53,10 +55,25 @@ export function VaultForm({ secret, onSave, onClose }: VaultFormProps) {
 
   function removeField(index: number) {
     setFields(fields.filter((_, i) => i !== index));
+    setFieldErrors((prev) => {
+      const next = new Map<number, string>();
+      for (const [k, v] of prev) {
+        if (k < index) next.set(k, v);
+        else if (k > index) next.set(k - 1, v);
+      }
+      return next;
+    });
   }
 
   function updateField(index: number, updates: Partial<FieldRow>) {
     setFields(fields.map((f, i) => (i === index ? { ...f, ...updates } : f)));
+    if ("name" in updates) {
+      setFieldErrors((prev) => {
+        const next = new Map(prev);
+        next.delete(index);
+        return next;
+      });
+    }
   }
 
   function toggleReveal(index: number) {
@@ -77,21 +94,51 @@ export function VaultForm({ secret, onSave, onClose }: VaultFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setFormError("");
+
+    // Validate field names
+    const errors = new Map<number, string>();
+    const seen = new Map<string, number>();
+    for (let i = 0; i < fields.length; i++) {
+      const trimmed = fields[i].name.trim();
+      if (!trimmed) {
+        errors.set(i, "Field name is required");
+      } else {
+        const lower = trimmed.toLowerCase();
+        const prev = seen.get(lower);
+        if (prev !== undefined) {
+          errors.set(i, "Duplicate field name");
+          if (!errors.has(prev)) errors.set(prev, "Duplicate field name");
+        }
+        seen.set(lower, i);
+      }
+    }
+
+    if (errors.size > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
     setSaving(true);
     try {
       const tags = tagsInput
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean);
-      await onSave({
+      const result = await onSave({
         name,
         description: description || undefined,
         category,
         tags: tags.length > 0 ? tags : undefined,
-        fields: fields
-          .filter((f) => f.name.trim())
-          .map((f) => ({ name: f.name, value: f.value, sensitive: f.sensitive })),
+        fields: fields.map((f) => ({
+          name: f.name.trim(),
+          value: f.value,
+          sensitive: f.sensitive,
+        })),
       });
+      if (!result.ok) {
+        setFormError(result.error || "Failed to save secret");
+      }
     } finally {
       setSaving(false);
     }
@@ -165,14 +212,17 @@ export function VaultForm({ secret, onSave, onClose }: VaultFormProps) {
             </div>
             <div className="space-y-2">
               {fields.map((field, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={field.name}
-                    onChange={(e) => updateField(i, { name: e.target.value })}
-                    placeholder="Field name"
-                    className="w-32 rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-accent"
-                  />
+                <div key={i}>
+                  <div className="flex items-center gap-2">
+                  <div className="w-32">
+                    <input
+                      type="text"
+                      value={field.name}
+                      onChange={(e) => updateField(i, { name: e.target.value })}
+                      placeholder="Field name"
+                      className={`w-full rounded-lg border bg-bg px-2 py-1.5 text-sm outline-none focus:border-accent ${fieldErrors.has(i) ? "border-red-500" : "border-border"}`}
+                    />
+                  </div>
                   <div className="relative flex-1">
                     {(() => { const masked = field.sensitive && !field.revealed; return (
                     <input
@@ -242,16 +292,26 @@ export function VaultForm({ secret, onSave, onClose }: VaultFormProps) {
                       </svg>
                     </button>
                   )}
+                  </div>
+                  {fieldErrors.has(i) && (
+                    <p className="mt-0.5 ml-0 text-xs text-red-500">{fieldErrors.get(i)}</p>
+                  )}
                 </div>
               ))}
             </div>
           </div>
 
+          {formError && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500">
+              {formError}
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={saving || !name.trim()}>
+            <Button type="submit" size="sm" disabled={saving || !name.trim() || fields.every((f) => !f.name.trim())}>
               {saving ? "Saving..." : secret ? "Update" : "Create"}
             </Button>
           </div>

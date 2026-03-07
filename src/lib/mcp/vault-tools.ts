@@ -130,15 +130,15 @@ export function registerVaultTools(
     "vault_set_secret",
     "Create or update a secret (upsert by name). Provide fields as an array of {name, value, sensitive?}.",
     {
-      name: z.string().describe("Secret name"),
+      name: z.string().min(1, "Required: 'name' must be a non-empty secret name (e.g. 'AWS Production')").describe("Secret name"),
       description: z.string().optional().describe("Optional description"),
       category: z.enum(["api_key", "credential", "payment", "note", "other"]).optional().describe("Category (default: other)"),
       tags: z.array(z.string()).optional().describe("Tags for organization"),
       fields: z.array(z.object({
-        name: z.string().describe("Field name"),
+        name: z.string().min(1, "Each field must have a non-empty 'name' (e.g. 'api_key', 'username', 'password')").describe("Field name"),
         value: z.string().describe("Field value (will be encrypted)"),
         sensitive: z.boolean().optional().describe("Whether to mask in UI (default: true)"),
-      })).describe("Secret fields"),
+      })).min(1, "Required: 'fields' must contain at least one field with a name and value").describe("Secret fields"),
     },
     withToolLogging("vault_set_secret", "platform", async (args, extra) => {
       const auth = getVaultAuth(extra);

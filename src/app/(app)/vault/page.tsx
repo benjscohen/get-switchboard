@@ -12,6 +12,12 @@ interface SecretFieldMeta {
   sensitive: boolean;
 }
 
+export interface ShareSummary {
+  users: number;
+  teams: number;
+  organizations: number;
+}
+
 export interface VaultSecret {
   id: string;
   name: string;
@@ -23,6 +29,7 @@ export interface VaultSecret {
   updatedAt: string;
   ownership?: "owned" | "shared";
   sharedBy?: string;
+  shareSummary?: ShareSummary;
 }
 
 export interface VaultSecretDetail extends VaultSecret {
@@ -56,23 +63,28 @@ export default function VaultPage() {
     category?: string;
     tags?: string[];
     fields: Array<{ name: string; value: string; sensitive?: boolean }>;
-  }) {
-    if (editing) {
-      await fetch(`/api/vault/${editing.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-    } else {
-      await fetch("/api/vault", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+  }): Promise<{ ok: boolean; error?: string }> {
+    const res = editing
+      ? await fetch(`/api/vault/${editing.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        })
+      : await fetch("/api/vault", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, error: body.error || "Failed to save secret" };
     }
+
     setEditing(null);
     setCreating(false);
     fetchSecrets();
+    return { ok: true };
   }
 
   async function handleDelete(id: string) {

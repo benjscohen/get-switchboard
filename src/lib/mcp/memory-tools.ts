@@ -27,8 +27,8 @@ export function registerMemoryTools(
     "save_memory",
     "Save a memory that persists across conversations. Use this when you learn something important about the user, their preferences, project patterns, decisions, or context. Memories are versioned — saving to the same key updates it.",
     {
-      key: z.string().describe("Memory key, e.g. 'coding-preferences' or 'project-acme/architecture'. Lowercase with hyphens."),
-      content: z.string().describe("Memory content (markdown)"),
+      key: z.string().min(1, "Required: 'key' must be a non-empty memory identifier (e.g. 'coding-preferences' or 'project-acme/architecture')").describe("Memory key, e.g. 'coding-preferences' or 'project-acme/architecture'. Lowercase with hyphens."),
+      content: z.string().min(1, "Required: 'content' must be non-empty. Provide the memory content as markdown.").describe("Memory content (markdown)"),
       tags: z.array(z.string()).optional().describe("Optional tags for categorization, e.g. ['preference', 'workflow']"),
     },
     withToolLogging("save_memory", "platform", async (args, extra) => {
@@ -110,7 +110,7 @@ export function registerMemoryTools(
     "forget_memory",
     "Delete a memory permanently. Use when information is outdated or the user asks you to forget something.",
     {
-      key: z.string().describe("Memory key to delete, e.g. 'coding-preferences'"),
+      key: z.string().min(1, "Required: 'key' must be a non-empty memory identifier (e.g. 'coding-preferences'). Use recall_memories to find existing keys.").describe("Memory key to delete, e.g. 'coding-preferences'"),
     },
     withToolLogging("forget_memory", "platform", async (args, extra) => {
       const auth = getMcpAuth(extra);

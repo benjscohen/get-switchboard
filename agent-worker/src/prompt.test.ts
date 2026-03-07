@@ -209,21 +209,23 @@ describe("memory instructions", () => {
     expect(identityIndex).toBeLessThan(memoryIndex);
   });
 
-  it("maintains full section order: identity → memory → dev → guardrails → Slack", () => {
+  it("maintains full section order: identity → memory → dev → guardrails → Slack → feedback", () => {
     const prompt = buildSystemPrompt(null, DATE);
     const identity = prompt.indexOf("helpful AI assistant");
     const memory = prompt.indexOf("persistent memory system");
     const dev = prompt.indexOf("dev environment with:");
     const guardrails = prompt.indexOf("ask the user for confirmation");
     const slack = prompt.indexOf("Format responses for Slack");
+    const feedback = prompt.indexOf("submit_feedback");
 
-    for (const idx of [identity, memory, dev, guardrails, slack]) {
+    for (const idx of [identity, memory, dev, guardrails, slack, feedback]) {
       expect(idx).toBeGreaterThan(-1);
     }
     expect(identity).toBeLessThan(memory);
     expect(memory).toBeLessThan(dev);
     expect(dev).toBeLessThan(guardrails);
     expect(guardrails).toBeLessThan(slack);
+    expect(slack).toBeLessThan(feedback);
   });
 
   it("places CLAUDE.md between guardrails and Slack when provided", () => {
@@ -258,5 +260,62 @@ describe("memory instructions", () => {
     expect(prompt).toContain("My rules");
     // Should have a valid date in daily/ key
     expect(prompt).toMatch(/daily\/\d{4}-\d{2}-\d{2}/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FILE_UPLOAD instructions
+// ---------------------------------------------------------------------------
+
+describe("FILE_UPLOAD instructions", () => {
+  it("includes FILE_UPLOAD directive syntax", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("FILE_UPLOAD:");
+  });
+
+  it("explains FILE_UPLOAD must be on its own line", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("on its own line");
+  });
+
+  it("explains directive lines are stripped from message", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("stripped from your message");
+  });
+
+  it("includes an example with absolute path", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("FILE_UPLOAD:/tmp/chart.png");
+  });
+
+  it("does NOT mention old output/ directory approach", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).not.toContain('"output/"');
+    expect(prompt).not.toContain("output/ directory");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Feedback instructions
+// ---------------------------------------------------------------------------
+
+describe("feedback instructions", () => {
+  it("includes submit_feedback reference", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("submit_feedback");
+  });
+
+  it("mentions bug reporting", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("bug");
+  });
+
+  it("comes after Slack formatting instructions", () => {
+    const prompt = buildSystemPrompt(null);
+    const slack = prompt.indexOf("Format responses for Slack");
+    const feedback = prompt.indexOf("submit_feedback");
+    expect(slack).toBeGreaterThan(-1);
+    expect(feedback).toBeGreaterThan(-1);
+    expect(slack).toBeLessThan(feedback);
   });
 });

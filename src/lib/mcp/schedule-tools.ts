@@ -89,9 +89,9 @@ export function registerScheduleTools(
         .describe("Model override (e.g. 'claude-sonnet-4-6')."),
       delivery: z.array(z.object({
         type: z.enum(["slack_dm", "slack_channel", "file"]),
-        channel_id: z.string().optional(),
-        channel_name: z.string().optional(),
-        path: z.string().optional(),
+        channel_id: z.string().min(1, "'channel_id' must be non-empty when provided (e.g. 'C01234ABC'). Find channel IDs using Slack.").optional(),
+        channel_name: z.string().min(1, "'channel_name' must be non-empty when provided").optional(),
+        path: z.string().min(1, "'path' must be non-empty when provided (e.g. '/reports/daily.md')").optional(),
       })).optional()
         .describe("Delivery targets. Defaults to [{ type: \"slack_dm\" }]."),
       team_id: z.string().optional()

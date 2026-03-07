@@ -1,5 +1,6 @@
 import * as slack from "./slack.js";
 import * as db from "./db.js";
+import { extractFileUploads, uploadExtractedFiles } from "./file-uploads.js";
 
 // ---------------------------------------------------------------------------
 // Delivery targets + result delivery
@@ -21,8 +22,11 @@ export async function deliverResults(
   resultText: string,
   opts: { agentKey: string; creatorUserId: string },
 ): Promise<DeliveryResult[]> {
+  // Extract FILE_UPLOAD directives once
+  const { cleanText, uploads } = extractFileUploads(resultText);
+
   // Format Slack text once (shared across all Slack targets)
-  const slackText = slack.markdownToSlack(resultText);
+  const slackText = slack.markdownToSlack(cleanText);
   const truncatedSlack = slackText.length > 3900 ? slackText.slice(0, 3900) + "\n...(truncated)" : slackText;
 
   // Deliver to all targets in parallel
@@ -30,6 +34,9 @@ export async function deliverResults(
     try {
       if (target.type === "slack_channel") {
         await slack.postMessage(target.channel_id, truncatedSlack);
+        if (uploads.length > 0) {
+          await uploadExtractedFiles(uploads, target.channel_id, undefined, "scheduled");
+        }
         return { target, success: true };
       } else if (target.type === "slack_dm") {
         const dmChannelId = await db.lookupSlackDmChannel(opts.creatorUserId);
@@ -37,9 +44,12 @@ export async function deliverResults(
           return { target, success: false, error: "Could not find Slack DM channel for schedule creator" };
         }
         await slack.postMessage(dmChannelId, truncatedSlack);
+        if (uploads.length > 0) {
+          await uploadExtractedFiles(uploads, dmChannelId, undefined, "scheduled");
+        }
         return { target, success: true };
       } else if (target.type === "file") {
-        await writeToSwitchboardFile(opts.agentKey, target.path, resultText);
+        await writeToSwitchboardFile(opts.agentKey, target.path, cleanText);
         return { target, success: true };
       }
       return { target, success: false, error: `Unknown delivery type: ${(target as { type: string }).type}` };

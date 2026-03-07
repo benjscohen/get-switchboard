@@ -184,7 +184,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
     "Manage team membership. Actions: list, add, update, remove.",
     {
       action: z.enum(["list", "add", "update", "remove"]),
-      team_id: z.string().describe("Team ID"),
+      team_id: z.string().min(1, "Required: 'team_id' must be a valid UUID. Use admin_teams with action 'list' to find team IDs.").describe("Team ID"),
       user_id: z.string().optional().describe("Required for add/update/remove"),
       role: z.enum(["lead", "member"]).optional().describe("Required for add/update"),
     },
@@ -612,10 +612,10 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
     "View or set user permissions. Actions: get, set. Requires super admin.",
     {
       action: z.enum(["get", "set"]),
-      user_id: z.string().describe("Target user ID"),
+      user_id: z.string().min(1, "Required: 'user_id' must be a valid UUID. Use admin_users with action 'list' to find user IDs.").describe("Target user ID"),
       permissions_mode: z.string().optional().describe("full, custom, or read_only (for set)"),
       integrations: z.array(z.object({
-        integrationId: z.string(),
+        integrationId: z.string().min(1, "Each integration entry must have a non-empty 'integrationId' (e.g. 'slack', 'google-calendar')"),
         allowedTools: z.array(z.string()),
       })).optional().describe("Integration access rules (for set with custom mode)"),
     },
@@ -767,7 +767,7 @@ export function registerAdminTools(server: McpServer, toolMeta: Map<string, Tool
       user_key_instructions: z.string().optional().describe("Instructions for per_user key mode"),
       status: z.string().optional().describe("Server status (for update)"),
       tools: z.array(z.object({
-        toolName: z.string(),
+        toolName: z.string().min(1, "Each tool entry must have a non-empty 'toolName'. Use action 'discover' to find available tool names."),
         enabled: z.boolean(),
       })).optional().describe("Tools to toggle (for toggle_tools)"),
     },

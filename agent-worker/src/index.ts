@@ -8,9 +8,11 @@ import {
 } from "./agent.js";
 import { startScheduler } from "./scheduler.js";
 import * as slack from "./slack.js";
+import type { SlackAttachment } from "./slack.js";
 import * as db from "./db.js";
 import { buildRetryDisabledBlocks } from "./slack-blocks.js";
 import { buildThreadKey, getRunningSession, findRunningSessionBySessionId } from "./session-registry.js";
+import { cleanupOldArchives } from "./workspace-storage.js";
 import type { SlackFile } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -52,9 +54,17 @@ app.message(async ({ message, body }) => {
 
   const slackUserId = message.user;
   const channelId = message.channel;
-  const text = ("text" in message ? message.text : "") || "";
+  let text = ("text" in message ? message.text : "") || "";
   const messageTs = message.ts;
   const threadTs = "thread_ts" in message ? message.thread_ts : undefined;
+
+  // Extract forwarded/shared message content from attachments
+  if ("attachments" in message && Array.isArray(message.attachments) && message.attachments.length > 0) {
+    const attachmentText = slack.formatAttachments(message.attachments as SlackAttachment[]);
+    if (attachmentText) {
+      text += attachmentText;
+    }
+  }
 
   // Extract file attachments
   const files: SlackFile[] = [];
@@ -178,6 +188,11 @@ async function start() {
 
   console.log("Recovering stale sessions from previous run...");
   await recoverStaleSessions();
+
+  // Clean up old workspace archives in the background
+  cleanupOldArchives().then((n) => {
+    if (n > 0) console.log(`Cleaned up ${n} old workspace archives`);
+  }).catch((err) => console.error("Workspace cleanup failed:", err));
 
   startScheduler();
 

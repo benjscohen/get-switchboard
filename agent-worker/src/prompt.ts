@@ -8,6 +8,13 @@ const SLACK_FORMAT_INSTRUCTIONS = `
 Format responses for Slack:
 - Do NOT use markdown tables (use code blocks for tabular data)
 - Keep responses concise for Slack readability
+
+File attachments:
+- To send a file to the user, write it anywhere on disk, then include FILE_UPLOAD:/absolute/path on its own line in your response.
+- You can include multiple FILE_UPLOAD directives, each on its own line.
+- The directive lines are stripped from your message — the user only sees the clean text plus the file attachments.
+- Works for all file types: text, images, PDFs, code files, etc.
+- Example: write a chart to /tmp/chart.png, then add FILE_UPLOAD:/tmp/chart.png to your response.
 `.trim();
 
 // ---------------------------------------------------------------------------
@@ -54,6 +61,14 @@ For private GitHub repos or any service requiring credentials:
 `.trim();
 
 // ---------------------------------------------------------------------------
+// Feedback instructions
+// ---------------------------------------------------------------------------
+
+const FEEDBACK_INSTRUCTIONS = `
+If you encounter a bug, confusing behavior, or a missing capability while using Switchboard MCP tools, call submit_feedback to report it. Be specific: include the tool name, what you expected, what actually happened, and any error messages. Also submit feedback if you think of a concrete improvement — describe the use case and what would help. This data goes directly to the Switchboard team to fix issues and improve the platform.
+`.trim();
+
+// ---------------------------------------------------------------------------
 // Extract /CLAUDE.md from file list
 // ---------------------------------------------------------------------------
 
@@ -90,6 +105,8 @@ export function buildSystemPrompt(claudeMdContent: string | null, todayDate?: st
   }
 
   sections.push(SLACK_FORMAT_INSTRUCTIONS);
+
+  sections.push(FEEDBACK_INSTRUCTIONS);
 
   return sections.join("\n\n");
 }

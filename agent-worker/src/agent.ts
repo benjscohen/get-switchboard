@@ -7,6 +7,8 @@ import { fetchUserFiles, writeFilesToStableDir, findSessionFile } from "./files.
 import { extractClaudeMd, buildSystemPrompt } from "./prompt.js";
 import { buildErrorWithRetryBlocks, buildPlanApprovalBlocks, buildPlanApprovedBlocks } from "./slack-blocks.js";
 import { createMessageStream } from "./message-stream.js";
+import { extractFileUploads, uploadExtractedFiles } from "./file-uploads.js";
+import { archiveWorkspace, restoreWorkspace } from "./workspace-storage.js";
 import {
   buildThreadKey,
   getRunningSession,
@@ -208,37 +210,6 @@ function truncateForSlack(text: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Directory snapshot helpers (for detecting new files created by Claude)
-// ---------------------------------------------------------------------------
-
-async function snapshotDir(dir: string): Promise<Set<string>> {
-  try {
-    const entries = (await fs.readdir(dir, { recursive: true })) as string[];
-    const files = new Set<string>();
-    for (const entry of entries) {
-      const full = path.join(dir, entry);
-      // Filter out directories by checking for extension (fast heuristic)
-      // — false positives are harmless (getNewFiles only compares sets)
-      files.add(full);
-    }
-    return files;
-  } catch {
-    return new Set();
-  }
-}
-
-function getNewFiles(before: Set<string>, after: Set<string>, tempDir: string): string[] {
-  const attachDir = path.join(tempDir, ATTACHMENTS_DIR);
-  const newFiles: string[] = [];
-  for (const f of after) {
-    if (!before.has(f) && !f.startsWith(attachDir + path.sep) && !f.startsWith(attachDir)) {
-      newFiles.push(f);
-    }
-  }
-  return newFiles;
-}
-
-// ---------------------------------------------------------------------------
 // Transcript persistence helper
 // ---------------------------------------------------------------------------
 
@@ -262,6 +233,26 @@ async function saveTranscriptIfExists(
   } catch (err) {
     console.error(`[session ${sessionId}] Failed to save transcript ${label}:`, err);
     return cachedSessionFile ?? null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Workspace archive helper (non-fatal, used at eager + final save points)
+// ---------------------------------------------------------------------------
+
+async function saveWorkspaceArchive(
+  workDir: string,
+  userId: string,
+  claudeSessionId: string,
+  sessionId: string,
+): Promise<void> {
+  try {
+    const archivePath = await archiveWorkspace({ workDir, userId, claudeSessionId });
+    if (archivePath) {
+      await db.updateSession(sessionId, { workspace_archive_path: archivePath });
+    }
+  } catch (err) {
+    console.error(`[session ${sessionId}] workspace archive failed:`, err);
   }
 }
 
@@ -554,6 +545,21 @@ export async function processMessage(
       } catch (err) {
         console.error(`[thread] Failed to restore transcript:`, err);
       }
+
+      // 12c. Restore workspace files from storage if available
+      if (tempDir) {
+        try {
+          const archivePath = await db.getWorkspaceArchivePath(resumeSessionId);
+          if (archivePath) {
+            const ok = await restoreWorkspace({ archivePath, targetDir: tempDir });
+            if (ok) {
+              console.log(`[thread] Restored workspace for ${resumeSessionId}`);
+            }
+          }
+        } catch (err) {
+          console.error(`[thread] Failed to restore workspace:`, err);
+        }
+      }
     }
 
     // 13. Set up timeout via AbortController
@@ -589,13 +595,7 @@ export async function processMessage(
       }, IDLE_TIMEOUT_MS);
     };
 
-    // 15. Snapshot tempDir before conversation (to detect new files later)
-    let dirSnapshot: Set<string> = new Set();
-    if (tempDir) {
-      dirSnapshot = await snapshotDir(tempDir);
-    }
-
-    // 16. Run Claude Code SDK (multi-turn)
+    // 15. Run Claude Code SDK (multi-turn)
     let lastResultText: string | null = null;
     let checkedOff = false;
     let totalTurns = 0;
@@ -830,10 +830,13 @@ export async function processMessage(
                 totalTurns += message.num_turns;
                 totalCost += message.total_cost_usd;
 
+                // Extract FILE_UPLOAD directives before formatting
+                const { cleanText, uploads } = extractFileUploads(text);
+
                 try {
                   const resultTs = await slack.postMessage(
                     channelId,
-                    truncateForSlack(slack.markdownToSlack(text)),
+                    truncateForSlack(slack.markdownToSlack(cleanText)),
                     replyThread,
                   );
                   console.log(`[session ${sessionId}] posted to Slack ts=${resultTs}`);
@@ -841,19 +844,19 @@ export async function processMessage(
                   await db.createMessage({
                     sessionId,
                     role: "assistant",
-                    content: text,
+                    content: cleanText,
                     slackTs: resultTs,
                     metadata: { turns: message.num_turns, cost: message.total_cost_usd },
                   });
 
                   // Upload full response as file if it was truncated
-                  if (text.length > SLACK_MAX_TEXT) {
+                  if (cleanText.length > SLACK_MAX_TEXT) {
                     try {
                       await slack.uploadFile({
                         channelId,
                         threadTs: replyThread,
                         filename: "response.md",
-                        content: text,
+                        content: cleanText,
                         title: "Full response",
                       });
                       console.log(`[session ${sessionId}] uploaded full response as response.md`);
@@ -862,32 +865,9 @@ export async function processMessage(
                     }
                   }
 
-                  // Upload new files created by Claude during this turn
-                  if (tempDir) {
-                    try {
-                      const afterSnapshot = await snapshotDir(tempDir);
-                      const newFiles = getNewFiles(dirSnapshot, afterSnapshot, tempDir);
-                      for (const filePath of newFiles) {
-                        try {
-                          const content = await fs.readFile(filePath);
-                          const fname = path.basename(filePath);
-                          await slack.uploadFile({
-                            channelId,
-                            threadTs: replyThread,
-                            filename: fname,
-                            content,
-                            title: fname,
-                          });
-                          console.log(`[session ${sessionId}] uploaded new file: ${fname}`);
-                        } catch (fileUploadErr) {
-                          console.error(`[session ${sessionId}] failed to upload ${filePath}:`, fileUploadErr);
-                        }
-                      }
-                      // Add new files to snapshot so multi-turn sessions don't re-upload
-                      for (const f of newFiles) dirSnapshot.add(f);
-                    } catch (snapErr) {
-                      console.error(`[session ${sessionId}] failed to snapshot/upload new files:`, snapErr);
-                    }
+                  // Upload FILE_UPLOAD directive files
+                  if (uploads.length > 0) {
+                    await uploadExtractedFiles(uploads, channelId, replyThread, sessionId);
                   }
 
                   // Swap eyes → checkmark on the message that triggered this reply
@@ -916,10 +896,14 @@ export async function processMessage(
                   }
                 }
 
-                // Save transcript eagerly (survives deploys that kill the container before idle timeout)
+                // Save transcript + workspace eagerly (survives deploys that kill the container before idle timeout)
                 cachedSessionFilePath = await saveTranscriptIfExists(
                   sessionId, claudeSessionId, cachedSessionFilePath, "eager",
                 );
+                // Fire-and-forget: archive workspace without blocking idle timer
+                if (tempDir && claudeSessionId) {
+                  saveWorkspaceArchive(tempDir, lookup.userId, claudeSessionId, sessionId);
+                }
 
                 // Mark as waiting for user follow-up — suppresses SDK inactivity timeout
                 waitingForFollowUp = true;
@@ -950,10 +934,13 @@ export async function processMessage(
             );
           }
 
-          // Final transcript save (captures any follow-up turns since the eager save)
-          await saveTranscriptIfExists(
-            sessionId, claudeSessionId, cachedSessionFilePath, "final",
-          );
+          // Final transcript + workspace save (captures any follow-up turns since the eager save)
+          await Promise.all([
+            saveTranscriptIfExists(sessionId, claudeSessionId, cachedSessionFilePath, "final"),
+            tempDir && claudeSessionId
+              ? saveWorkspaceArchive(tempDir, lookup.userId, claudeSessionId, sessionId)
+              : Promise.resolve(),
+          ]);
 
           return { claudeSessionId };
         } finally {

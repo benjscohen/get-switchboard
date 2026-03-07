@@ -85,6 +85,55 @@ export async function removeReaction(
   }
 }
 
+export interface SlackAttachment {
+  fallback?: string;
+  text?: string;
+  pretext?: string;
+  title?: string;
+  title_link?: string;
+  author_name?: string;
+  author_id?: string;
+  from_url?: string;
+  is_msg_unfurl?: boolean;
+  [key: string]: unknown;
+}
+
+/**
+ * Extract readable text from Slack message attachments (forwarded/shared messages, link unfurls, etc.).
+ * Returns empty string if no meaningful content found.
+ */
+export function formatAttachments(attachments: SlackAttachment[]): string {
+  if (!attachments || attachments.length === 0) return "";
+
+  const parts: string[] = [];
+  for (const att of attachments) {
+    const lines: string[] = [];
+
+    if (att.author_name) {
+      lines.push(`From ${att.author_name}:`);
+    }
+    if (att.pretext) {
+      lines.push(att.pretext);
+    }
+    if (att.title) {
+      lines.push(att.title_link ? `${att.title} (${att.title_link})` : att.title);
+    }
+    if (att.text) {
+      lines.push(att.text);
+    } else if (att.fallback && !att.author_name) {
+      // Use fallback only if we don't already have author + text
+      lines.push(att.fallback);
+    }
+
+    if (lines.length > 0) {
+      parts.push(lines.join("\n"));
+    }
+  }
+
+  if (parts.length === 0) return "";
+  return "\n\n[Forwarded/shared message]\n" + parts.join("\n---\n");
+}
+
 export interface ThreadMessage {
   role: "user" | "assistant";
   text: string;
@@ -111,7 +160,12 @@ export async function fetchThreadHistory(
     if (!msg.ts || msg.ts === excludeTs) continue;
     // Bot messages are "assistant", user messages are "user"
     const role = msg.bot_id ? "assistant" : "user";
-    const text = msg.text || "";
+    let text = msg.text || "";
+    // Include forwarded/shared message content from attachments
+    const attachments = (msg as Record<string, unknown>).attachments;
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      text += formatAttachments(attachments as SlackAttachment[]);
+    }
     if (text) {
       messages.push({ role, text, ts: msg.ts });
     }

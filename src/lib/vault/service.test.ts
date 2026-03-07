@@ -13,7 +13,7 @@ vi.mock("@/lib/encryption", () => ({
   decrypt: vi.fn((v: string) => v.replace("enc:", "")),
 }));
 
-import { unshareSecret, updateSecret, type VaultAuth } from "./service";
+import { listSecrets, unshareSecret, updateSecret, type VaultAuth } from "./service";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function chainMock(resolvedValue: unknown = { data: null, error: null }): any {
@@ -30,6 +30,89 @@ function chainMock(resolvedValue: unknown = { data: null, error: null }): any {
     Promise.resolve(resolvedValue).then(resolve);
   return chain;
 }
+
+// ── Share summaries on owned secrets ──
+
+describe("listSecrets — share summaries", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("attaches shareSummary to owned secrets that have shares", async () => {
+    const ownedSecrets = [
+      { id: "s1", name: "Secret 1", description: null, category: "api_key", tags: [], created_at: "2024-01-01", updated_at: "2024-01-01" },
+      { id: "s2", name: "Secret 2", description: null, category: "other", tags: [], created_at: "2024-01-01", updated_at: "2024-01-01" },
+    ];
+
+    const shareRows = [
+      { secret_id: "s1", user_id: "u2", team_id: null, organization_id: null },
+      { secret_id: "s1", user_id: "u3", team_id: null, organization_id: null },
+      { secret_id: "s1", user_id: null, team_id: null, organization_id: "org-1" },
+    ];
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "vault_secrets") return chainMock({ data: ownedSecrets, error: null });
+      if (table === "vault_secret_fields") return chainMock({ data: [], error: null });
+      if (table === "vault_shares") return chainMock({ data: shareRows, error: null });
+      return chainMock();
+    });
+
+    const auth: VaultAuth = { userId: "user-1" };
+    const result = await listSecrets(auth, "owned");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toHaveLength(2);
+      expect(result.data[0].shareSummary).toEqual({ users: 2, teams: 0, organizations: 1 });
+      expect(result.data[1].shareSummary).toBeUndefined();
+    }
+  });
+
+  it("counts teams correctly in shareSummary", async () => {
+    const ownedSecrets = [
+      { id: "s1", name: "Secret 1", description: null, category: "other", tags: [], created_at: "2024-01-01", updated_at: "2024-01-01" },
+    ];
+
+    const shareRows = [
+      { secret_id: "s1", user_id: null, team_id: "t1", organization_id: null },
+      { secret_id: "s1", user_id: null, team_id: "t2", organization_id: null },
+    ];
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "vault_secrets") return chainMock({ data: ownedSecrets, error: null });
+      if (table === "vault_secret_fields") return chainMock({ data: [], error: null });
+      if (table === "vault_shares") return chainMock({ data: shareRows, error: null });
+      return chainMock();
+    });
+
+    const auth: VaultAuth = { userId: "user-1" };
+    const result = await listSecrets(auth, "owned");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data[0].shareSummary).toEqual({ users: 0, teams: 2, organizations: 0 });
+    }
+  });
+
+  it("does not attach shareSummary when no shares exist", async () => {
+    const ownedSecrets = [
+      { id: "s1", name: "Secret 1", description: null, category: "other", tags: [], created_at: "2024-01-01", updated_at: "2024-01-01" },
+    ];
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "vault_secrets") return chainMock({ data: ownedSecrets, error: null });
+      if (table === "vault_secret_fields") return chainMock({ data: [], error: null });
+      if (table === "vault_shares") return chainMock({ data: [], error: null });
+      return chainMock();
+    });
+
+    const auth: VaultAuth = { userId: "user-1" };
+    const result = await listSecrets(auth, "owned");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data[0].shareSummary).toBeUndefined();
+    }
+  });
+});
 
 // ── 3a: Org admin unshare scoping ──
 

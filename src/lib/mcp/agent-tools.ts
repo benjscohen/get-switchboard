@@ -104,7 +104,7 @@ export function registerAgentTools(
         .describe("Short summary of what the agent does (1-2 sentences)."),
       instructions: z.string().optional()
         .describe("System prompt for the agent. Example: 'You are a research assistant. When given a topic, conduct thorough research using available tools...'"),
-      tool_access: z.array(z.string()).optional()
+      tool_access: z.array(z.string().min(1, "Each tool_access entry must be non-empty. Use an integration ID (e.g. 'slack') or a specific tool (e.g. 'slack:slack_post_message').")).optional()
         .describe('Integration/tool access list. Formats: whole integration ["slack"], specific tool ["slack:slack_post_message"], or mixed. Use list_integrations to see options.'),
       model: z.string().optional()
         .describe("Preferred model identifier (e.g. 'claude-sonnet-4-6'). Optional — defaults to the caller's model."),

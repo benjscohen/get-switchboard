@@ -28,7 +28,7 @@ export function registerFileTools(
     "file_read",
     "Read a file's content, metadata, and version info",
     {
-      path: z.string().describe("File path, e.g. '/soul.md' or '/projects/acme/notes.md'"),
+      path: z.string().min(1, "Required: 'path' must be a non-empty file path (e.g. '/notes.md')").describe("File path, e.g. '/soul.md' or '/projects/acme/notes.md'"),
     },
     withToolLogging("file_read", "platform", async (args, extra) => {
       const auth = getMcpAuth(extra);
@@ -46,7 +46,7 @@ export function registerFileTools(
     "file_write",
     "Create or update a file. Parent folders are created automatically.",
     {
-      path: z.string().describe("File path, e.g. '/soul.md' or '/projects/acme/notes.md'"),
+      path: z.string().min(1, "Required: 'path' must be a non-empty file path (e.g. '/notes.md')").describe("File path, e.g. '/soul.md' or '/projects/acme/notes.md'"),
       content: z.string().describe("File content"),
       metadata: z.record(z.string(), z.unknown()).optional().describe("Optional metadata"),
     },
@@ -66,7 +66,7 @@ export function registerFileTools(
     "file_delete",
     "Delete a file. Cannot be undone.",
     {
-      path: z.string().describe("File path to delete"),
+      path: z.string().min(1, "Required: 'path' must be a non-empty file path (e.g. '/notes.md')").describe("File path to delete"),
     },
     withToolLogging("file_delete", "platform", async (args, extra) => {
       const auth = getMcpAuth(extra);
@@ -84,8 +84,8 @@ export function registerFileTools(
     "file_move",
     "Move or rename a file or folder",
     {
-      from: z.string().describe("Current path"),
-      to: z.string().describe("New path"),
+      from: z.string().min(1, "Required: 'from' must be the current file path (e.g. '/old-name.md')").describe("Current path"),
+      to: z.string().min(1, "Required: 'to' must be the new file path (e.g. '/new-name.md')").describe("New path"),
     },
     withToolLogging("file_move", "platform", async (args, extra) => {
       const auth = getMcpAuth(extra);
@@ -122,7 +122,7 @@ export function registerFileTools(
     "file_search",
     "Search files by name or content",
     {
-      query: z.string().describe("Search term"),
+      query: z.string().min(1, "Required: 'query' must be a non-empty search term").describe("Search term"),
       path: z.string().optional().describe("Limit search to this directory"),
     },
     withToolLogging("file_search", "platform", async (args, extra) => {
@@ -141,7 +141,7 @@ export function registerFileTools(
     "folder_create",
     "Create a folder and any missing parents",
     {
-      path: z.string().describe("Folder path to create"),
+      path: z.string().min(1, "Required: 'path' must be a non-empty folder path (e.g. '/projects/acme')").describe("Folder path to create"),
     },
     withToolLogging("folder_create", "platform", async (args, extra) => {
       const auth = getMcpAuth(extra);
@@ -159,7 +159,7 @@ export function registerFileTools(
     "folder_delete",
     "Delete a folder. Fails if non-empty unless recursive is true.",
     {
-      path: z.string().describe("Folder path to delete"),
+      path: z.string().min(1, "Required: 'path' must be a non-empty folder path (e.g. '/projects/acme')").describe("Folder path to delete"),
       recursive: z.boolean().optional().describe("Delete folder and all contents"),
     },
     withToolLogging("folder_delete", "platform", async (args, extra) => {
@@ -178,7 +178,7 @@ export function registerFileTools(
     "file_history",
     "List all versions of a file with audit trail",
     {
-      path: z.string().describe("File path to get history for"),
+      path: z.string().min(1, "Required: 'path' must be a non-empty file path (e.g. '/notes.md')").describe("File path to get history for"),
     },
     withToolLogging("file_history", "platform", async (args, extra) => {
       const auth = getMcpAuth(extra);
@@ -199,8 +199,8 @@ export function registerFileTools(
     "file_version_read",
     "Read the content of a specific file version. Use file_history to list available versions first.",
     {
-      path: z.string().describe("File path"),
-      version: z.number().describe("Version number to read"),
+      path: z.string().min(1, "Required: 'path' must be a non-empty file path (e.g. '/notes.md')").describe("File path"),
+      version: z.number().int("'version' must be a whole number").min(1, "'version' must be 1 or higher. Use file_history to list available versions.").describe("Version number to read"),
     },
     withToolLogging("file_version_read", "platform", async (args, extra) => {
       const auth = getMcpAuth(extra);
@@ -221,8 +221,8 @@ export function registerFileTools(
     "file_rollback",
     "Restore a file to a previous version. Use file_history first to find the version number.",
     {
-      path: z.string().describe("File path to roll back"),
-      version: z.number().describe("Target version number to restore"),
+      path: z.string().min(1, "Required: 'path' must be a non-empty file path (e.g. '/notes.md')").describe("File path to roll back"),
+      version: z.number().int("'version' must be a whole number").min(1, "'version' must be 1 or higher. Use file_history to list available versions.").describe("Target version number to restore"),
     },
     withToolLogging("file_rollback", "platform", async (args, extra) => {
       const auth = getMcpAuth(extra);

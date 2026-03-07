@@ -264,7 +264,7 @@ export function registerIntegrationTools(
     {
       category: z.enum(["bug", "missing_capability", "confusing", "integration_request", "other"])
         .describe("bug: something broke | missing_capability: feature needed | confusing: unexpected behavior | integration_request: new service | other"),
-      message: z.string()
+      message: z.string().min(1, "Required: 'message' must describe the issue or request. Be specific about what happened and what you expected.")
         .describe("Clear description of the issue or request"),
       severity: z.enum(["low", "medium", "high", "critical"]).default("medium")
         .describe("low: minor | medium: annoying | high: blocking task | critical: blocking all work"),

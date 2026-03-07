@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createDecipheriv } from "crypto";
 import type { UserLookup, MessageRow } from "./types.js";
 
-const supabase = createClient(
+export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
@@ -198,6 +198,7 @@ export async function updateSession(
     updated_at: string;
     retry_of: string;
     slack_message_ts: string;
+    workspace_archive_path: string | null;
   }>,
 ): Promise<void> {
   const { error } = await supabase
@@ -292,6 +293,30 @@ export async function getSessionTranscript(
     transcript: data.session_transcript as string,
     filePath: data.session_file_path as string,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Workspace archive path lookup
+// ---------------------------------------------------------------------------
+
+export async function getWorkspaceArchivePath(
+  claudeSessionId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("agent_sessions")
+    .select("workspace_archive_path")
+    .eq("claude_session_id", claudeSessionId)
+    .not("workspace_archive_path", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Error fetching workspace archive path:", error);
+    return null;
+  }
+
+  return (data?.workspace_archive_path as string) ?? null;
 }
 
 // ---------------------------------------------------------------------------

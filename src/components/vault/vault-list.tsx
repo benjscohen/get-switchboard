@@ -4,7 +4,15 @@ import { useState, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { VaultSecret } from "@/app/(app)/vault/page";
+import type { VaultSecret, ShareSummary } from "@/app/(app)/vault/page";
+
+function formatShareSummary(s: ShareSummary): string {
+  const parts: string[] = [];
+  if (s.organizations > 0) parts.push("org");
+  if (s.teams > 0) parts.push(s.teams === 1 ? "1 team" : `${s.teams} teams`);
+  if (s.users > 0) parts.push(s.users === 1 ? "1 user" : `${s.users} users`);
+  return parts.join(", ");
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   api_key: "API Key",
@@ -100,6 +108,14 @@ export function VaultList({ secrets, onEdit, onDelete, onShare }: VaultListProps
                     </Badge>
                     {secret.ownership === "shared" && (
                       <Badge variant="success">Shared</Badge>
+                    )}
+                    {secret.shareSummary && (
+                      <span className="flex items-center gap-1">
+                        <Badge variant="success">Shared</Badge>
+                        <span className="text-xs text-text-tertiary">
+                          ({formatShareSummary(secret.shareSummary)})
+                        </span>
+                      </span>
                     )}
                     {secret.tags.map((tag) => (
                       <span

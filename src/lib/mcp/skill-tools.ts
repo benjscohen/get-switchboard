@@ -71,7 +71,7 @@ export function registerSkillTools(
       content: z.string().optional()
         .describe("Skill prompt content (supports {{arg}} interpolation)"),
       arguments: z.array(z.object({
-        name: z.string(),
+        name: z.string().min(1, "Each skill argument must have a non-empty 'name' (e.g. 'language', 'topic')"),
         description: z.string(),
         required: z.boolean(),
       })).optional().describe("Skill arguments for interpolation"),
