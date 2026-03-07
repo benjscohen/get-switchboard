@@ -21,7 +21,7 @@ export interface SessionRow {
   slackThreadTs: string | null;
   slackMessageTs: string | null;
   claudeSessionId: string | null;
-  status: "pending" | "running" | "completed" | "failed" | "timeout";
+  status: "pending" | "running" | "idle" | "completed" | "failed" | "timeout";
   prompt: string;
   result: string | null;
   error: string | null;
