@@ -100,34 +100,38 @@ export async function findSessionFile(
   claudeSessionId: string,
   baseDir: string = path.join(os.homedir(), ".claude", "projects"),
 ): Promise<string | null> {
-  const target = `${claudeSessionId}.json`;
+  // SDK may write .json or .jsonl — check both
+  const candidates = [`${claudeSessionId}.jsonl`, `${claudeSessionId}.json`];
   console.log(`[files] findSessionFile: id=${claudeSessionId} HOME=${os.homedir()} baseDir=${baseDir}`);
 
-  // Primary scan: ~/.claude/projects/<project>/sessions/<id>.json
+  // Primary scan: ~/.claude/projects/<project>/sessions/<id>.{json,jsonl}
   try {
     const projects = await fs.readdir(baseDir);
     console.log(`[files] findSessionFile: found ${projects.length} project dirs: ${projects.join(", ")}`);
     for (const project of projects) {
-      const file = path.join(baseDir, project, "sessions", target);
-      try {
-        await fs.stat(file);
-        console.log(`[files] findSessionFile: found via primary scan: ${file}`);
-        return file;
-      } catch {
-        /* not in this project */
+      for (const candidate of candidates) {
+        const file = path.join(baseDir, project, "sessions", candidate);
+        try {
+          await fs.stat(file);
+          console.log(`[files] findSessionFile: found via primary scan: ${file}`);
+          return file;
+        } catch {
+          /* not in this project */
+        }
       }
     }
   } catch (err) {
     console.log(`[files] findSessionFile: baseDir readdir failed:`, err);
   }
 
-  // Recursive fallback: search parent dir (~/.claude/) for <id>.json
+  // Recursive fallback: search parent dir (~/.claude/) for the file
   const parentDir = path.dirname(baseDir);
+  const candidateSet = new Set(candidates);
   console.log(`[files] findSessionFile: primary scan found nothing, recursive search in ${parentDir}`);
   try {
     const entries = (await fs.readdir(parentDir, { recursive: true })) as string[];
     for (const name of entries) {
-      if (path.basename(name) === target) {
+      if (candidateSet.has(path.basename(name))) {
         const fullPath = path.join(parentDir, name);
         console.log(`[files] findSessionFile: found via recursive fallback: ${fullPath}`);
         return fullPath;

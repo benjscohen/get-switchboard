@@ -288,13 +288,27 @@ describe("findSessionFile", () => {
     expect(result).toBeNull();
   });
 
-  it("finds a session file in the projects directory", async () => {
+  it("finds a .jsonl session file in the projects directory", async () => {
     const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-projects-"));
     testDir = baseDir;
     const sessionsDir = path.join(baseDir, "test-project", "sessions");
     await fs.mkdir(sessionsDir, { recursive: true });
 
     const sessionId = "test-session-abc123";
+    const sessionFile = path.join(sessionsDir, `${sessionId}.jsonl`);
+    await fs.writeFile(sessionFile, '{"test": true}', "utf-8");
+
+    const result = await findSessionFile(sessionId, baseDir);
+    expect(result).toBe(sessionFile);
+  });
+
+  it("finds a .json session file in the projects directory", async () => {
+    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-projects-"));
+    testDir = baseDir;
+    const sessionsDir = path.join(baseDir, "test-project", "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
+
+    const sessionId = "test-session-json-456";
     const sessionFile = path.join(sessionsDir, `${sessionId}.json`);
     await fs.writeFile(sessionFile, '{"test": true}', "utf-8");
 
@@ -323,7 +337,7 @@ describe("findSessionFile", () => {
     await fs.mkdir(sessionsDir, { recursive: true });
 
     const sessionId = "multi-project-session";
-    const sessionFile = path.join(sessionsDir, `${sessionId}.json`);
+    const sessionFile = path.join(sessionsDir, `${sessionId}.jsonl`);
     await fs.writeFile(sessionFile, "{}", "utf-8");
 
     const result = await findSessionFile(sessionId, baseDir);
@@ -342,7 +356,7 @@ describe("findSessionFile", () => {
     await fs.mkdir(weirdDir, { recursive: true });
 
     const sessionId = "fallback-session-456";
-    const sessionFile = path.join(weirdDir, `${sessionId}.json`);
+    const sessionFile = path.join(weirdDir, `${sessionId}.jsonl`);
     await fs.writeFile(sessionFile, '{"fallback": true}', "utf-8");
 
     const result = await findSessionFile(sessionId, baseDir);
@@ -364,6 +378,20 @@ describe("findSessionFile", () => {
     expect(result).toBeNull();
   });
 
+  it("prefers .jsonl over .json when both exist", async () => {
+    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-projects-"));
+    testDir = baseDir;
+    const sessionsDir = path.join(baseDir, "test-project", "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
+
+    const sessionId = "both-extensions";
+    await fs.writeFile(path.join(sessionsDir, `${sessionId}.jsonl`), '{"ext": "jsonl"}', "utf-8");
+    await fs.writeFile(path.join(sessionsDir, `${sessionId}.json`), '{"ext": "json"}', "utf-8");
+
+    const result = await findSessionFile(sessionId, baseDir);
+    expect(result).toBe(path.join(sessionsDir, `${sessionId}.jsonl`));
+  });
+
   it("primary scan is preferred over recursive fallback", async () => {
     const claudeRoot = await fs.mkdtemp(path.join(os.tmpdir(), "claude-root-"));
     testDir = claudeRoot;
@@ -374,13 +402,13 @@ describe("findSessionFile", () => {
     // Put in standard location (primary scan)
     const standardDir = path.join(baseDir, "my-project", "sessions");
     await fs.mkdir(standardDir, { recursive: true });
-    const standardFile = path.join(standardDir, `${sessionId}.json`);
+    const standardFile = path.join(standardDir, `${sessionId}.jsonl`);
     await fs.writeFile(standardFile, '{"source": "primary"}', "utf-8");
 
     // Also put in non-standard location (recursive fallback would find this)
     const altDir = path.join(claudeRoot, "alt-location");
     await fs.mkdir(altDir, { recursive: true });
-    await fs.writeFile(path.join(altDir, `${sessionId}.json`), '{"source": "fallback"}', "utf-8");
+    await fs.writeFile(path.join(altDir, `${sessionId}.jsonl`), '{"source": "fallback"}', "utf-8");
 
     const result = await findSessionFile(sessionId, baseDir);
     // Should find the primary one, not the fallback
