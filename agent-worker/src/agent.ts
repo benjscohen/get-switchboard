@@ -461,15 +461,7 @@ export async function processMessage(
           options: buildQueryOptions(),
         });
 
-        // Check MCP server status
-        try {
-          const mcpStatus = await conversation.mcpServerStatus();
-          console.log("[mcp-status]", JSON.stringify(mcpStatus));
-        } catch {
-          console.log("[mcp-status] not available (non-streaming mode)");
-        }
-
-        // Diagnostic counters
+        // Diagnostic counters — set up BEFORE mcpServerStatus so heartbeat runs even if it hangs
         const startTime = Date.now();
         const msgCounts = new Map<string, number>();
         const recentMessages: string[] = []; // last 10 type:subtype labels
@@ -492,6 +484,20 @@ export async function processMessage(
             abortController.abort();
           }
         }, 30_000);
+
+        try {
+        // Check MCP server status (with timeout — SDK hangs here if process already exited)
+        try {
+          const mcpStatus = await Promise.race([
+            conversation.mcpServerStatus(),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("mcpServerStatus timeout")), 10_000),
+            ),
+          ]);
+          console.log("[mcp-status]", JSON.stringify(mcpStatus));
+        } catch (err) {
+          console.log("[mcp-status] not available:", err instanceof Error ? err.message : err);
+        }
 
         // Iterate — handle multiple result messages (one per user turn)
         let claudeSessionId: string | null = null;
@@ -600,7 +606,6 @@ export async function processMessage(
         }
 
         // Summary log after loop completes
-        clearInterval(heartbeat);
         const elapsed = Math.round((Date.now() - startTime) / 1000);
         console.log(
           `[session ${sessionId}] conversation done — elapsed=${elapsed}s counts=${JSON.stringify(Object.fromEntries(msgCounts))} hasResult=${!!lastResultText} resultLen=${lastResultText?.length ?? 0}`,
@@ -612,6 +617,9 @@ export async function processMessage(
         }
 
         return { claudeSessionId };
+        } finally {
+          clearInterval(heartbeat);
+        }
       };
 
       try {
