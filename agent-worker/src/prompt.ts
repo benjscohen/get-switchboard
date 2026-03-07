@@ -79,6 +79,21 @@ For private GitHub repos or any service requiring credentials:
 `.trim();
 
 // ---------------------------------------------------------------------------
+// Vault credential lookup instructions
+// ---------------------------------------------------------------------------
+
+const VAULT_CREDENTIALS_INSTRUCTIONS = `
+When a task requires credentials or API keys, follow this order:
+1. Use Switchboard MCP integrations first — tools like GitHub, Slack, Google, etc. already have the user's OAuth tokens and work without extra credentials.
+2. If no MCP integration covers it, check the vault (vault_search_secrets or vault_list_secrets) for stored keys before asking the user.
+3. Only ask the user if neither option has what you need.
+
+Exception: for heavy git work (cloning, pushing, branching), check the vault for a GitHub PAT instead of using the GitHub MCP integration, which only covers lightweight operations like issues and PRs.
+
+Never expose secret values in your responses.
+`.trim();
+
+// ---------------------------------------------------------------------------
 // Feedback instructions
 // ---------------------------------------------------------------------------
 
@@ -139,6 +154,8 @@ export function buildSystemPrompt(
   sections.push(buildMemoryInstructions(date));
 
   sections.push(DEV_ENVIRONMENT_INSTRUCTIONS);
+
+  sections.push(VAULT_CREDENTIALS_INSTRUCTIONS);
 
   sections.push(
     "Before performing write actions via MCP tools that affect external services (sending emails, Slack messages, creating calendar events, etc.), " +

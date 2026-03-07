@@ -209,24 +209,26 @@ describe("memory instructions", () => {
     expect(slackIndex).toBeLessThan(memoryIndex);
   });
 
-  it("maintains full section order: identity → FILE_UPLOAD → Slack → memory → dev → guardrails → feedback", () => {
+  it("maintains full section order: identity → FILE_UPLOAD → Slack → memory → dev → vault → guardrails → feedback", () => {
     const prompt = buildSystemPrompt(null, DATE);
     const identity = prompt.indexOf("helpful AI assistant");
     const fileUpload = prompt.indexOf("FILE_UPLOAD");
     const slack = prompt.indexOf("Format responses for Slack");
     const memory = prompt.indexOf("persistent memory system");
     const dev = prompt.indexOf("dev environment with:");
+    const vault = prompt.indexOf("check the vault");
     const guardrails = prompt.indexOf("ask the user for confirmation");
     const feedback = prompt.indexOf("submit_feedback");
 
-    for (const idx of [identity, fileUpload, slack, memory, dev, guardrails, feedback]) {
+    for (const idx of [identity, fileUpload, slack, memory, dev, vault, guardrails, feedback]) {
       expect(idx).toBeGreaterThan(-1);
     }
     expect(identity).toBeLessThan(fileUpload);
     expect(fileUpload).toBeLessThan(slack);
     expect(slack).toBeLessThan(memory);
     expect(memory).toBeLessThan(dev);
-    expect(dev).toBeLessThan(guardrails);
+    expect(dev).toBeLessThan(vault);
+    expect(vault).toBeLessThan(guardrails);
     expect(guardrails).toBeLessThan(feedback);
   });
 
@@ -345,6 +347,46 @@ describe("user identity in system prompt", () => {
     expect(prompt).toContain("Email: benj@test.com");
     expect(prompt).toContain("Be concise.");
     expect(prompt).toContain("daily/2026-03-07");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Vault credential lookup instructions
+// ---------------------------------------------------------------------------
+
+describe("vault credential lookup instructions", () => {
+  it("instructs to prefer MCP integrations first", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("MCP integrations first");
+  });
+
+  it("instructs to check vault before asking user", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("check the vault");
+    expect(prompt).toContain("vault_search_secrets");
+  });
+
+  it("directs heavy git work to vault PAT instead of GitHub MCP", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("heavy git work");
+    expect(prompt).toContain("GitHub PAT");
+  });
+
+  it("instructs to never expose secret values in responses", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("Never expose secret values");
+  });
+
+  it("is placed after dev environment and before guardrails", () => {
+    const prompt = buildSystemPrompt(null);
+    const dev = prompt.indexOf("dev environment with:");
+    const vault = prompt.indexOf("check the vault");
+    const guardrails = prompt.indexOf("ask the user for confirmation");
+    expect(dev).toBeGreaterThan(-1);
+    expect(vault).toBeGreaterThan(-1);
+    expect(guardrails).toBeGreaterThan(-1);
+    expect(dev).toBeLessThan(vault);
+    expect(vault).toBeLessThan(guardrails);
   });
 });
 
