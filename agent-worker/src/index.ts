@@ -41,8 +41,9 @@ const app = new App({
 
 // Handle all DMs
 app.message(async ({ message, body }) => {
-  // Only handle plain user messages in DMs
-  if (message.subtype || !("user" in message) || !message.user) return;
+  // Only handle user messages in DMs (allow file_share subtype for image/file messages)
+  if (message.subtype && message.subtype !== "file_share") return;
+  if (!("user" in message) || !message.user) return;
   if (message.channel_type !== "im") return;
 
   // Deduplicate
