@@ -617,15 +617,12 @@ export async function processMessage(
       try {
         await runConversation();
       } catch (err: unknown) {
-        // If resume failed because the session no longer exists, retry without resume
-        const isSessionNotFound =
-          resumeSessionId &&
-          err instanceof Error &&
-          err.message.includes("No conversation found");
-
-        if (isSessionNotFound) {
+        // If we were trying to resume and it failed for ANY reason, retry fresh.
+        // Resume failures are expected — sessions expire on the API side after idle timeout.
+        if (resumeSessionId) {
           console.warn(
-            `[thread] Resume failed for session ${resumeSessionId}, starting fresh session`,
+            `[thread] Resume failed for session ${resumeSessionId}, starting fresh:`,
+            err instanceof Error ? err.message : err,
           );
           resumeSessionId = null;
           await runConversation();
