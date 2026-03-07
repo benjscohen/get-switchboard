@@ -603,7 +603,11 @@ export async function processMessage(
     let totalCost = 0;
 
     try {
-      const systemPrompt = buildSystemPrompt(claudeMdContent);
+      const systemPrompt = buildSystemPrompt(claudeMdContent, undefined, {
+        name: lookup.name,
+        email: lookup.email,
+        slackUserId,
+      });
 
       const buildQueryOptions = () => {
         const baseOptions = {

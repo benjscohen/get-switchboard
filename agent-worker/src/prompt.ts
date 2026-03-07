@@ -89,16 +89,40 @@ export function extractClaudeMd(files: SwitchboardFile[]): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// User identity (injected so the agent knows who it's talking to)
+// ---------------------------------------------------------------------------
+
+export interface UserIdentity {
+  name?: string;
+  email?: string;
+  slackUserId?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Build system prompt
 // ---------------------------------------------------------------------------
 
-export function buildSystemPrompt(claudeMdContent: string | null, todayDate?: string): string {
+export function buildSystemPrompt(
+  claudeMdContent: string | null,
+  todayDate?: string,
+  userIdentity?: UserIdentity,
+): string {
   const sections: string[] = [];
 
   sections.push(
     "You are a helpful AI assistant with full dev environment access and the user's Switchboard integrations via MCP tools. " +
       "You can clone repos, write and run code, edit files, search the web, and use all available tools to help with the user's request.",
   );
+
+  // Inject user identity so the agent knows who "me" is
+  if (userIdentity && (userIdentity.name || userIdentity.email || userIdentity.slackUserId)) {
+    const lines: string[] = ["The user you are currently speaking with:"];
+    if (userIdentity.name) lines.push(`- Name: ${userIdentity.name}`);
+    if (userIdentity.email) lines.push(`- Email: ${userIdentity.email}`);
+    if (userIdentity.slackUserId) lines.push(`- Slack user ID: <@${userIdentity.slackUserId}> (use this to @mention or DM them)`);
+    lines.push('When the user says "me", "my", "send it to me", etc., they mean THIS person. Do not guess or pick a different user.');
+    sections.push(lines.join("\n"));
+  }
 
   sections.push(FILE_UPLOAD_INSTRUCTIONS);
 

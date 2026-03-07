@@ -84,7 +84,7 @@ export async function lookupUserBySlackId(
   // 2. Get profile for org ID and preferred model
   const { data: profile, error: profileErr } = await supabase
     .from("profiles")
-    .select("organization_id, preferred_agent_model")
+    .select("organization_id, preferred_agent_model, name, email")
     .eq("id", userId)
     .single();
 
@@ -95,6 +95,8 @@ export async function lookupUserBySlackId(
 
   const organizationId = profile.organization_id as string;
   const model = (profile.preferred_agent_model as string) || "claude-sonnet-4-20250514";
+  const name = (profile.name as string) || undefined;
+  const email = (profile.email as string) || undefined;
 
   // 3. Get the user's active agent API key
   const { data: apiKey, error: keyErr } = await supabase
@@ -117,7 +119,7 @@ export async function lookupUserBySlackId(
 
   const agentKey = decrypt(apiKey.encrypted_raw_key as string);
 
-  return { userId, organizationId, agentKey, model };
+  return { userId, organizationId, agentKey, model, name, email, slackUserId };
 }
 
 // ---------------------------------------------------------------------------
@@ -328,7 +330,7 @@ export async function lookupUserById(
 ): Promise<UserLookup | null> {
   const { data: profile, error: profileErr } = await supabase
     .from("profiles")
-    .select("organization_id, preferred_agent_model")
+    .select("organization_id, preferred_agent_model, name, email")
     .eq("id", userId)
     .single();
 
@@ -339,6 +341,8 @@ export async function lookupUserById(
 
   const organizationId = profile.organization_id as string;
   const model = (profile.preferred_agent_model as string) || "claude-sonnet-4-20250514";
+  const name = (profile.name as string) || undefined;
+  const email = (profile.email as string) || undefined;
 
   const { data: apiKey, error: keyErr } = await supabase
     .from("api_keys")
@@ -357,7 +361,7 @@ export async function lookupUserById(
   if (!apiKey) return null;
 
   const agentKey = decrypt(apiKey.encrypted_raw_key as string);
-  return { userId, organizationId, agentKey, model };
+  return { userId, organizationId, agentKey, model, name, email };
 }
 
 // ---------------------------------------------------------------------------

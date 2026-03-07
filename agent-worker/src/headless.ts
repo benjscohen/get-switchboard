@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-code";
 import { fetchUserFiles, writeFilesToStableDir } from "./files.js";
-import { extractClaudeMd, buildSystemPrompt } from "./prompt.js";
+import { extractClaudeMd, buildSystemPrompt, type UserIdentity } from "./prompt.js";
 
 // ---------------------------------------------------------------------------
 // Headless agent execution (no Slack, no multi-turn — single prompt in/out)
@@ -13,6 +13,7 @@ export interface HeadlessRunOptions {
   userId: string;
   systemPromptOverride?: string;
   timeoutMs?: number;
+  userIdentity?: UserIdentity;
 }
 
 export interface HeadlessRunResult {
@@ -27,7 +28,7 @@ export interface HeadlessRunResult {
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<HeadlessRunResult> {
-  const { prompt, model, agentKey, userId, systemPromptOverride, timeoutMs = DEFAULT_TIMEOUT_MS } = opts;
+  const { prompt, model, agentKey, userId, systemPromptOverride, timeoutMs = DEFAULT_TIMEOUT_MS, userIdentity } = opts;
 
   let tempDir: string | null = null;
 
@@ -45,7 +46,7 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
     }
 
     // 2. Build system prompt
-    let systemPrompt = buildSystemPrompt(claudeMdContent);
+    let systemPrompt = buildSystemPrompt(claudeMdContent, undefined, userIdentity);
     if (systemPromptOverride) {
       systemPrompt = `${systemPromptOverride}\n\n${systemPrompt}`;
     }

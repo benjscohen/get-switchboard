@@ -266,6 +266,89 @@ describe("memory instructions", () => {
 });
 
 // ---------------------------------------------------------------------------
+// User identity
+// ---------------------------------------------------------------------------
+
+describe("user identity in system prompt", () => {
+  it("includes name, email, and Slack user ID when all provided", () => {
+    const prompt = buildSystemPrompt(null, undefined, {
+      name: "Benj Cohen",
+      email: "benj@example.com",
+      slackUserId: "U05ABC123",
+    });
+    expect(prompt).toContain("Benj Cohen");
+    expect(prompt).toContain("benj@example.com");
+    expect(prompt).toContain("<@U05ABC123>");
+  });
+
+  it("includes the 'send it to me' disambiguation instruction", () => {
+    const prompt = buildSystemPrompt(null, undefined, {
+      name: "Benj Cohen",
+    });
+    expect(prompt).toContain("send it to me");
+    expect(prompt).toContain("Do not guess or pick a different user");
+  });
+
+  it("omits identity block when no identity provided", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).not.toContain("currently speaking with");
+  });
+
+  it("omits identity block when identity is empty", () => {
+    const prompt = buildSystemPrompt(null, undefined, {});
+    expect(prompt).not.toContain("currently speaking with");
+  });
+
+  it("includes only name when only name is provided", () => {
+    const prompt = buildSystemPrompt(null, undefined, { name: "Alice" });
+    expect(prompt).toContain("Name: Alice");
+    expect(prompt).not.toContain("Email:");
+    expect(prompt).not.toContain("Slack user ID:");
+  });
+
+  it("includes only email when only email is provided", () => {
+    const prompt = buildSystemPrompt(null, undefined, { email: "a@b.com" });
+    expect(prompt).toContain("Email: a@b.com");
+    expect(prompt).not.toContain("Name:");
+    expect(prompt).not.toContain("Slack user ID:");
+  });
+
+  it("includes only Slack ID when only slackUserId is provided", () => {
+    const prompt = buildSystemPrompt(null, undefined, { slackUserId: "U999" });
+    expect(prompt).toContain("<@U999>");
+    expect(prompt).not.toContain("Name:");
+    expect(prompt).not.toContain("Email:");
+  });
+
+  it("places identity block after role description and before FILE_UPLOAD", () => {
+    const prompt = buildSystemPrompt(null, undefined, {
+      name: "Test User",
+      email: "test@example.com",
+      slackUserId: "U123",
+    });
+    const role = prompt.indexOf("helpful AI assistant");
+    const identity = prompt.indexOf("currently speaking with");
+    const fileUpload = prompt.indexOf("FILE_UPLOAD");
+    expect(role).toBeGreaterThan(-1);
+    expect(identity).toBeGreaterThan(-1);
+    expect(fileUpload).toBeGreaterThan(-1);
+    expect(role).toBeLessThan(identity);
+    expect(identity).toBeLessThan(fileUpload);
+  });
+
+  it("works alongside CLAUDE.md and todayDate", () => {
+    const prompt = buildSystemPrompt("Be concise.", "2026-03-07", {
+      name: "Benj",
+      email: "benj@test.com",
+    });
+    expect(prompt).toContain("Name: Benj");
+    expect(prompt).toContain("Email: benj@test.com");
+    expect(prompt).toContain("Be concise.");
+    expect(prompt).toContain("daily/2026-03-07");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // FILE_UPLOAD instructions
 // ---------------------------------------------------------------------------
 

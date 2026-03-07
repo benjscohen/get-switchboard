@@ -3,6 +3,9 @@ export interface UserLookup {
   organizationId: string;
   agentKey: string;
   model: string;
+  name?: string;
+  email?: string;
+  slackUserId?: string;
 }
 
 export interface SlackFile {

@@ -93,6 +93,7 @@ export async function executeScheduledRun(
       userId: lookup.userId,
       systemPromptOverride,
       timeoutMs: 10 * 60 * 1000,
+      userIdentity: { name: lookup.name, email: lookup.email },
     });
 
     // 6. Create agent_sessions row for linking
