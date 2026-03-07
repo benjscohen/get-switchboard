@@ -11,6 +11,7 @@ import { submitFeedback } from "@/lib/feedback";
 import { isToolAllowed, isUserInScope } from "@/lib/permissions";
 import { getToolRisk, isRiskAllowedByScope } from "@/lib/mcp/tool-risk";
 import { proxyToolCall, type ProxyAuth } from "@/lib/mcp/proxy-client";
+import { namespaceTool } from "./proxy-namespace";
 import { jsonSchemaToZodToolSchema } from "@/lib/mcp/json-schema-to-zod";
 import { withToolLogging } from "@/lib/mcp/tool-logging";
 import { decrypt } from "@/lib/encryption";
@@ -457,15 +458,16 @@ export function registerIntegrationTools(
     if (!proxy) continue;
 
     const integrationId = `proxy:${tool.integrationId}`;
-    toolMeta.set(tool.name, { integrationId, orgId: null, keyMode: proxy.keyMode, proxyOAuth: !!proxy.oauth });
+    const namespacedName = namespaceTool(tool.integrationId, tool.name);
+    toolMeta.set(namespacedName, { integrationId, orgId: null, keyMode: proxy.keyMode, proxyOAuth: !!proxy.oauth });
     const zodSchema = jsonSchemaToZodToolSchema(tool.inputSchema);
     server.tool(
-      tool.name,
+      namespacedName,
       tool.description,
       zodSchema.shape,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       async (args, extra): Promise<any> => {
-        const pre = toolPreCheck(tool.name, integrationId, extra);
+        const pre = toolPreCheck(namespacedName, integrationId, extra);
         if (isPreCheckError(pre)) return pre;
 
         // Resolve bearer token: OAuth connection or API key
@@ -474,7 +476,7 @@ export function registerIntegrationTools(
         if (proxy.oauth) {
           const connection = resolveConnection(extra, proxy.id);
           if (!connection) {
-            return connectionNotFoundError(pre, tool.name, integrationId, proxy.name);
+            return connectionNotFoundError(pre, namespacedName, integrationId, proxy.name);
           }
 
           try {
@@ -483,17 +485,17 @@ export function registerIntegrationTools(
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : "Token error";
             logUsage({
-              userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: tool.name, integrationId,
+              userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: namespacedName, integrationId,
               status: "error", errorMessage: message,
               durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
-              riskLevel: getToolRisk(tool.name),
+              riskLevel: getToolRisk(namespacedName),
             });
             return { content: [{ type: "text" as const, text: message }], isError: true };
           }
         } else {
           const userKey = (extra.authInfo?.extra?.proxyUserKeys as Record<string, string> | undefined)?.[proxy.id];
           const orgKey = (extra.authInfo?.extra?.integrationOrgKeys as Record<string, string> | undefined)?.[proxy.id];
-          const result = resolveApiKeyForProxy(pre, tool.name, integrationId, proxy.name, {
+          const result = resolveApiKeyForProxy(pre, namespacedName, integrationId, proxy.name, {
             userKey: proxy.keyMode === "per_user" ? userKey : orgKey,
             fallbackKey: proxy.keyMode === "per_user" ? undefined : userKey,
             keyMode: proxy.keyMode,
@@ -511,16 +513,16 @@ export function registerIntegrationTools(
         }
 
         return executeWithLogging(
-          { ...pre, toolName: tool.name, integrationId },
+          { ...pre, toolName: namespacedName, integrationId },
           async () => proxyToolCall(proxy.serverUrl, bearerToken, tool.name, args as Record<string, unknown>),
           {
             formatError: (err) => {
               const message = err instanceof Error ? err.message : "Unknown error";
-              console.error(`[proxy-tool] ${tool.name} failed for user=${pre.userId} integration=${integrationId}:`, message);
+              console.error(`[proxy-tool] ${namespacedName} failed for user=${pre.userId} integration=${integrationId}:`, message);
               const isAuthError = /missing_token|invalid_auth|token_revoked|not_authed|account_inactive/i.test(message);
               return isAuthError
                 ? `Integration "${proxy.name}" returned an auth error. Please reconnect it in your dashboard.`
-                : `Proxy tool "${tool.name}" failed: ${message}`;
+                : `Proxy tool "${namespacedName}" failed: ${message}`;
             },
           },
         );

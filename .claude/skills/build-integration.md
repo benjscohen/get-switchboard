@@ -493,6 +493,46 @@ it("is an array containing notion-pages", () => {
 
 ---
 
+## Proxy Integration (Alternative Pattern)
+
+For integrations that connect to an existing external MCP server (not a REST API), use the **proxy integration** pattern instead of the builtin 4-file pattern above.
+
+### File Structure
+
+Single file: `src/lib/integrations/{provider}/index.tsx` exporting a `ProxyIntegrationConfig`.
+
+### Naming Rules
+
+- **Fallback tool names** MUST match the upstream MCP server's actual tool names exactly (e.g., `list_tables`, `create_branch`). No artificial prefixes in the config.
+- **Smart namespace convention**: `namespaceTool()` checks if the tool name already contains the integration ID as a word boundary (e.g., `slack_send_message` contains "slack"). If yes, the name stays as-is. If no, it gets the `{integrationId}__` prefix.
+  - `namespaceTool("slack", "slack_send_message")` → `slack_send_message` (already has "slack")
+  - `namespaceTool("github", "create_branch")` → `github__create_branch` (generic → prefix)
+  - `namespaceTool("exa", "web_search_exa")` → `web_search_exa` (already has "exa")
+  - `namespaceTool("exa", "deep_researcher_start")` → `exa__deep_researcher_start` (generic → prefix)
+
+### Registration Checklist
+
+1. **`proxy-registry.ts`** — import your config + add to the `proxyIntegrations` array
+2. **`tool-risk.ts`** — add entries using the **namespaced name** that `namespaceTool()` produces. Self-namespaced tools use their original name (e.g., `web_search_exa: "read"`); generic tools use the prefix (e.g., `supabase__list_tables: "read"`)
+3. **`tool-search.ts`** — add to `CATEGORY_MAP`, `CATEGORY_SYNONYMS` (if new category), and `SEARCH_ENRICHMENTS` using the same namespaced keys
+
+### Key Mode
+
+- `"per_user"` — each user provides their own API key/PAT (e.g., GitHub PAT)
+- `"org"` — org admin provides a shared key in Organization Settings
+- OAuth proxy: set the `oauth` config for OAuth-based proxy connections
+
+### Common Pitfalls
+
+| Pitfall | Fix |
+|---------|-----|
+| Wrong tool name in `tool-risk.ts` or `SEARCH_ENRICHMENTS` | Use the name that `namespaceTool()` produces — self-namespaced tools keep their original name, generic tools get the `{integrationId}__` prefix |
+| Modifying `proxy_integration_tools` DB storage | DB stores original upstream names — namespacing is registration-time only |
+| Fallback `inputSchema` doesn't match upstream | Must match the upstream server's schema — these get replaced on first discovery |
+| Adding prefixes to fallback tool names in config | Don't — keep original names; `namespaceTool()` handles prefixing at runtime |
+
+---
+
 ## Step 8: Environment Variables
 
 Document the required env vars for the new integration:

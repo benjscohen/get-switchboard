@@ -30,6 +30,7 @@ import { allIntegrations } from "@/lib/integrations/registry";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 import { CATEGORY_MAP, SEARCH_ENRICHMENTS } from "./tool-search";
 import { explicitlyClassifiedTools } from "./tool-risk";
+import { namespaceTool } from "./proxy-namespace";
 
 // ── Integrations that still need tool-level backfill ──
 // Remove from these sets as you add entries. NEVER add to them.
@@ -89,7 +90,7 @@ const proxyToolsByIntegration: ToolsByIntegration = new Map();
 for (const proxy of allProxyIntegrations) {
   proxyToolsByIntegration.set(
     proxy.id,
-    (proxy.fallbackTools ?? []).map((t) => t.name),
+    (proxy.fallbackTools ?? []).map((t) => namespaceTool(proxy.id, t.name)),
   );
 }
 
@@ -169,20 +170,14 @@ describe("toolRiskMap completeness", () => {
   });
 });
 
-// Tool names that intentionally exist in multiple proxy integrations.
-// The proxy routing system disambiguates by integration ID at call time.
-const KNOWN_COLLISIONS = new Set([
-  "create_branch", // GitHub + Supabase — both correctly classified as "write"
-]);
-
 describe("cross-consistency", () => {
-  it("all tool names are unique across integrations (excluding known collisions)", () => {
+  it("all tool names are unique across integrations", () => {
     const seen = new Map<string, string>();
     const duplicates: string[] = [];
 
     for (const integration of allIntegrations) {
       for (const tool of integration.tools) {
-        if (seen.has(tool.name) && !KNOWN_COLLISIONS.has(tool.name)) {
+        if (seen.has(tool.name)) {
           duplicates.push(`${tool.name} (in ${integration.id} and ${seen.get(tool.name)})`);
         }
         seen.set(tool.name, integration.id);
@@ -190,10 +185,11 @@ describe("cross-consistency", () => {
     }
     for (const proxy of allProxyIntegrations) {
       for (const tool of proxy.fallbackTools ?? []) {
-        if (seen.has(tool.name) && !KNOWN_COLLISIONS.has(tool.name)) {
-          duplicates.push(`${tool.name} (in ${proxy.id} and ${seen.get(tool.name)})`);
+        const nsName = namespaceTool(proxy.id, tool.name);
+        if (seen.has(nsName)) {
+          duplicates.push(`${nsName} (in ${proxy.id} and ${seen.get(nsName)})`);
         }
-        seen.set(tool.name, proxy.id);
+        seen.set(nsName, proxy.id);
       }
     }
 

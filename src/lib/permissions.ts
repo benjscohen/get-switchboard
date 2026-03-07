@@ -5,6 +5,7 @@ import {
 import { proxyIntegrationRegistry } from "@/lib/integrations/proxy-registry";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getToolRisk } from "@/lib/mcp/tool-risk";
+import { namespaceTool, stripNamespace } from "@/lib/mcp/proxy-namespace";
 
 /**
  * Check if a user is allowed to access an integration based on org-level scoping.
@@ -60,7 +61,9 @@ export function isToolAllowed(
 
   if (row.allowedTools.length === 0) return true;
 
-  return row.allowedTools.includes(toolName);
+  if (row.allowedTools.includes(toolName)) return true;
+  const stripped = stripNamespace(toolName);
+  return stripped !== null && row.allowedTools.includes(stripped.toolName);
 }
 
 /**
@@ -139,8 +142,10 @@ export async function validatePermissionsPayload(
         validTools = (proxy?.fallbackTools ?? []).map((t) => t.name);
       }
 
+      // Accept both namespaced and un-namespaced names for backward compat
+      const namespacedValidTools = validTools.map((t) => namespaceTool(proxyId, t));
       for (const tool of entry.allowedTools) {
-        if (!validTools.includes(tool)) {
+        if (!namespacedValidTools.includes(tool) && !validTools.includes(tool)) {
           errors.push(
             `Unknown tool "${tool}" for proxy integration "${entry.integrationId}"`
           );

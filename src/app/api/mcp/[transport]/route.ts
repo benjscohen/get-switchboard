@@ -8,6 +8,7 @@ import { decrypt } from "@/lib/encryption";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { allIntegrations } from "@/lib/integrations/registry";
 import { proxyIntegrationRegistry } from "@/lib/integrations/proxy-registry";
+import { namespaceTool } from "@/lib/mcp/proxy-namespace";
 import { loadProxyTools, discoverAndCacheProxyTools, type ProxyTool } from "@/lib/integrations/proxy-tools";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 import { interpolateSkillContent } from "@/lib/mcp/skill-filtering";
@@ -68,7 +69,8 @@ function buildAndRegisterDiscovery(server: McpServer) {
   const proxyTools = resolvedProxyTools?.tools ?? [];
   for (const tool of proxyTools) {
     const proxy = proxyIntegrationRegistry.get(tool.integrationId);
-    toolEntries.push({ name: tool.name, description: tool.description, integrationId: tool.integrationId, integrationName: proxy?.name ?? tool.integrationId });
+    const nsName = namespaceTool(tool.integrationId, tool.name);
+    toolEntries.push({ name: nsName, description: tool.description, integrationId: tool.integrationId, integrationName: proxy?.name ?? tool.integrationId });
   }
   const customTools = resolvedCustomTools ?? [];
   for (const ct of customTools) {

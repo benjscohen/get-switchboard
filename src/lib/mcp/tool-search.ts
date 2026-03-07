@@ -1,4 +1,5 @@
 import { getToolRisk, type ToolRiskLevel } from "./tool-risk";
+import { stripNamespace } from "./proxy-namespace";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   EMBEDDING_MODEL,
@@ -314,107 +315,107 @@ export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: stri
   },
 
   // GitHub
-  get_file_contents: {
+  github__get_file_contents: {
     useWhen: "User wants to read a file from a GitHub repository, view source code, or get file contents",
     aliases: "read file, view source, get code, file contents, repo file",
   },
-  create_or_update_file: {
+  github__create_or_update_file: {
     useWhen: "User wants to create or update a file in a GitHub repository, commit a file change",
     aliases: "create file, update file, commit file, edit repo file, push file",
   },
-  push_files: {
+  github__push_files: {
     useWhen: "User wants to push multiple files to a GitHub repository in a single commit",
     aliases: "push files, commit files, bulk commit, push changes, batch file update",
   },
-  search_repositories: {
+  github__search_repositories: {
     useWhen: "User wants to search for GitHub repositories, find a repo, or look up projects",
     aliases: "find repo, search repos, look up repository, discover projects",
   },
-  create_repository: {
+  github__create_repository: {
     useWhen: "User wants to create a new GitHub repository or start a new project",
     aliases: "new repo, create repo, init repository, start project, new github project",
   },
-  fork_repository: {
+  github__fork_repository: {
     useWhen: "User wants to fork a GitHub repository or create a copy of a repo",
     aliases: "fork repo, copy repository, fork project, clone repo",
   },
-  create_branch: {
+  github__create_branch: {
     useWhen: "User wants to create a new branch in a GitHub repository",
     aliases: "new branch, create branch, branch off, feature branch, git branch",
   },
-  list_commits: {
+  github__list_commits: {
     useWhen: "User wants to see commit history, list recent commits, or view changes in a repo",
     aliases: "commit history, recent commits, view commits, git log, changes",
   },
-  create_issue: {
+  github__create_issue: {
     useWhen: "User wants to create a GitHub issue, file a bug report, or open a feature request",
     aliases: "new issue, file bug, open issue, report bug, feature request, create ticket",
   },
-  list_issues: {
+  github__list_issues: {
     useWhen: "User wants to list issues in a GitHub repository, see open bugs, or view tickets",
     aliases: "show issues, open issues, list bugs, view tickets, repo issues",
   },
-  get_issue: {
+  github__get_issue: {
     useWhen: "User wants to view a specific GitHub issue, read issue details, or check issue status",
     aliases: "view issue, issue details, read issue, check issue, issue info",
   },
-  update_issue: {
+  github__update_issue: {
     useWhen: "User wants to update a GitHub issue, change issue status, or edit issue details",
     aliases: "edit issue, close issue, reopen issue, update ticket, change issue status",
   },
-  add_issue_comment: {
+  github__add_issue_comment: {
     useWhen: "User wants to comment on a GitHub issue or add a note to an issue",
     aliases: "comment on issue, reply to issue, add note, issue comment",
   },
-  search_issues: {
+  github__search_issues: {
     useWhen: "User wants to search for GitHub issues or pull requests across repositories",
     aliases: "find issue, search bugs, look up issue, search tickets",
   },
-  create_pull_request: {
+  github__create_pull_request: {
     useWhen: "User wants to create a pull request, open a PR, or submit code for review",
     aliases: "new PR, open pull request, create PR, submit for review, merge request",
   },
-  list_pull_requests: {
+  github__list_pull_requests: {
     useWhen: "User wants to list pull requests in a repository, see open PRs, or view pending reviews",
     aliases: "show PRs, open pull requests, list PRs, pending reviews, repo PRs",
   },
-  get_pull_request: {
+  github__get_pull_request: {
     useWhen: "User wants to view a specific pull request, read PR details, or check PR status",
     aliases: "view PR, PR details, read pull request, check PR, PR info",
   },
-  get_pull_request_files: {
+  github__get_pull_request_files: {
     useWhen: "User wants to see which files were changed in a pull request or view PR diff",
     aliases: "PR files, changed files, PR diff, files changed, PR changes",
   },
-  get_pull_request_status: {
+  github__get_pull_request_status: {
     useWhen: "User wants to check CI status, build checks, or merge status of a pull request",
     aliases: "PR status, CI checks, build status, merge status, PR checks",
   },
-  get_pull_request_comments: {
+  github__get_pull_request_comments: {
     useWhen: "User wants to read comments on a pull request or view PR discussion",
     aliases: "PR comments, review comments, PR discussion, PR feedback",
   },
-  get_pull_request_reviews: {
+  github__get_pull_request_reviews: {
     useWhen: "User wants to see reviews on a pull request or check approval status",
     aliases: "PR reviews, review status, approvals, code review, PR approval",
   },
-  create_pull_request_review: {
+  github__create_pull_request_review: {
     useWhen: "User wants to review a pull request, approve or request changes on a PR",
     aliases: "review PR, approve PR, request changes, code review, PR feedback",
   },
-  merge_pull_request: {
+  github__merge_pull_request: {
     useWhen: "User wants to merge a pull request, complete a PR, or land changes",
     aliases: "merge PR, complete pull request, land changes, merge code, accept PR",
   },
-  update_pull_request_branch: {
+  github__update_pull_request_branch: {
     useWhen: "User wants to update a pull request branch with the latest base branch changes",
     aliases: "update PR branch, rebase PR, sync branch, update from main",
   },
-  search_code: {
+  github__search_code: {
     useWhen: "User wants to search for code across GitHub repositories, find code snippets",
     aliases: "find code, search source, code search, grep github, find in code",
   },
-  search_users: {
+  github__search_users: {
     useWhen: "User wants to search for GitHub users or find a developer's profile",
     aliases: "find user, search developers, look up user, github profile",
   },
@@ -442,97 +443,101 @@ export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: stri
   },
 
   // Context7
-  "resolve-library-id": {
+  "context7__resolve-library-id": {
     useWhen: "User wants to find a library ID, look up a package, or search for library documentation",
     aliases: "find library, search package, look up docs, library ID, package name",
   },
-  "get-library-docs": {
+  "context7__get-library-docs": {
     useWhen: "User wants to read library documentation, get code examples, or look up API reference for a specific library",
     aliases: "read docs, library documentation, code examples, API reference, SDK docs, package docs, how to use",
   },
 
   // Supabase
-  list_projects: {
+  supabase__list_projects: {
     useWhen: "User wants to see their Supabase projects or list all projects",
     aliases: "see Supabase projects, list projects, my projects, show projects",
   },
-  list_organizations: {
+  supabase__list_organizations: {
     useWhen: "User wants to see their Supabase organizations",
     aliases: "Supabase list orgs, Supabase organizations, my orgs",
   },
-  get_project_url: {
+  supabase__get_project_url: {
     useWhen: "User wants to get the API URL for a Supabase project",
     aliases: "Supabase project URL, Supabase API URL, Supabase endpoint",
   },
-  get_publishable_keys: {
+  supabase__get_publishable_keys: {
     useWhen: "User wants to get the anon key or publishable API key for a Supabase project",
     aliases: "Supabase anon key, Supabase publishable key, Supabase API key",
   },
-  list_tables: {
+  supabase__list_tables: {
     useWhen: "User wants to see database tables, check schema, or list tables in a Supabase project",
     aliases: "Supabase list tables, Supabase database tables, Supabase check schema, show tables",
   },
-  list_extensions: {
+  supabase__list_extensions: {
     useWhen: "User wants to see PostgreSQL extensions enabled in a Supabase project",
     aliases: "Supabase list extensions, Supabase postgres extensions, pg extensions",
   },
-  execute_sql: {
+  supabase__execute_sql: {
     useWhen: "User wants to run a SQL query, execute a database query, or query a Supabase project",
     aliases: "Supabase run SQL, Supabase execute query, Supabase database query",
   },
-  list_migrations: {
+  supabase__list_migrations: {
     useWhen: "User wants to see database migrations applied to a Supabase project",
     aliases: "Supabase list migrations, Supabase migration history, Supabase applied migrations",
   },
-  apply_migration: {
+  supabase__apply_migration: {
     useWhen: "User wants to apply a database migration, make a schema change, or run DDL in Supabase",
     aliases: "Supabase apply migration, Supabase schema change, Supabase DDL, Supabase migrate",
   },
-  get_logs: {
+  supabase__get_logs: {
     useWhen: "User wants to view logs for a Supabase project service like API, auth, or postgres",
     aliases: "Supabase logs, Supabase service logs, Supabase API logs, Supabase auth logs",
   },
-  get_advisors: {
+  supabase__get_advisors: {
     useWhen: "User wants performance or security recommendations for a Supabase project",
     aliases: "Supabase advisors, Supabase performance, Supabase recommendations, Supabase database health",
   },
-  generate_typescript_types: {
+  supabase__generate_typescript_types: {
     useWhen: "User wants to generate TypeScript types from their Supabase database schema",
     aliases: "Supabase generate types, Supabase TypeScript types, Supabase schema types, Supabase codegen",
   },
-  list_edge_functions: {
+  supabase__list_edge_functions: {
     useWhen: "User wants to see all edge functions in a Supabase project",
     aliases: "Supabase list functions, Supabase edge functions, Supabase serverless functions",
   },
-  get_edge_function: {
+  supabase__get_edge_function: {
     useWhen: "User wants to view details of a specific Supabase edge function",
     aliases: "Supabase view function, Supabase function details, Supabase edge function info",
   },
-  deploy_edge_function: {
+  supabase__deploy_edge_function: {
     useWhen: "User wants to deploy an edge function to a Supabase project",
     aliases: "Supabase deploy function, Supabase push edge function, Supabase deploy edge function",
   },
-  list_branches: {
+  supabase__create_branch: {
+    useWhen: "User wants to create a new database branch for a Supabase project",
+    aliases: "Supabase new branch, Supabase create branch, Supabase preview branch, database branch",
+  },
+  supabase__list_branches: {
     useWhen: "User wants to see database branches for a Supabase project",
     aliases: "Supabase list branches, Supabase database branches, Supabase preview branches",
   },
-  delete_branch: {
+  supabase__delete_branch: {
     useWhen: "User wants to delete a database branch in Supabase",
     aliases: "Supabase delete branch, Supabase remove branch, Supabase drop branch",
   },
-  merge_branch: {
+  supabase__merge_branch: {
     useWhen: "User wants to merge a database branch into the parent Supabase project",
     aliases: "Supabase merge branch, Supabase apply branch, Supabase merge database branch",
   },
-  reset_branch: {
+  supabase__reset_branch: {
     useWhen: "User wants to reset a database branch to match the parent Supabase project",
     aliases: "Supabase reset branch, Supabase discard branch changes, Supabase restore branch",
   },
-  rebase_branch: {
+  supabase__rebase_branch: {
     useWhen: "User wants to rebase a database branch on top of the latest parent migrations in Supabase",
     aliases: "Supabase rebase branch, Supabase update branch, Supabase sync branch migrations",
   },
-  search_docs: {
+  supabase__search_docs: {
     useWhen: "User wants to look up Supabase documentation, search docs, or find Supabase guides",
     aliases: "Supabase documentation, Supabase search docs, Supabase help, Supabase guide",
   },
@@ -626,8 +631,9 @@ export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: stri
 // ── Helper functions ──
 
 export function extractAction(toolName: string): string {
-  // Remove integration prefix (e.g., "google_calendar_" or "asana_")
-  const parts = toolName.split("_");
+  const stripped = stripNamespace(toolName);
+  const name = stripped ? stripped.toolName : toolName;
+  const parts = name.split(/[_-]/);
 
   for (let i = 0; i < parts.length; i++) {
     if (ACTION_VERBS.has(parts[i])) {

@@ -1,4 +1,5 @@
 import { isToolAllowed, isUserInScope } from "@/lib/permissions";
+import { stripNamespace } from "./proxy-namespace";
 import { getToolRisk, isRiskAllowedByScope } from "@/lib/mcp/tool-risk";
 import { zodToJsonSchema } from "@/lib/mcp/schema-utils";
 
@@ -114,7 +115,10 @@ export function filterToolsForUser(
       // Tool group preferences
       if (ctx.toolGroupAllowedTools) {
         const allowedSet = ctx.toolGroupAllowedTools[meta.integrationId];
-        if (allowedSet && !allowedSet.has(name)) return false;
+        if (allowedSet && !allowedSet.has(name)) {
+          const stripped = stripNamespace(name);
+          if (!stripped || !allowedSet.has(stripped.toolName)) return false;
+        }
       }
 
       // API key scope filtering
@@ -127,7 +131,10 @@ export function filterToolsForUser(
         const permIntegrationId = meta.integrationId;
         if (!(permIntegrationId in ctx.apiKeyPermissions)) return false;
         const allowedTools = ctx.apiKeyPermissions[permIntegrationId];
-        if (allowedTools !== null && !allowedTools.includes(name)) return false;
+        if (allowedTools !== null && !allowedTools.includes(name)) {
+          const stripped = stripNamespace(name);
+          if (!stripped || !allowedTools.includes(stripped.toolName)) return false;
+        }
       }
 
       return true;
