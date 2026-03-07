@@ -292,6 +292,7 @@ export default async function DashboardPage() {
       tools,
       hasPersonalKey: proxyUserKeySet.has(p.id),
       userKeyInstructions: p.userKeyInstructions ?? null,
+      headerKeys: p.headerKeys,
     };
   });
 

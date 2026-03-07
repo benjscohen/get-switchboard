@@ -31,6 +31,8 @@ export type ProxyIntegrationConfig = {
   keyMode: "org" | "per_user";
   userKeyInstructions?: ReactNode;
   oauth?: ProxyOAuthConfig;
+  /** When set, users provide named headers instead of a single bearer token. */
+  headerKeys?: string[];
   // Optional fallback — used only if no DB rows exist yet
   fallbackTools?: Array<{
     name: string;

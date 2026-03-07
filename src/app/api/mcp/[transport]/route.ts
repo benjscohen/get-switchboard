@@ -366,7 +366,7 @@ const authedHandler = withMcpAuth(
       supabaseAdmin.from("connections").select("id, integration_id, access_token, refresh_token, expires_at, sender_name").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("custom_mcp_user_keys").select("server_id, api_key, custom_headers").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("integration_org_keys").select("integration_id, api_key").eq("organization_id", organizationId).eq("enabled", true),
-      supabaseAdmin.from("proxy_user_keys").select("integration_id, api_key").eq("user_id", apiKey.user_id),
+      supabaseAdmin.from("proxy_user_keys").select("integration_id, api_key, custom_headers").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("team_members").select("team_id").eq("user_id", apiKey.user_id),
       loadIntegrationScopes(organizationId),
     ]);
@@ -428,9 +428,23 @@ const authedHandler = withMcpAuth(
     }
 
     const proxyUserKeys: Record<string, string> = {};
+    const proxyUserHeaders: Record<string, Record<string, string>> = {};
     for (const k of rawProxyUserKeys ?? []) {
       try {
-        proxyUserKeys[k.integration_id] = decrypt(k.api_key);
+        if (k.api_key) {
+          proxyUserKeys[k.integration_id] = decrypt(k.api_key);
+        }
+        if (k.custom_headers && typeof k.custom_headers === "object") {
+          const hdrs: Record<string, string> = {};
+          for (const [hk, hv] of Object.entries(k.custom_headers as Record<string, string>)) {
+            hdrs[hk] = decrypt(hv);
+          }
+          proxyUserHeaders[k.integration_id] = hdrs;
+          // Set sentinel so tool-filtering sees this integration as having a key
+          if (!proxyUserKeys[k.integration_id]) {
+            proxyUserKeys[k.integration_id] = "__headers__";
+          }
+        }
       } catch (err) {
         console.warn(`[MCP] Skipping corrupted proxy user key for integration ${k.integration_id}:`, err);
       }
@@ -455,6 +469,7 @@ const authedHandler = withMcpAuth(
         customMcpHeaders,
         integrationOrgKeys,
         proxyUserKeys,
+        proxyUserHeaders,
         teamIds,
         orgRole: profile.org_role ?? "member",
         role: profile.role ?? "user",

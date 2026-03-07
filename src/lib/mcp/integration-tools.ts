@@ -470,8 +470,8 @@ export function registerIntegrationTools(
         const pre = toolPreCheck(namespacedName, integrationId, extra);
         if (isPreCheckError(pre)) return pre;
 
-        // Resolve bearer token: OAuth connection or API key
-        let bearerToken: string | undefined;
+        // Resolve auth: OAuth, custom headers, or single API key
+        let proxyAuth: ProxyAuth;
 
         if (proxy.oauth) {
           const connection = resolveConnection(extra, proxy.id);
@@ -481,7 +481,7 @@ export function registerIntegrationTools(
 
           try {
             const tokens = await getValidTokens(connection);
-            bearerToken = tokens.accessToken;
+            proxyAuth = tokens.accessToken;
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : "Token error";
             logUsage({
@@ -492,6 +492,35 @@ export function registerIntegrationTools(
             });
             return { content: [{ type: "text" as const, text: message }], isError: true };
           }
+        } else if (proxy.headerKeys?.length) {
+          // Multi-header auth (e.g. Datadog DD-API-KEY + DD-APPLICATION-KEY)
+          const userHeaders = (extra.authInfo?.extra?.proxyUserHeaders as Record<string, Record<string, string>> | undefined)?.[proxy.id];
+          if (!userHeaders) {
+            logUsage({
+              userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: namespacedName, integrationId,
+              status: "error", errorMessage: "No custom headers configured",
+              durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
+              riskLevel: getToolRisk(namespacedName),
+            });
+            return {
+              content: [{ type: "text" as const, text: `Integration "${proxy.name}" requires API keys. Add them in your dashboard.` }],
+              isError: true,
+            };
+          }
+          const missingKeys = proxy.headerKeys.filter((k) => !userHeaders[k]);
+          if (missingKeys.length > 0) {
+            logUsage({
+              userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: namespacedName, integrationId,
+              status: "error", errorMessage: `Missing headers: ${missingKeys.join(", ")}`,
+              durationMs: Date.now() - pre.startTime, organizationId: pre.organizationId,
+              riskLevel: getToolRisk(namespacedName),
+            });
+            return {
+              content: [{ type: "text" as const, text: `Integration "${proxy.name}" is missing required keys: ${missingKeys.join(", ")}. Update them in your dashboard.` }],
+              isError: true,
+            };
+          }
+          proxyAuth = { headers: userHeaders };
         } else {
           const userKey = (extra.authInfo?.extra?.proxyUserKeys as Record<string, string> | undefined)?.[proxy.id];
           const orgKey = (extra.authInfo?.extra?.integrationOrgKeys as Record<string, string> | undefined)?.[proxy.id];
@@ -501,20 +530,20 @@ export function registerIntegrationTools(
             keyMode: proxy.keyMode,
           });
           if ("error" in result) return result.error;
-          bearerToken = result.key;
+          proxyAuth = result.key;
         }
 
         // Trigger on-demand schema discovery for integrations still using fallback schemas
         if (ctx.resolvedProxyTools.fallbackIntegrationIds.has(proxy.id) && !ctx.discoveredIntegrations.has(proxy.id)) {
           ctx.discoveredIntegrations.add(proxy.id);
-          discoverAndCacheProxyTools(proxy.id, proxy.serverUrl, bearerToken)
+          discoverAndCacheProxyTools(proxy.id, proxy.serverUrl, proxyAuth)
             .then(() => loadProxyTools().then((r) => { ctx.onProxyToolsReload(r); }))
             .catch((err) => console.warn(`[proxy] On-demand discovery failed for ${proxy.id}:`, err.message));
         }
 
         return executeWithLogging(
           { ...pre, toolName: namespacedName, integrationId },
-          async () => proxyToolCall(proxy.serverUrl, bearerToken, tool.name, args as Record<string, unknown>),
+          async () => proxyToolCall(proxy.serverUrl, proxyAuth, tool.name, args as Record<string, unknown>),
           {
             formatError: (err) => {
               const message = err instanceof Error ? err.message : "Unknown error";

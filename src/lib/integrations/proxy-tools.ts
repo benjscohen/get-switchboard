@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { discoverTools } from "@/lib/mcp/proxy-client";
+import { discoverTools, type ProxyAuth } from "@/lib/mcp/proxy-client";
 import { allProxyIntegrations } from "./proxy-registry";
 
 export type ProxyTool = {
@@ -69,10 +69,10 @@ export async function loadProxyTools(): Promise<{
 export async function discoverAndCacheProxyTools(
   integrationId: string,
   serverUrl: string,
-  apiKey?: string
+  auth?: ProxyAuth
 ): Promise<ProxyTool[]> {
   try {
-    const discovered = await discoverTools(serverUrl, apiKey);
+    const discovered = await discoverTools(serverUrl, auth);
 
     // Upsert tools into DB
     if (discovered.length > 0) {
