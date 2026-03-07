@@ -129,15 +129,6 @@ export async function PUT(req: NextRequest) {
         );
       }
 
-      const proxyValidation = await validateIntegrationKey(targetId, "", {
-        type: "proxy",
-        serverUrl: integration.serverUrl,
-        customHeaders,
-      });
-      if (!proxyValidation.valid) {
-        return NextResponse.json({ error: proxyValidation.error }, { status: 422 });
-      }
-
       const encryptedHeaders: Record<string, string> = {};
       for (const [hk, hv] of Object.entries(customHeaders)) {
         encryptedHeaders[hk] = encrypt(hv);

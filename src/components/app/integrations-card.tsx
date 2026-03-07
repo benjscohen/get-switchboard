@@ -155,21 +155,23 @@ export function IntegrationsCard() {
                   <p className="mb-2 text-xs text-text-tertiary">{i.orgKeyHelpText}</p>
                 )}
                 {i.headerKeys?.length ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {i.headerKeys.map((hk) => (
-                      <Input
-                        key={hk}
-                        type="password"
-                        placeholder={hk}
-                        value={headerInputs[i.id]?.[hk] ?? ""}
-                        onChange={(e) =>
-                          setHeaderInputs((h) => ({
-                            ...h,
-                            [i.id]: { ...(h[i.id] ?? {}), [hk]: e.target.value },
-                          }))
-                        }
-                        className="max-w-xs"
-                      />
+                      <div key={hk}>
+                        <label className="mb-1 block text-xs text-text-secondary">{hk}</label>
+                        <Input
+                          type="password"
+                          placeholder={hk}
+                          value={headerInputs[i.id]?.[hk] ?? ""}
+                          onChange={(e) =>
+                            setHeaderInputs((h) => ({
+                              ...h,
+                              [i.id]: { ...(h[i.id] ?? {}), [hk]: e.target.value },
+                            }))
+                          }
+                          className="max-w-xs"
+                        />
+                      </div>
                     ))}
                     <Button
                       size="sm"
@@ -179,7 +181,7 @@ export function IntegrationsCard() {
                         !i.headerKeys.every((hk) => headerInputs[i.id]?.[hk]?.trim())
                       }
                     >
-                      {saving[i.id] ? "Validating..." : "Save Keys"}
+                      {saving[i.id] ? "Saving..." : "Save Keys"}
                     </Button>
                   </div>
                 ) : (
