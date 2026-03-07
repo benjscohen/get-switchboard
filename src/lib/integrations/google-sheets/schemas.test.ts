@@ -282,7 +282,7 @@ describe("structure schemas", () => {
       ).toThrow();
     });
 
-    it.each(["add", "delete", "rename", "duplicate"] as const)(
+    it.each(["add", "delete", "rename", "duplicate", "hide", "unhide", "move", "color"] as const)(
       "accepts operation '%s'",
       (operation) => {
         const result = manageTabsSchema.parse({
@@ -297,7 +297,7 @@ describe("structure schemas", () => {
       expect(() =>
         manageTabsSchema.parse({
           spreadsheetId: "ss1",
-          operation: "move",
+          operation: "archive",
         })
       ).toThrow();
     });

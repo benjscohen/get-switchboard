@@ -20,12 +20,23 @@ vi.mock("next/headers", () => ({
 }));
 
 const mockUpsert = vi.fn();
+const mockProfileSingle = vi.fn();
 
 vi.mock("@/lib/supabase/admin", () => ({
   supabaseAdmin: {
-    from: vi.fn(() => ({
-      upsert: mockUpsert,
-    })),
+    from: vi.fn((table: string) => {
+      if (table === "profiles") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              single: mockProfileSingle,
+            })),
+          })),
+        };
+      }
+      // Default: connections table
+      return { upsert: mockUpsert };
+    }),
   },
 }));
 
@@ -36,6 +47,14 @@ vi.mock("@/lib/encryption", () => ({
 
 vi.mock("@/lib/integrations/registry", () => ({
   integrationRegistry: new Map(),
+}));
+
+vi.mock("@/lib/integration-scopes", () => ({
+  loadIntegrationScopes: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("@/lib/permissions", () => ({
+  isUserInScope: vi.fn().mockReturnValue(true),
 }));
 
 import { integrationRegistry } from "@/lib/integrations/registry";
@@ -80,6 +99,10 @@ describe("GET /api/integrations/callback", () => {
     });
     cookieDeleteMock.mockClear();
     mockUpsert.mockClear().mockResolvedValue({ data: null, error: null });
+    mockProfileSingle.mockClear().mockResolvedValue({
+      data: { organization_id: "org-1", org_role: "member" },
+      error: null,
+    });
 
     (integrationRegistry as Map<string, unknown>).clear();
     (integrationRegistry as Map<string, unknown>).set(

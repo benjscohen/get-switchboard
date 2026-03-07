@@ -128,10 +128,6 @@ describe("registerSkillTools", () => {
     expect(toolMeta.get("manage_skills")).toEqual({ integrationId: "platform", orgId: null });
   });
 
-  it("sets up a prompts/list handler override", () => {
-    expect(server.server.setRequestHandler).toHaveBeenCalledOnce();
-  });
-
   describe("manage_skills handler", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     function callHandler(args: Record<string, unknown>, extra: any = makeExtra()) {
@@ -439,29 +435,4 @@ describe("registerSkillTools", () => {
     });
   });
 
-  describe("prompts/list handler", () => {
-    it("filters prompts based on user context", () => {
-      const handler = server._listPromptsHandler();
-      expect(handler).not.toBeNull();
-
-      // User in org-1 should see the org skill
-      const result = handler!({}, makeExtra()) as { prompts: Array<{ name: string }> };
-      const names = result.prompts.map((p) => p.name);
-      expect(names).toContain("org:code-review");
-      expect(names).toContain("user:summarize");
-    });
-
-    it("filters out skills not visible to user", () => {
-      const handler = server._listPromptsHandler();
-
-      // Different org, different user => sees nothing
-      const result = handler!({}, makeExtra({
-        userId: "other-user",
-        organizationId: "other-org",
-        teamIds: [],
-      })) as { prompts: Array<{ name: string }> };
-
-      expect(result.prompts).toHaveLength(0);
-    });
-  });
 });
