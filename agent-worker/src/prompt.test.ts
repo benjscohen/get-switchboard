@@ -85,11 +85,11 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Always respond in French.");
   });
 
-  it("places CLAUDE.md before Slack formatting rules", () => {
+  it("places CLAUDE.md after Slack formatting rules", () => {
     const prompt = buildSystemPrompt("My instructions here.");
     const claudeMdIndex = prompt.indexOf("My instructions here.");
     const slackIndex = prompt.indexOf("Format responses for Slack");
-    expect(claudeMdIndex).toBeLessThan(slackIndex);
+    expect(slackIndex).toBeLessThan(claudeMdIndex);
   });
 
   it("includes more sections when CLAUDE.md is provided", () => {
@@ -200,45 +200,47 @@ describe("memory instructions", () => {
     expect(memoryIndex).toBeLessThan(devIndex);
   });
 
-  it("places memory instructions after identity section", () => {
+  it("places memory instructions after Slack formatting section", () => {
     const prompt = buildSystemPrompt(null, DATE);
-    const identityIndex = prompt.indexOf("helpful AI assistant");
+    const slackIndex = prompt.indexOf("Format responses for Slack");
     const memoryIndex = prompt.indexOf("persistent memory system");
-    expect(identityIndex).toBeGreaterThan(-1);
+    expect(slackIndex).toBeGreaterThan(-1);
     expect(memoryIndex).toBeGreaterThan(-1);
-    expect(identityIndex).toBeLessThan(memoryIndex);
+    expect(slackIndex).toBeLessThan(memoryIndex);
   });
 
-  it("maintains full section order: identity → memory → dev → guardrails → Slack → feedback", () => {
+  it("maintains full section order: identity → FILE_UPLOAD → Slack → memory → dev → guardrails → feedback", () => {
     const prompt = buildSystemPrompt(null, DATE);
     const identity = prompt.indexOf("helpful AI assistant");
+    const fileUpload = prompt.indexOf("FILE_UPLOAD");
+    const slack = prompt.indexOf("Format responses for Slack");
     const memory = prompt.indexOf("persistent memory system");
     const dev = prompt.indexOf("dev environment with:");
     const guardrails = prompt.indexOf("ask the user for confirmation");
-    const slack = prompt.indexOf("Format responses for Slack");
     const feedback = prompt.indexOf("submit_feedback");
 
-    for (const idx of [identity, memory, dev, guardrails, slack, feedback]) {
+    for (const idx of [identity, fileUpload, slack, memory, dev, guardrails, feedback]) {
       expect(idx).toBeGreaterThan(-1);
     }
-    expect(identity).toBeLessThan(memory);
+    expect(identity).toBeLessThan(fileUpload);
+    expect(fileUpload).toBeLessThan(slack);
+    expect(slack).toBeLessThan(memory);
     expect(memory).toBeLessThan(dev);
     expect(dev).toBeLessThan(guardrails);
-    expect(guardrails).toBeLessThan(slack);
-    expect(slack).toBeLessThan(feedback);
+    expect(guardrails).toBeLessThan(feedback);
   });
 
-  it("places CLAUDE.md between guardrails and Slack when provided", () => {
+  it("places CLAUDE.md between guardrails and feedback when provided", () => {
     const prompt = buildSystemPrompt("Custom user rules", DATE);
     const guardrails = prompt.indexOf("ask the user for confirmation");
     const claudeMd = prompt.indexOf("Custom user rules");
-    const slack = prompt.indexOf("Format responses for Slack");
+    const feedback = prompt.indexOf("submit_feedback");
 
-    for (const idx of [guardrails, claudeMd, slack]) {
+    for (const idx of [guardrails, claudeMd, feedback]) {
       expect(idx).toBeGreaterThan(-1);
     }
     expect(guardrails).toBeLessThan(claudeMd);
-    expect(claudeMd).toBeLessThan(slack);
+    expect(claudeMd).toBeLessThan(feedback);
   });
 
   // --- Interaction with CLAUDE.md ---
@@ -280,12 +282,12 @@ describe("FILE_UPLOAD instructions", () => {
 
   it("explains directive lines are stripped from message", () => {
     const prompt = buildSystemPrompt(null);
-    expect(prompt).toContain("stripped from your message");
+    expect(prompt).toContain("automatically stripped");
   });
 
   it("includes an example with absolute path", () => {
     const prompt = buildSystemPrompt(null);
-    expect(prompt).toContain("FILE_UPLOAD:/tmp/chart.png");
+    expect(prompt).toContain("FILE_UPLOAD:/tmp/poem.txt");
   });
 
   it("does NOT mention old output/ directory approach", () => {

@@ -8,13 +8,24 @@ const SLACK_FORMAT_INSTRUCTIONS = `
 Format responses for Slack:
 - Do NOT use markdown tables (use code blocks for tabular data)
 - Keep responses concise for Slack readability
+`.trim();
 
-File attachments:
-- To send a file to the user, write it anywhere on disk, then include FILE_UPLOAD:/absolute/path on its own line in your response.
-- You can include multiple FILE_UPLOAD directives, each on its own line.
-- The directive lines are stripped from your message — the user only sees the clean text plus the file attachments.
-- Works for all file types: text, images, PDFs, code files, etc.
-- Example: write a chart to /tmp/chart.png, then add FILE_UPLOAD:/tmp/chart.png to your response.
+const FILE_UPLOAD_INSTRUCTIONS = `
+IMPORTANT — Sending files to the user:
+When the user asks you to create, generate, or send a file, you MUST include a FILE_UPLOAD directive in your final response text so the file gets delivered. Without this directive, the file stays on disk and the user never receives it.
+
+Rules:
+1. Write the file anywhere on disk (e.g. /tmp/poem.txt).
+2. In your response text, include FILE_UPLOAD:/absolute/path/to/file on its own line.
+3. You can include multiple FILE_UPLOAD directives, each on its own line.
+4. The directive lines are automatically stripped — the user only sees your clean text plus the file attachments.
+5. This works for ALL file types: .txt, .png, .pdf, .csv, .py, etc.
+
+Example — if you write a poem to /tmp/poem.txt, your response MUST look like:
+Here's the poem I wrote for you!
+FILE_UPLOAD:/tmp/poem.txt
+
+NEVER just mention the filename without the FILE_UPLOAD directive. The user cannot see your local filesystem.
 `.trim();
 
 // ---------------------------------------------------------------------------
@@ -89,6 +100,10 @@ export function buildSystemPrompt(claudeMdContent: string | null, todayDate?: st
       "You can clone repos, write and run code, edit files, search the web, and use all available tools to help with the user's request.",
   );
 
+  sections.push(FILE_UPLOAD_INSTRUCTIONS);
+
+  sections.push(SLACK_FORMAT_INSTRUCTIONS);
+
   const date = todayDate ?? new Date().toISOString().split("T")[0];
   sections.push(buildMemoryInstructions(date));
 
@@ -103,8 +118,6 @@ export function buildSystemPrompt(claudeMdContent: string | null, todayDate?: st
   if (claudeMdContent) {
     sections.push(`The user has provided the following custom instructions:\n\n${claudeMdContent}`);
   }
-
-  sections.push(SLACK_FORMAT_INSTRUCTIONS);
 
   sections.push(FEEDBACK_INSTRUCTIONS);
 
