@@ -20,10 +20,8 @@ export const datadogIntegration: ProxyIntegrationConfig = {
   icon: DatadogIcon,
   serverUrl:
     "https://mcp.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,alerting,apm,dbm,error-tracking,feature-flags,llmobs,networks,security,software-delivery,synthetics",
-  keyMode: "per_user",
+  keyMode: "org",
   headerKeys: ["DD-API-KEY", "DD-APPLICATION-KEY"],
-  userKeyInstructions:
-    "In Datadog, go to Organization Settings → API Keys to copy your API key, and Application Keys to create/copy an Application Key. Read-only access is sufficient.",
   fallbackTools: [
     {
       name: "list_dashboards",

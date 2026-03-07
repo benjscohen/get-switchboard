@@ -494,8 +494,11 @@ export function registerIntegrationTools(
           }
         } else if (proxy.headerKeys?.length) {
           // Multi-header auth (e.g. Datadog DD-API-KEY + DD-APPLICATION-KEY)
+          const orgHeaders = (extra.authInfo?.extra?.integrationOrgHeaders as Record<string, Record<string, string>> | undefined)?.[proxy.id];
           const userHeaders = (extra.authInfo?.extra?.proxyUserHeaders as Record<string, Record<string, string>> | undefined)?.[proxy.id];
-          if (!userHeaders) {
+          const resolvedHeaders = proxy.keyMode === "per_user" ? userHeaders : (orgHeaders ?? userHeaders);
+          if (!resolvedHeaders) {
+            const isPerUser = proxy.keyMode === "per_user";
             logUsage({
               userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: namespacedName, integrationId,
               status: "error", errorMessage: "No custom headers configured",
@@ -503,11 +506,16 @@ export function registerIntegrationTools(
               riskLevel: getToolRisk(namespacedName),
             });
             return {
-              content: [{ type: "text" as const, text: `Integration "${proxy.name}" requires API keys. Add them in your dashboard.` }],
+              content: [{
+                type: "text" as const,
+                text: isPerUser
+                  ? `Integration "${proxy.name}" requires API keys. Add them in your dashboard.`
+                  : `Integration "${proxy.name}" is not configured. An org admin must add the API keys in Organization Settings.`,
+              }],
               isError: true,
             };
           }
-          const missingKeys = proxy.headerKeys.filter((k) => !userHeaders[k]);
+          const missingKeys = proxy.headerKeys.filter((k) => !resolvedHeaders[k]);
           if (missingKeys.length > 0) {
             logUsage({
               userId: pre.userId, apiKeyId: pre.apiKeyId, toolName: namespacedName, integrationId,
@@ -520,7 +528,7 @@ export function registerIntegrationTools(
               isError: true,
             };
           }
-          proxyAuth = { headers: userHeaders };
+          proxyAuth = { headers: resolvedHeaders };
         } else {
           const userKey = (extra.authInfo?.extra?.proxyUserKeys as Record<string, string> | undefined)?.[proxy.id];
           const orgKey = (extra.authInfo?.extra?.integrationOrgKeys as Record<string, string> | undefined)?.[proxy.id];

@@ -40,6 +40,7 @@ export async function GET() {
     toolCount: dbToolCounts.get(i.id) ?? (i.fallbackTools?.length ?? 0),
     configured: keyMap.has(i.id),
     enabled: keyMap.get(i.id) ?? false,
+    headerKeys: i.headerKeys,
   }));
 
   const builtinResults = builtinOrgKeyIntegrations.map((i) => ({
@@ -61,9 +62,10 @@ export async function PUT(request: Request) {
   if (!auth.authenticated) return auth.response;
 
   const body = await request.json();
-  const { integrationId, apiKey, enabled } = body as {
+  const { integrationId, apiKey, customHeaders, enabled } = body as {
     integrationId?: string;
     apiKey?: string;
+    customHeaders?: Record<string, string>;
     enabled?: boolean;
   };
 
@@ -85,7 +87,7 @@ export async function PUT(request: Request) {
   }
 
   // If only toggling enabled/disabled (no new key)
-  if (apiKey === undefined && enabled !== undefined) {
+  if (apiKey === undefined && !customHeaders && enabled !== undefined) {
     const { error } = await supabaseAdmin
       .from("integration_org_keys")
       .update({ enabled, updated_at: new Date().toISOString() })
@@ -101,6 +103,53 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // Multi-header auth (e.g. Datadog)
+  if (proxyInt?.headerKeys?.length && customHeaders) {
+    const missingKeys = proxyInt.headerKeys.filter((k) => !customHeaders[k]);
+    if (missingKeys.length > 0) {
+      return NextResponse.json(
+        { error: `Missing required headers: ${missingKeys.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const validation = await validateIntegrationKey(integrationId, "", {
+      type: "org",
+      serverUrl: proxyInt.serverUrl,
+      customHeaders,
+    });
+    if (!validation.valid) {
+      return NextResponse.json({ error: validation.error }, { status: 422 });
+    }
+
+    const encryptedHeaders: Record<string, string> = {};
+    for (const [hk, hv] of Object.entries(customHeaders)) {
+      encryptedHeaders[hk] = encrypt(hv);
+    }
+
+    const { error } = await supabaseAdmin
+      .from("integration_org_keys")
+      .upsert(
+        {
+          organization_id: auth.organizationId,
+          integration_id: integrationId,
+          api_key: null,
+          custom_headers: encryptedHeaders,
+          enabled: enabled ?? true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "organization_id,integration_id" }
+      );
+
+    if (error) {
+      console.error("[org/integrations] upsert error:", error);
+      return NextResponse.json({ error: "Failed to save key" }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
+  // Single API key flow
   if (!apiKey || typeof apiKey !== "string" || apiKey.trim().length === 0) {
     return NextResponse.json(
       { error: "apiKey is required" },
@@ -126,6 +175,7 @@ export async function PUT(request: Request) {
         organization_id: auth.organizationId,
         integration_id: integrationId,
         api_key: encrypted,
+        custom_headers: null,
         enabled: enabled ?? true,
         updated_at: new Date().toISOString(),
       },

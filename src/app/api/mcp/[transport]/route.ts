@@ -365,7 +365,7 @@ const authedHandler = withMcpAuth(
       supabaseAdmin.from("user_integration_access").select("integration_id, allowed_tools").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("connections").select("id, integration_id, access_token, refresh_token, expires_at, sender_name").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("custom_mcp_user_keys").select("server_id, api_key, custom_headers").eq("user_id", apiKey.user_id),
-      supabaseAdmin.from("integration_org_keys").select("integration_id, api_key").eq("organization_id", organizationId).eq("enabled", true),
+      supabaseAdmin.from("integration_org_keys").select("integration_id, api_key, custom_headers").eq("organization_id", organizationId).eq("enabled", true),
       supabaseAdmin.from("proxy_user_keys").select("integration_id, api_key, custom_headers").eq("user_id", apiKey.user_id),
       supabaseAdmin.from("team_members").select("team_id").eq("user_id", apiKey.user_id),
       loadIntegrationScopes(organizationId),
@@ -419,9 +419,23 @@ const authedHandler = withMcpAuth(
     }
 
     const integrationOrgKeys: Record<string, string> = {};
+    const integrationOrgHeaders: Record<string, Record<string, string>> = {};
     for (const k of rawOrgKeys ?? []) {
       try {
-        integrationOrgKeys[k.integration_id] = decrypt(k.api_key);
+        if (k.api_key) {
+          integrationOrgKeys[k.integration_id] = decrypt(k.api_key);
+        }
+        if (k.custom_headers && typeof k.custom_headers === "object") {
+          const hdrs: Record<string, string> = {};
+          for (const [hk, hv] of Object.entries(k.custom_headers as Record<string, string>)) {
+            hdrs[hk] = decrypt(hv);
+          }
+          integrationOrgHeaders[k.integration_id] = hdrs;
+          // Set sentinel so tool-filtering sees this integration as having a key
+          if (!integrationOrgKeys[k.integration_id]) {
+            integrationOrgKeys[k.integration_id] = "__headers__";
+          }
+        }
       } catch (err) {
         console.warn(`[MCP] Skipping corrupted org key for integration ${k.integration_id}:`, err);
       }
@@ -468,6 +482,7 @@ const authedHandler = withMcpAuth(
         customMcpKeys,
         customMcpHeaders,
         integrationOrgKeys,
+        integrationOrgHeaders,
         proxyUserKeys,
         proxyUserHeaders,
         teamIds,

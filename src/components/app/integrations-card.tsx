@@ -14,12 +14,14 @@ export interface ProxyIntegration {
   enabled: boolean;
   orgKeyLabel?: string;
   orgKeyHelpText?: string;
+  headerKeys?: string[];
 }
 
 export function IntegrationsCard() {
   const [integrations, setIntegrations] = useState<ProxyIntegration[]>([]);
   const [loading, setLoading] = useState(true);
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
+  const [headerInputs, setHeaderInputs] = useState<Record<string, Record<string, string>>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -39,14 +41,31 @@ export function IntegrationsCard() {
     fetchIntegrations();
   }, [fetchIntegrations]);
 
-  async function saveKey(integrationId: string) {
-    const key = keyInputs[integrationId];
-    if (!key?.trim()) return;
+  async function saveKey(integrationId: string, headerKeys?: string[]) {
     setSaving((s) => ({ ...s, [integrationId]: true }));
+
+    let bodyPayload: Record<string, unknown>;
+    if (headerKeys?.length) {
+      const hdrs = headerInputs[integrationId] ?? {};
+      const hasAll = headerKeys.every((k) => hdrs[k]?.trim());
+      if (!hasAll) {
+        setSaving((s) => ({ ...s, [integrationId]: false }));
+        return;
+      }
+      bodyPayload = { integrationId, customHeaders: hdrs };
+    } else {
+      const key = keyInputs[integrationId];
+      if (!key?.trim()) {
+        setSaving((s) => ({ ...s, [integrationId]: false }));
+        return;
+      }
+      bodyPayload = { integrationId, apiKey: key.trim() };
+    }
+
     const res = await fetch("/api/org/integrations", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ integrationId, apiKey: key.trim() }),
+      body: JSON.stringify(bodyPayload),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -56,6 +75,7 @@ export function IntegrationsCard() {
     }
     setErrors(({ [integrationId]: _, ...rest }) => rest);
     setKeyInputs((k) => ({ ...k, [integrationId]: "" }));
+    setHeaderInputs((h) => ({ ...h, [integrationId]: {} }));
     setSaving((s) => ({ ...s, [integrationId]: false }));
     fetchIntegrations();
   }
@@ -134,24 +154,54 @@ export function IntegrationsCard() {
                 {i.orgKeyHelpText && (
                   <p className="mb-2 text-xs text-text-tertiary">{i.orgKeyHelpText}</p>
                 )}
-                <div className="flex gap-2">
-                  <Input
-                    type="password"
-                    placeholder={i.orgKeyLabel ?? "API key"}
-                    value={keyInputs[i.id] ?? ""}
-                    onChange={(e) =>
-                      setKeyInputs((k) => ({ ...k, [i.id]: e.target.value }))
-                    }
-                    className="max-w-xs"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={() => saveKey(i.id)}
-                    disabled={saving[i.id] || !keyInputs[i.id]?.trim()}
-                  >
-                    {saving[i.id] ? "Validating..." : "Save Key"}
-                  </Button>
-                </div>
+                {i.headerKeys?.length ? (
+                  <div className="space-y-2">
+                    {i.headerKeys.map((hk) => (
+                      <Input
+                        key={hk}
+                        type="password"
+                        placeholder={hk}
+                        value={headerInputs[i.id]?.[hk] ?? ""}
+                        onChange={(e) =>
+                          setHeaderInputs((h) => ({
+                            ...h,
+                            [i.id]: { ...(h[i.id] ?? {}), [hk]: e.target.value },
+                          }))
+                        }
+                        className="max-w-xs"
+                      />
+                    ))}
+                    <Button
+                      size="sm"
+                      onClick={() => saveKey(i.id, i.headerKeys)}
+                      disabled={
+                        saving[i.id] ||
+                        !i.headerKeys.every((hk) => headerInputs[i.id]?.[hk]?.trim())
+                      }
+                    >
+                      {saving[i.id] ? "Validating..." : "Save Keys"}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      type="password"
+                      placeholder={i.orgKeyLabel ?? "API key"}
+                      value={keyInputs[i.id] ?? ""}
+                      onChange={(e) =>
+                        setKeyInputs((k) => ({ ...k, [i.id]: e.target.value }))
+                      }
+                      className="max-w-xs"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => saveKey(i.id)}
+                      disabled={saving[i.id] || !keyInputs[i.id]?.trim()}
+                    >
+                      {saving[i.id] ? "Validating..." : "Save Key"}
+                    </Button>
+                  </div>
+                )}
                 {errors[i.id] && (
                   <p className="text-xs text-red-500 mt-2">{errors[i.id]}</p>
                 )}
