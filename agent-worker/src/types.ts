@@ -19,6 +19,7 @@ export interface SessionRow {
   organizationId: string;
   slackChannelId: string;
   slackThreadTs: string | null;
+  slackMessageTs: string | null;
   claudeSessionId: string | null;
   status: "pending" | "running" | "completed" | "failed" | "timeout";
   prompt: string;
@@ -26,6 +27,7 @@ export interface SessionRow {
   error: string | null;
   model: string | null;
   totalTurns: number | null;
+  retryOf: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;

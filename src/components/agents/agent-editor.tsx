@@ -7,18 +7,7 @@ import { Select } from "@/components/ui/select";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { useEscapeKey } from "@/hooks/use-escape-key";
 import { AGENT_MODELS } from "@/lib/agent-models";
-
-const AVAILABLE_INTEGRATIONS = [
-  { id: "platform", label: "Switchboard Platform" },
-  { id: "slack", label: "Slack" },
-  { id: "google_calendar", label: "Google Calendar" },
-  { id: "google_gmail", label: "Gmail" },
-  { id: "google_docs", label: "Google Docs" },
-  { id: "google_drive", label: "Google Drive" },
-  { id: "asana", label: "Asana" },
-  { id: "github", label: "GitHub" },
-  { id: "linear", label: "Linear" },
-];
+import { ToolAccessPicker } from "./tool-access-picker";
 
 const MODEL_OPTIONS = [
   { value: "", label: "Default (no preference)" },
@@ -209,24 +198,7 @@ export function AgentEditor({
           {/* Tool Access */}
           <div>
             <label className="mb-2 block text-sm font-medium text-text-secondary">Tool Access</label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {AVAILABLE_INTEGRATIONS.map((integration) => (
-                <label key={integration.id} className="flex items-center gap-2 rounded-lg bg-bg p-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={toolAccess.includes(integration.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setToolAccess([...toolAccess, integration.id]);
-                      } else {
-                        setToolAccess(toolAccess.filter((id) => id !== integration.id));
-                      }
-                    }}
-                  />
-                  {integration.label}
-                </label>
-              ))}
-            </div>
+            <ToolAccessPicker value={toolAccess} onChange={setToolAccess} />
           </div>
 
           {/* Model */}

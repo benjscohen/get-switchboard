@@ -2,8 +2,11 @@ import { App, LogLevel } from "@slack/bolt";
 import {
   processMessage,
   recoverStaleSessions,
+  retrySession,
   getActiveSessionCount,
 } from "./agent.js";
+import * as slack from "./slack.js";
+import { buildRetryDisabledBlocks } from "./slack-blocks.js";
 import type { SlackFile } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -67,6 +70,34 @@ app.message(async ({ message, body }) => {
     (err) => {
       console.error("Unhandled error in processMessage:", err);
     },
+  );
+});
+
+// Handle "Retry" button clicks on error messages
+app.action("retry_session", async ({ action, ack, body }) => {
+  await ack();
+  const sessionId = (action as { value?: string }).value;
+  if (!sessionId) return;
+
+  // Disable the button immediately to prevent double-clicks
+  const channelId = body.channel?.id;
+  const msg = "message" in body ? (body as unknown as Record<string, unknown>).message as { ts?: string; blocks?: Array<{ text?: { text?: string } }> } : null;
+  if (channelId && msg?.ts) {
+    const errorText = msg.blocks?.[0]?.text?.text?.replace("Sorry, something went wrong: ", "") || "Unknown error";
+    const disabledBlocks = buildRetryDisabledBlocks(errorText);
+    await slack
+      .updateMessage(
+        channelId,
+        msg.ts,
+        `Sorry, something went wrong: ${errorText}`,
+        disabledBlocks,
+      )
+      .catch((err) => console.error("Failed to update retry button:", err));
+  }
+
+  // Fire and forget
+  retrySession(sessionId, body.user.id).catch((err) =>
+    console.error("Retry session failed:", err),
   );
 });
 

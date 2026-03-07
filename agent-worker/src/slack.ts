@@ -1,18 +1,22 @@
 import { WebClient } from "@slack/web-api";
+import type { KnownBlock } from "@slack/types";
 
 const client = new WebClient(process.env.SLACK_BOT_TOKEN);
 
 /**
  * Post a message to a Slack channel or thread. Returns the message timestamp.
+ * Optionally include Block Kit blocks for rich formatting.
  */
 export async function postMessage(
   channel: string,
   text: string,
   threadTs?: string,
+  blocks?: KnownBlock[],
 ): Promise<string> {
   const result = await client.chat.postMessage({
     channel,
     text,
+    ...(blocks && { blocks }),
     thread_ts: threadTs,
     unfurl_links: false,
     unfurl_media: false,
@@ -21,17 +25,19 @@ export async function postMessage(
 }
 
 /**
- * Update an existing Slack message.
+ * Update an existing Slack message. Optionally include Block Kit blocks.
  */
 export async function updateMessage(
   channel: string,
   ts: string,
   text: string,
+  blocks?: KnownBlock[],
 ): Promise<void> {
   await client.chat.update({
     channel,
     ts,
     text,
+    ...(blocks && { blocks }),
   });
 }
 

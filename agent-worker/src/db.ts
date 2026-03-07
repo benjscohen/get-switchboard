@@ -129,8 +129,10 @@ export async function createSession(data: {
   organizationId: string;
   slackChannelId: string;
   slackThreadTs: string | null;
+  slackMessageTs: string;
   prompt: string;
   model: string;
+  retryOf?: string;
 }): Promise<string> {
   const { data: row, error } = await supabase
     .from("agent_sessions")
@@ -139,9 +141,11 @@ export async function createSession(data: {
       organization_id: data.organizationId,
       slack_channel_id: data.slackChannelId,
       slack_thread_ts: data.slackThreadTs,
+      slack_message_ts: data.slackMessageTs,
       prompt: data.prompt,
       model: data.model,
       status: "pending",
+      ...(data.retryOf ? { retry_of: data.retryOf } : {}),
     })
     .select("id")
     .single();
@@ -151,6 +155,35 @@ export async function createSession(data: {
   }
 
   return row.id as string;
+}
+
+/** Raw DB row shape for session lookups (snake_case matches DB columns). */
+export interface SessionDbRow {
+  id: string;
+  user_id: string;
+  organization_id: string;
+  slack_channel_id: string;
+  slack_thread_ts: string | null;
+  slack_message_ts: string | null;
+  status: string;
+  prompt: string;
+  model: string | null;
+  error: string | null;
+}
+
+export async function getSessionById(id: string): Promise<SessionDbRow | null> {
+  const { data, error } = await supabase
+    .from("agent_sessions")
+    .select("id, user_id, organization_id, slack_channel_id, slack_thread_ts, slack_message_ts, status, prompt, model, error")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Error fetching session:", error);
+    return null;
+  }
+
+  return data as SessionDbRow | null;
 }
 
 export async function updateSession(
@@ -163,6 +196,8 @@ export async function updateSession(
     total_turns: number;
     completed_at: string;
     updated_at: string;
+    retry_of: string;
+    slack_message_ts: string;
   }>,
 ): Promise<void> {
   const { error } = await supabase
@@ -225,12 +260,13 @@ export async function getStaleRunningSessions(): Promise<
     id: string;
     slack_channel_id: string;
     slack_thread_ts: string | null;
+    slack_message_ts: string | null;
     prompt: string | null;
   }>
 > {
   const { data, error } = await supabase
     .from("agent_sessions")
-    .select("id, slack_channel_id, slack_thread_ts, prompt")
+    .select("id, slack_channel_id, slack_thread_ts, slack_message_ts, prompt")
     .eq("status", "running");
 
   if (error) {
@@ -242,6 +278,7 @@ export async function getStaleRunningSessions(): Promise<
     id: string;
     slack_channel_id: string;
     slack_thread_ts: string | null;
+    slack_message_ts: string | null;
     prompt: string | null;
   }>;
 }

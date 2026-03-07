@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { upsertEmbeddings, deleteEmbedding, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore } from "@/lib/embeddings";
 import { type ServiceResult, type ScopedAuth, slugify, canEditScopedEntity, canViewScopedEntity } from "@/lib/shared/scoped-entity";
+import { normalizeToolAccess } from "@/lib/agents/tool-access-utils";
 
 // Re-export shared types for convenience
 export { type ServiceResult, slugify } from "@/lib/shared/scoped-entity";
@@ -73,7 +74,7 @@ export function formatAgent(a: AgentRow) {
     slug: a.slug,
     description: a.description,
     instructions: a.instructions,
-    toolAccess: a.tool_access,
+    toolAccess: normalizeToolAccess(a.tool_access),
     model: a.model,
     scope,
     organizationId: a.organization_id,
@@ -95,7 +96,7 @@ export function formatVersion(v: AgentVersionRow) {
     name: v.name,
     description: v.description,
     instructions: v.instructions,
-    toolAccess: v.tool_access,
+    toolAccess: normalizeToolAccess(v.tool_access),
     model: v.model,
     enabled: v.enabled,
     changeType: v.change_type,

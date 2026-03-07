@@ -64,7 +64,7 @@ export function AgentHistory({ agentId, agentName, currentVersion, onRollback, o
           {v.toolAccess.length > 0 && (
             <div>
               <span className="text-xs font-medium text-text-secondary">
-                Tool Access: {v.toolAccess.join(", ")}
+                Tool Access: {v.toolAccess.map(e => { const colon = e.indexOf(":"); return colon === -1 ? e : e.slice(0, colon) + " > " + e.slice(colon + 1); }).join(", ")}
               </span>
             </div>
           )}

@@ -18,6 +18,7 @@ import {
 import type { ToolMeta } from "./tool-filtering";
 import { withToolLogging } from "./tool-logging";
 import { getFullMcpAuth, ok, err } from "./types";
+import { getFullCatalog } from "@/lib/integrations/catalog";
 
 export function registerAgentTools(
   server: McpServer,
@@ -48,7 +49,7 @@ export function registerAgentTools(
     "manage_agents",
     "Manage agent definitions (reusable AI agent configurations). CRUD, search, version history, and rollback.",
     {
-      operation: z.enum(["list", "get", "create", "update", "delete", "history", "version", "rollback", "search"])
+      operation: z.enum(["list", "get", "create", "update", "delete", "history", "version", "rollback", "search", "list_integrations"])
         .describe("Agent operation to perform"),
       id: z.string().optional()
         .describe("Agent ID (required for update, delete, history, version, rollback)"),
@@ -63,7 +64,7 @@ export function registerAgentTools(
       instructions: z.string().optional()
         .describe("Agent system prompt / instructions"),
       tool_access: z.array(z.string()).optional()
-        .describe("Array of integration IDs the agent can use (e.g. [\"slack\", \"google_calendar\"])"),
+        .describe("Array of integration IDs or integration:tool entries (e.g. [\"slack\", \"google-calendar:google_calendar_list_events\"]). Use list_integrations to see available options."),
       model: z.string().optional()
         .describe("Preferred model (e.g. claude-sonnet-4-6)"),
       team_id: z.string().optional()
@@ -193,6 +194,18 @@ export function registerAgentTools(
           const result = await searchAgents(auth, args.name, { limit: 10 });
           if (!result.ok) return err(result.error);
           return ok(result.data);
+        }
+
+        case "list_integrations": {
+          const catalog = await getFullCatalog();
+          return ok(catalog.map((c) => ({
+            id: c.id.startsWith("proxy:") ? c.id.replace("proxy:", "") : c.id,
+            name: c.name,
+            kind: c.kind,
+            category: c.category,
+            toolCount: c.toolCount,
+            tools: c.tools.map((t) => t.name),
+          })));
         }
       }
     })

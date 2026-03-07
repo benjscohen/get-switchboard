@@ -3,6 +3,7 @@ import * as slack from "./slack.js";
 import * as db from "./db.js";
 import { fetchUserFiles, writeFilesToDisk, cleanupTempDir } from "./files.js";
 import { extractClaudeMd, buildSystemPrompt } from "./prompt.js";
+import { buildErrorWithRetryBlocks } from "./slack-blocks.js";
 import type { SlackFile, UserLookup } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -44,7 +45,6 @@ const MAX_FILE_SIZE = 1024 * 1024; // 1 MB
 // Concurrency tracking
 // ---------------------------------------------------------------------------
 
-const activeSessions = new Map<string, string>(); // userId -> sessionId
 let activeCount = 0;
 
 export function getActiveSessionCount(): number {
@@ -125,6 +125,58 @@ function truncateForSlack(text: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Centralized error handler
+// ---------------------------------------------------------------------------
+
+async function postErrorWithRetry(opts: {
+  channelId: string;
+  messageTs: string;
+  replyThread: string;
+  errorMessage: string;
+  sessionId?: string;
+  status?: "failed" | "timeout";
+}): Promise<void> {
+  const { channelId, messageTs, replyThread, errorMessage, sessionId, status } = opts;
+
+  // Always fix emoji state
+  await Promise.all([
+    slack.removeReaction(channelId, messageTs, "eyes").catch(() => {}),
+    slack.addReaction(channelId, messageTs, "x").catch(() => {}),
+  ]);
+
+  // Post error — with retry button if we have a session, plain text otherwise
+  if (sessionId) {
+    const blocks = buildErrorWithRetryBlocks(errorMessage, sessionId);
+    const errorTs = await slack.postMessage(
+      channelId,
+      `Sorry, something went wrong: ${errorMessage}`,
+      replyThread,
+      blocks,
+    );
+    await db.createMessage({
+      sessionId,
+      role: "assistant",
+      content: errorMessage,
+      slackTs: errorTs,
+      metadata: { error: true },
+    });
+    await db
+      .updateSession(sessionId, {
+        status: status || "failed",
+        error: errorMessage,
+        completed_at: new Date().toISOString(),
+      })
+      .catch(() => {});
+  } else {
+    await slack.postMessage(
+      channelId,
+      `Sorry, something went wrong: ${errorMessage}`,
+      replyThread,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main message handler
 // ---------------------------------------------------------------------------
 
@@ -135,6 +187,7 @@ export async function processMessage(
   files: SlackFile[],
   messageTs: string,
   threadTs?: string,
+  retryOf?: string,
 ): Promise<void> {
   // 1. React with eyes to acknowledge receipt
   await slack.addReaction(channelId, messageTs, "eyes").catch(() => {});
@@ -145,15 +198,20 @@ export async function processMessage(
     lookup = await db.lookupUserBySlackId(slackUserId);
   } catch (err) {
     console.error("User lookup failed:", err);
-    await slack.postMessage(
+    await postErrorWithRetry({
       channelId,
-      "Something went wrong looking up your account. Please try again later.",
-      threadTs || messageTs,
-    );
+      messageTs,
+      replyThread: threadTs || messageTs,
+      errorMessage: "Something went wrong looking up your account. Please try again later.",
+    });
     return;
   }
 
   if (!lookup) {
+    await Promise.all([
+      slack.removeReaction(channelId, messageTs, "eyes").catch(() => {}),
+      slack.addReaction(channelId, messageTs, "x").catch(() => {}),
+    ]);
     await slack.postMessage(
       channelId,
       "I don't recognize your Slack account. Please connect Slack in your Switchboard dashboard first: https://www.get-switchboard.com",
@@ -162,23 +220,14 @@ export async function processMessage(
     return;
   }
 
-  // 3. Check for concurrent session
-  if (activeSessions.has(lookup.userId)) {
-    await slack.postMessage(
-      channelId,
-      "I'm still working on your last request. Please wait for it to finish before sending another.",
-      threadTs || messageTs,
-    );
-    return;
-  }
-
-  // 4. Check global concurrency limit
+  // 3. Check global concurrency limit
   if (activeCount >= MAX_CONCURRENT_SESSIONS) {
-    await slack.postMessage(
+    await postErrorWithRetry({
       channelId,
-      "I'm currently handling a lot of requests. Please try again in a moment.",
-      threadTs || messageTs,
-    );
+      messageTs,
+      replyThread: threadTs || messageTs,
+      errorMessage: "I'm currently handling a lot of requests. Please try again in a moment.",
+    });
     return;
   }
 
@@ -195,11 +244,16 @@ export async function processMessage(
     }
   }
 
-  // 6. Download and format file attachments
-  const fileContent = await formatFiles(files);
-  const fullPrompt = fileContent ? `${text}\n${fileContent}` : text;
+  // 6. Download and format file attachments (skip on retry — prompt already has file content)
+  let fullPrompt: string;
+  if (retryOf) {
+    fullPrompt = text;
+  } else {
+    const fileContent = await formatFiles(files);
+    fullPrompt = fileContent ? `${text}\n${fileContent}` : text;
+  }
 
-  // 6. Create session row
+  // 7. Create session row
   let sessionId: string;
   try {
     sessionId = await db.createSession({
@@ -207,21 +261,23 @@ export async function processMessage(
       organizationId: lookup.organizationId,
       slackChannelId: channelId,
       slackThreadTs: threadTs || messageTs,
+      slackMessageTs: messageTs,
       prompt: fullPrompt,
       model: lookup.model,
+      ...(retryOf ? { retryOf } : {}),
     });
   } catch (err) {
     console.error("Failed to create session:", err);
-    await slack.postMessage(
+    await postErrorWithRetry({
       channelId,
-      "Failed to start a new session. Please try again.",
-      threadTs || messageTs,
-    );
+      messageTs,
+      replyThread: threadTs || messageTs,
+      errorMessage: "Failed to start a new session. Please try again.",
+    });
     return;
   }
 
-  // 7. Track concurrency
-  activeSessions.set(lookup.userId, sessionId);
+  // 8. Track concurrency
   activeCount++;
 
   const replyThread = threadTs || messageTs;
@@ -411,28 +467,13 @@ export async function processMessage(
           ? err.message
           : "An unknown error occurred";
 
-      const status = isAbort ? "timeout" : "failed";
-
-      const errorTs = await slack.postMessage(
+      await postErrorWithRetry({
         channelId,
-        `Sorry, something went wrong: ${errorMessage}`,
+        messageTs,
         replyThread,
-      );
-      await slack.removeReaction(channelId, messageTs, "eyes").catch(() => {});
-      await slack.addReaction(channelId, messageTs, "x").catch(() => {});
-
-      await db.updateSession(sessionId, {
-        status,
-        error: errorMessage,
-        completed_at: new Date().toISOString(),
-      });
-
-      await db.createMessage({
+        errorMessage,
         sessionId,
-        role: "assistant",
-        content: errorMessage,
-        slackTs: errorTs,
-        metadata: { error: true },
+        status: isAbort ? "timeout" : "failed",
       });
 
       return;
@@ -444,8 +485,10 @@ export async function processMessage(
       truncateForSlack(resultText),
       replyThread,
     );
-    await slack.removeReaction(channelId, messageTs, "eyes").catch(() => {});
-    await slack.addReaction(channelId, messageTs, "white_check_mark").catch(() => {});
+    await Promise.all([
+      slack.removeReaction(channelId, messageTs, "eyes").catch(() => {}),
+      slack.addReaction(channelId, messageTs, "white_check_mark").catch(() => {}),
+    ]);
 
     // 14. Update session as completed
     await db.updateSession(sessionId, {
@@ -468,25 +511,14 @@ export async function processMessage(
     const errorMessage =
       err instanceof Error ? err.message : "An unexpected error occurred";
 
-    await slack
-      .postMessage(
-        channelId,
-        `Sorry, something went wrong: ${errorMessage}`,
-        replyThread,
-      )
-      .catch(() => {});
-    await slack.removeReaction(channelId, messageTs, "eyes").catch(() => {});
-    await slack.addReaction(channelId, messageTs, "x").catch(() => {});
-
-    await db
-      .updateSession(sessionId, {
-        status: "failed",
-        error: errorMessage,
-        completed_at: new Date().toISOString(),
-      })
-      .catch(() => {});
+    await postErrorWithRetry({
+      channelId,
+      messageTs,
+      replyThread,
+      errorMessage,
+      sessionId,
+    }).catch(() => {});
   } finally {
-    activeSessions.delete(lookup.userId);
     activeCount--;
     if (tempDir) {
       cleanupTempDir(tempDir).catch((err) =>
@@ -509,28 +541,32 @@ export async function recoverStaleSessions(): Promise<void> {
 
   console.log(`Recovering ${staleSessions.length} stale session(s)...`);
 
-  for (const session of staleSessions) {
+  await Promise.all(staleSessions.map(async (session) => {
+    const errorMsg = "Worker restarted — session was interrupted.";
+
     await db.updateSession(session.id, {
       status: "failed",
-      error: "Worker restarted — session was interrupted.",
+      error: errorMsg,
       completed_at: new Date().toISOString(),
     });
 
-    // Notify in Slack thread if possible
+    // Try to fix emoji on the original user message (may fail for old messages)
+    if (session.slack_channel_id && session.slack_message_ts) {
+      await Promise.all([
+        slack.removeReaction(session.slack_channel_id, session.slack_message_ts, "eyes").catch(() => {}),
+        slack.addReaction(session.slack_channel_id, session.slack_message_ts, "x").catch(() => {}),
+      ]);
+    }
+
+    // Post error with retry button in Slack thread
     if (session.slack_channel_id && session.slack_thread_ts) {
-      const promptSnippet = session.prompt
-        ? session.prompt.length > 200
-          ? session.prompt.slice(0, 200) + "..."
-          : session.prompt
-        : null;
-      const message = promptSnippet
-        ? `Sorry, my previous session was interrupted by a restart. Your request was: *${promptSnippet}*\nPlease send your request again.`
-        : "Sorry, my previous session was interrupted by a restart. Please send your request again.";
+      const blocks = buildErrorWithRetryBlocks(errorMsg, session.id);
       await slack
         .postMessage(
           session.slack_channel_id,
-          message,
+          `Sorry, something went wrong: ${errorMsg}`,
           session.slack_thread_ts,
+          blocks,
         )
         .catch((err) =>
           console.error(
@@ -539,7 +575,55 @@ export async function recoverStaleSessions(): Promise<void> {
           ),
         );
     }
-  }
+  }));
 
   console.log("Stale session recovery complete.");
+}
+
+// ---------------------------------------------------------------------------
+// Retry a failed session
+// ---------------------------------------------------------------------------
+
+export async function retrySession(
+  sessionId: string,
+  triggerSlackUserId: string,
+): Promise<void> {
+  // 1. Look up the failed session
+  const session = await db.getSessionById(sessionId);
+  if (!session) {
+    console.error(`Retry: session ${sessionId} not found`);
+    return;
+  }
+
+  if (session.status !== "failed" && session.status !== "timeout") {
+    console.warn(`Retry: session ${sessionId} has status ${session.status}, skipping`);
+    return;
+  }
+
+  // 2. Look up Slack user (fresh credentials)
+  const lookup = await db.lookupUserBySlackId(triggerSlackUserId);
+  if (!lookup) {
+    console.error(`Retry: Slack user ${triggerSlackUserId} not found`);
+    return;
+  }
+
+  // 3. Verify the clicking user owns the session
+  if (lookup.userId !== session.user_id) {
+    console.warn(`Retry: user mismatch — session owner ${session.user_id}, clicker ${lookup.userId}`);
+    return;
+  }
+
+  // 4. Replay the original prompt through processMessage
+  const messageTs = session.slack_message_ts || session.slack_thread_ts || "";
+  const threadTs = session.slack_thread_ts || undefined;
+
+  await processMessage(
+    triggerSlackUserId,
+    session.slack_channel_id,
+    session.prompt,
+    [], // no files — prompt already contains embedded file content
+    messageTs,
+    threadTs,
+    sessionId, // retryOf
+  );
 }

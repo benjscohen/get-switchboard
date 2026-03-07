@@ -146,6 +146,7 @@ function buildAndRegisterDiscovery(server: McpServer) {
 // ── MCP handler ──
 
 async function mcpHandler(req: Request): Promise<Response> {
+  try {
   if (resolvedCustomTools === null) resolvedCustomTools = await customToolsPromise;
   if (resolvedProxyTools === null) resolvedProxyTools = await proxyToolsPromise;
   if (resolvedSkills === null) resolvedSkills = await skillsPromise;
@@ -266,6 +267,17 @@ You have a durable memory system. Follow these conventions:
     | undefined;
 
   return transport.handleRequest(req, { authInfo });
+  } catch (err) {
+    console.error("[MCP] mcpHandler error:", err);
+    return new Response(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        error: { code: -32603, message: "Internal error" },
+        id: null,
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 }
 
 // Type alias for the context shape used by registerIntegrationTools
@@ -325,14 +337,28 @@ const authedHandler = withMcpAuth(
 
     if (!profile || profile.status === "deactivated") return undefined;
 
-    const connections = (rawConnections ?? []).map((c) => ({
-      id: c.id,
-      integrationId: c.integration_id,
-      accessToken: decrypt(c.access_token),
-      refreshToken: c.refresh_token ? decrypt(c.refresh_token) : null,
-      expiresAt: c.expires_at ? new Date(c.expires_at) : null,
-      senderName: c.sender_name as string | null,
-    }));
+    const connections: Array<{
+      id: string;
+      integrationId: string;
+      accessToken: string;
+      refreshToken: string | null;
+      expiresAt: Date | null;
+      senderName: string | null;
+    }> = [];
+    for (const c of rawConnections ?? []) {
+      try {
+        connections.push({
+          id: c.id,
+          integrationId: c.integration_id,
+          accessToken: decrypt(c.access_token),
+          refreshToken: c.refresh_token ? decrypt(c.refresh_token) : null,
+          expiresAt: c.expires_at ? new Date(c.expires_at) : null,
+          senderName: c.sender_name as string | null,
+        });
+      } catch (err) {
+        console.warn(`[MCP] Skipping corrupted connection ${c.id} (${c.integration_id}):`, err);
+      }
+    }
 
     const integrationAccess = (accessRows ?? []).map((a) => ({
       integrationId: a.integration_id,
@@ -342,24 +368,36 @@ const authedHandler = withMcpAuth(
     const customMcpKeys: Record<string, string> = {};
     const customMcpHeaders: Record<string, Record<string, string>> = {};
     for (const k of rawUserKeys ?? []) {
-      if (k.api_key) customMcpKeys[k.server_id] = decrypt(k.api_key);
-      if (k.custom_headers && typeof k.custom_headers === "object") {
-        const hdrs: Record<string, string> = {};
-        for (const [hk, hv] of Object.entries(k.custom_headers as Record<string, string>)) {
-          hdrs[hk] = decrypt(hv);
+      try {
+        if (k.api_key) customMcpKeys[k.server_id] = decrypt(k.api_key);
+        if (k.custom_headers && typeof k.custom_headers === "object") {
+          const hdrs: Record<string, string> = {};
+          for (const [hk, hv] of Object.entries(k.custom_headers as Record<string, string>)) {
+            hdrs[hk] = decrypt(hv);
+          }
+          customMcpHeaders[k.server_id] = hdrs;
         }
-        customMcpHeaders[k.server_id] = hdrs;
+      } catch (err) {
+        console.warn(`[MCP] Skipping corrupted custom MCP key for server ${k.server_id}:`, err);
       }
     }
 
     const integrationOrgKeys: Record<string, string> = {};
     for (const k of rawOrgKeys ?? []) {
-      integrationOrgKeys[k.integration_id] = decrypt(k.api_key);
+      try {
+        integrationOrgKeys[k.integration_id] = decrypt(k.api_key);
+      } catch (err) {
+        console.warn(`[MCP] Skipping corrupted org key for integration ${k.integration_id}:`, err);
+      }
     }
 
     const proxyUserKeys: Record<string, string> = {};
     for (const k of rawProxyUserKeys ?? []) {
-      proxyUserKeys[k.integration_id] = decrypt(k.api_key);
+      try {
+        proxyUserKeys[k.integration_id] = decrypt(k.api_key);
+      } catch (err) {
+        console.warn(`[MCP] Skipping corrupted proxy user key for integration ${k.integration_id}:`, err);
+      }
     }
 
     const teamIds = (teamMemberships ?? []).map((m) => m.team_id);

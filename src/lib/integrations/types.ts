@@ -5,7 +5,8 @@ export type CatalogEntry = {
   id: string;
   name: string;
   description: string;
-  kind: "builtin" | "custom-mcp" | "native-proxy";
+  kind: "builtin" | "custom-mcp" | "native-proxy" | "platform";
+  category?: string;
   toolCount: number;
   tools: { name: string; description: string }[];
 };

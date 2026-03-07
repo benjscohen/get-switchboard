@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { useEscapeKey } from "@/hooks/use-escape-key";
 import { scopePrefix, scopeBadgeLabel } from "@/lib/shared/scope-utils";
+import { formatToolAccessForDisplay } from "@/lib/agents/tool-access-utils";
+import type { CatalogEntry } from "@/lib/integrations/types";
 
 interface Agent {
   id: string;
@@ -22,13 +24,14 @@ interface Agent {
 interface AgentPreviewProps {
   agent: Agent;
   teamNames: Record<string, string>;
+  catalog?: CatalogEntry[];
   onEdit: () => void;
   onHistory: () => void;
   onClose: () => void;
 }
 
 
-export function AgentPreview({ agent, teamNames, onEdit, onHistory, onClose }: AgentPreviewProps) {
+export function AgentPreview({ agent, teamNames, catalog, onEdit, onHistory, onClose }: AgentPreviewProps) {
   useEscapeKey(onClose);
 
   return (
@@ -69,11 +72,17 @@ export function AgentPreview({ agent, teamNames, onEdit, onHistory, onClose }: A
                 Tool Access
               </h3>
               <div className="flex flex-wrap gap-1.5">
-                {agent.toolAccess.map((tool) => (
-                  <span key={tool} className="rounded-md bg-bg-hover px-2 py-0.5 text-xs font-mono">
-                    {tool}
-                  </span>
-                ))}
+                {catalog
+                  ? formatToolAccessForDisplay(agent.toolAccess, catalog).map((item) => (
+                      <span key={item.integrationId} className="rounded-md bg-bg-hover px-2 py-0.5 text-xs font-mono">
+                        {item.label}
+                      </span>
+                    ))
+                  : agent.toolAccess.map((tool) => (
+                      <span key={tool} className="rounded-md bg-bg-hover px-2 py-0.5 text-xs font-mono">
+                        {tool}
+                      </span>
+                    ))}
               </div>
             </div>
           )}
