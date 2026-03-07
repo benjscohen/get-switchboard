@@ -10,6 +10,7 @@ import { googleSlidesIntegration } from "./google-slides";
 import { hubspotCrmIntegration } from "./hubspot-crm";
 import { intercomIntegration } from "./intercom";
 import { linkedinAdsIntegration } from "./linkedin-ads";
+import { railwayIntegration } from "./railway";
 
 const integrations: IntegrationConfig[] = [
   asanaIntegration,
@@ -23,6 +24,7 @@ const integrations: IntegrationConfig[] = [
   hubspotCrmIntegration,
   intercomIntegration,
   linkedinAdsIntegration,
+  railwayIntegration,
 ];
 
 export const integrationRegistry = new Map<string, IntegrationConfig>(

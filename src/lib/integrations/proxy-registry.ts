@@ -6,6 +6,7 @@ import { githubIntegration } from "./github";
 import { granolaIntegration } from "./granola";
 import { shortcutIntegration } from "./shortcut";
 import { slackIntegration } from "./slack";
+import { supabaseIntegration } from "./supabase";
 
 const proxyIntegrations: ProxyIntegrationConfig[] = [
   context7Integration,
@@ -15,6 +16,7 @@ const proxyIntegrations: ProxyIntegrationConfig[] = [
   granolaIntegration,
   shortcutIntegration,
   slackIntegration,
+  supabaseIntegration,
 ];
 
 export const proxyIntegrationRegistry = new Map<string, ProxyIntegrationConfig>(

@@ -174,6 +174,20 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   hubspot_crm_manage_campaigns: "write",
   hubspot_crm_manage_sequences: "write",
 
+  // ── Railway ──
+  railway_check_status: "read",
+  railway_list_projects: "read",
+  railway_create_project: "write",
+  railway_list_services: "read",
+  railway_deploy: "destructive",
+  railway_deploy_template: "write",
+  railway_create_environment: "write",
+  railway_list_variables: "read",
+  railway_set_variables: "write",
+  railway_generate_domain: "write",
+  railway_list_deployments: "read",
+  railway_get_logs: "read",
+
   // ── Context7 ──
   "resolve-library-id": "read",
   "get-library-docs": "read",
@@ -218,6 +232,30 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   update_pull_request_branch: "write",
   search_code: "read",
   search_users: "read",
+
+  // ── Supabase ──
+  list_tables: "read",
+  list_extensions: "read",
+  list_migrations: "read",
+  apply_migration: "destructive",
+  execute_sql: "destructive",
+  get_logs: "read",
+  get_advisors: "read",
+  get_project_url: "read",
+  get_publishable_keys: "read",
+  generate_typescript_types: "read",
+  list_edge_functions: "read",
+  get_edge_function: "read",
+  deploy_edge_function: "write",
+  list_projects: "read",
+  list_organizations: "read",
+  search_docs: "read",
+  // create_branch: shared with GitHub (both "write") — single entry at line ~201
+  list_branches: "read",
+  delete_branch: "destructive",
+  merge_branch: "destructive",
+  reset_branch: "destructive",
+  rebase_branch: "write",
 
   // ── Skill tools ──
   manage_skills: "write",

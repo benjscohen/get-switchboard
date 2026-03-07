@@ -169,14 +169,20 @@ describe("toolRiskMap completeness", () => {
   });
 });
 
+// Tool names that intentionally exist in multiple proxy integrations.
+// The proxy routing system disambiguates by integration ID at call time.
+const KNOWN_COLLISIONS = new Set([
+  "create_branch", // GitHub + Supabase — both correctly classified as "write"
+]);
+
 describe("cross-consistency", () => {
-  it("all tool names are unique across integrations", () => {
+  it("all tool names are unique across integrations (excluding known collisions)", () => {
     const seen = new Map<string, string>();
     const duplicates: string[] = [];
 
     for (const integration of allIntegrations) {
       for (const tool of integration.tools) {
-        if (seen.has(tool.name)) {
+        if (seen.has(tool.name) && !KNOWN_COLLISIONS.has(tool.name)) {
           duplicates.push(`${tool.name} (in ${integration.id} and ${seen.get(tool.name)})`);
         }
         seen.set(tool.name, integration.id);
@@ -184,7 +190,7 @@ describe("cross-consistency", () => {
     }
     for (const proxy of allProxyIntegrations) {
       for (const tool of proxy.fallbackTools ?? []) {
-        if (seen.has(tool.name)) {
+        if (seen.has(tool.name) && !KNOWN_COLLISIONS.has(tool.name)) {
           duplicates.push(`${tool.name} (in ${proxy.id} and ${seen.get(tool.name)})`);
         }
         seen.set(tool.name, proxy.id);

@@ -79,6 +79,13 @@ const available: MarketingIntegration[] = [
     icon: "/integrations/github.svg",
     available: true,
   },
+  {
+    name: "Railway",
+    description:
+      "Deploy services, manage environments, and monitor deployments via natural language.",
+    icon: "/integrations/railway.svg",
+    available: true,
+  },
 ];
 
 // ── Coming soon ────────────────────────────────────────────────────────

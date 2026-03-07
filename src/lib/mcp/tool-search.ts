@@ -74,7 +74,9 @@ export const CATEGORY_SYNONYMS: Record<string, string[]> = {
   crm: ["CRM", "sales", "contacts", "deals", "pipeline", "customer relationship", "leads", "accounts"],
   documentation: ["docs", "library docs", "API reference", "code examples", "SDK docs", "package docs"],
   search: ["web search", "semantic search", "AI search", "research", "lookup", "internet search", "find information"],
+  database: ["SQL", "PostgreSQL", "DB", "tables", "migrations", "schema", "queries", "edge functions", "Supabase"],
   code: ["source control", "git", "repository", "repo", "version control", "SCM", "pull request", "PR", "issues", "commits"],
+  deployment: ["deploy", "hosting", "infrastructure", "devops", "cloud", "PaaS", "CI/CD", "environments", "services"],
 };
 
 export const CATEGORY_MAP: Record<string, string> = {
@@ -96,6 +98,8 @@ export const CATEGORY_MAP: Record<string, string> = {
   context7: "documentation",
   exa: "search",
   github: "code",
+  supabase: "database",
+  railway: "deployment",
   platform: "platform",
   vault: "secrets",
 };
@@ -445,6 +449,142 @@ export const SEARCH_ENRICHMENTS: Record<string, { useWhen: string; aliases: stri
   "get-library-docs": {
     useWhen: "User wants to read library documentation, get code examples, or look up API reference for a specific library",
     aliases: "read docs, library documentation, code examples, API reference, SDK docs, package docs, how to use",
+  },
+
+  // Supabase
+  list_projects: {
+    useWhen: "User wants to see their Supabase projects or list all projects",
+    aliases: "see Supabase projects, list projects, my projects, show projects",
+  },
+  list_organizations: {
+    useWhen: "User wants to see their Supabase organizations",
+    aliases: "Supabase list orgs, Supabase organizations, my orgs",
+  },
+  get_project_url: {
+    useWhen: "User wants to get the API URL for a Supabase project",
+    aliases: "Supabase project URL, Supabase API URL, Supabase endpoint",
+  },
+  get_publishable_keys: {
+    useWhen: "User wants to get the anon key or publishable API key for a Supabase project",
+    aliases: "Supabase anon key, Supabase publishable key, Supabase API key",
+  },
+  list_tables: {
+    useWhen: "User wants to see database tables, check schema, or list tables in a Supabase project",
+    aliases: "Supabase list tables, Supabase database tables, Supabase check schema, show tables",
+  },
+  list_extensions: {
+    useWhen: "User wants to see PostgreSQL extensions enabled in a Supabase project",
+    aliases: "Supabase list extensions, Supabase postgres extensions, pg extensions",
+  },
+  execute_sql: {
+    useWhen: "User wants to run a SQL query, execute a database query, or query a Supabase project",
+    aliases: "Supabase run SQL, Supabase execute query, Supabase database query",
+  },
+  list_migrations: {
+    useWhen: "User wants to see database migrations applied to a Supabase project",
+    aliases: "Supabase list migrations, Supabase migration history, Supabase applied migrations",
+  },
+  apply_migration: {
+    useWhen: "User wants to apply a database migration, make a schema change, or run DDL in Supabase",
+    aliases: "Supabase apply migration, Supabase schema change, Supabase DDL, Supabase migrate",
+  },
+  get_logs: {
+    useWhen: "User wants to view logs for a Supabase project service like API, auth, or postgres",
+    aliases: "Supabase logs, Supabase service logs, Supabase API logs, Supabase auth logs",
+  },
+  get_advisors: {
+    useWhen: "User wants performance or security recommendations for a Supabase project",
+    aliases: "Supabase advisors, Supabase performance, Supabase recommendations, Supabase database health",
+  },
+  generate_typescript_types: {
+    useWhen: "User wants to generate TypeScript types from their Supabase database schema",
+    aliases: "Supabase generate types, Supabase TypeScript types, Supabase schema types, Supabase codegen",
+  },
+  list_edge_functions: {
+    useWhen: "User wants to see all edge functions in a Supabase project",
+    aliases: "Supabase list functions, Supabase edge functions, Supabase serverless functions",
+  },
+  get_edge_function: {
+    useWhen: "User wants to view details of a specific Supabase edge function",
+    aliases: "Supabase view function, Supabase function details, Supabase edge function info",
+  },
+  deploy_edge_function: {
+    useWhen: "User wants to deploy an edge function to a Supabase project",
+    aliases: "Supabase deploy function, Supabase push edge function, Supabase deploy edge function",
+  },
+  list_branches: {
+    useWhen: "User wants to see database branches for a Supabase project",
+    aliases: "Supabase list branches, Supabase database branches, Supabase preview branches",
+  },
+  delete_branch: {
+    useWhen: "User wants to delete a database branch in Supabase",
+    aliases: "Supabase delete branch, Supabase remove branch, Supabase drop branch",
+  },
+  merge_branch: {
+    useWhen: "User wants to merge a database branch into the parent Supabase project",
+    aliases: "Supabase merge branch, Supabase apply branch, Supabase merge database branch",
+  },
+  reset_branch: {
+    useWhen: "User wants to reset a database branch to match the parent Supabase project",
+    aliases: "Supabase reset branch, Supabase discard branch changes, Supabase restore branch",
+  },
+  rebase_branch: {
+    useWhen: "User wants to rebase a database branch on top of the latest parent migrations in Supabase",
+    aliases: "Supabase rebase branch, Supabase update branch, Supabase sync branch migrations",
+  },
+  search_docs: {
+    useWhen: "User wants to look up Supabase documentation, search docs, or find Supabase guides",
+    aliases: "Supabase documentation, Supabase search docs, Supabase help, Supabase guide",
+  },
+
+  // Railway
+  railway_list_projects: {
+    useWhen: "User wants to see their Railway projects or check what's deployed",
+    aliases: "show projects, my projects, railway projects, cloud projects",
+  },
+  railway_deploy: {
+    useWhen: "User wants to deploy a service to Railway, push to production, or trigger a redeploy",
+    aliases: "deploy service, push to production, ship, release, redeploy, deploy to railway",
+  },
+  railway_get_logs: {
+    useWhen: "User wants to view deployment or build logs, debug a Railway service",
+    aliases: "view logs, build logs, deployment logs, debug deploy, railway logs, service logs",
+  },
+  railway_list_services: {
+    useWhen: "User wants to see services in a Railway project or check running services",
+    aliases: "show services, running services, railway services, project services",
+  },
+  railway_set_variables: {
+    useWhen: "User wants to set environment variables on Railway or configure a service",
+    aliases: "set env vars, environment variables, config variables, env config",
+  },
+  railway_check_status: {
+    useWhen: "User wants to verify Railway API connectivity or check authentication",
+    aliases: "railway status, check railway, api health, railway connection",
+  },
+  railway_create_project: {
+    useWhen: "User wants to create a new Railway project",
+    aliases: "new project, create railway project, start project, init project",
+  },
+  railway_deploy_template: {
+    useWhen: "User wants to deploy a template like Redis, Postgres, or Next.js on Railway",
+    aliases: "deploy template, railway template, deploy redis, deploy postgres, quick deploy",
+  },
+  railway_create_environment: {
+    useWhen: "User wants to create a new environment like staging or preview in Railway",
+    aliases: "new environment, create staging, add environment, railway environment",
+  },
+  railway_list_variables: {
+    useWhen: "User wants to view environment variables for a Railway service",
+    aliases: "show env vars, view variables, list config, environment config, railway vars",
+  },
+  railway_generate_domain: {
+    useWhen: "User wants to generate a domain or URL for a Railway service",
+    aliases: "create domain, generate url, railway domain, service url, public url",
+  },
+  railway_list_deployments: {
+    useWhen: "User wants to see deployment history or check deployment status on Railway",
+    aliases: "deployment history, recent deploys, deployment status, railway deployments",
   },
 
   // Memory

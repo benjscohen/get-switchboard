@@ -21,9 +21,11 @@ const INTEGRATION_CATEGORIES: Record<string, string> = {
   "linkedin-ads": "advertising",
   "hubspot-crm": "crm",
   "intercom": "crm",
+  "railway": "deployment",
   "exa": "search",
   "firecrawl": "search",
   "granola": "notes",
+  "supabase": "database",
 };
 
 const PLATFORM_TOOLS: Array<{ name: string; description: string }> = [
