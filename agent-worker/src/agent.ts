@@ -889,6 +889,22 @@ export async function processMessage(
                   }
                 }
 
+                // Save transcript eagerly (survives deploys that kill the container before idle timeout)
+                if (claudeSessionId) {
+                  try {
+                    const sessionFile = await findSessionFile(claudeSessionId);
+                    if (sessionFile) {
+                      const transcript = await fs.readFile(sessionFile, "utf-8");
+                      await db.saveSessionTranscript(sessionId, transcript, sessionFile);
+                      console.log(`[session ${sessionId}] Saved transcript eagerly (${transcript.length} bytes)`);
+                    } else {
+                      console.log(`[session ${sessionId}] No session file found for transcript save`);
+                    }
+                  } catch (err) {
+                    console.error(`[session ${sessionId}] Failed to save transcript eagerly:`, err);
+                  }
+                }
+
                 // Mark as waiting for user follow-up — suppresses SDK inactivity timeout
                 waitingForFollowUp = true;
                 resetIdleTimer();
@@ -917,17 +933,17 @@ export async function processMessage(
             );
           }
 
-          // Save session transcript for future resume across deploys
+          // Final transcript save (captures any follow-up turns since the eager save)
           if (claudeSessionId) {
             try {
               const sessionFile = await findSessionFile(claudeSessionId);
               if (sessionFile) {
                 const transcript = await fs.readFile(sessionFile, "utf-8");
                 await db.saveSessionTranscript(sessionId, transcript, sessionFile);
-                console.log(`[session ${sessionId}] Saved transcript (${transcript.length} bytes)`);
+                console.log(`[session ${sessionId}] Saved transcript final (${transcript.length} bytes)`);
               }
             } catch (err) {
-              console.error(`[session ${sessionId}] Failed to save transcript:`, err);
+              console.error(`[session ${sessionId}] Failed to save transcript final:`, err);
             }
           }
 
