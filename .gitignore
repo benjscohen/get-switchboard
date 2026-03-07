@@ -32,18 +32,12 @@ yarn-error.log*
 .env
 .env*.local
 
-# vercel
-.vercel
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 
 # waitlist data
 waitlist.json
-
-# prisma
-prisma/migrations/
 
 # mcp config (may contain tokens)
 .mcp.json

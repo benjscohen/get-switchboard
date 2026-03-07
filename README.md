@@ -863,6 +863,22 @@ cd agent-worker && npm test
 
 ---
 
+## Deployment
+
+**Platform: Railway** (not Vercel)
+
+The Railway project has two services:
+
+1. **Main App** (Next.js) — Railpack builder, Node 20.20.1, port 8080, auto-deploys from `main` (Wait for CI enabled)
+2. **Agent Worker** — Dockerfile builder, root dir `agent-worker/`, `npm start`, auto-deploys from `main`
+
+- **Public domain:** `www.get-switchboard.com`
+- **Private networking:** `switchboard.railway.internal`
+- **Database:** Supabase (external, not Railway Postgres)
+- **Env vars:** Managed in the Railway dashboard
+
+---
+
 ## License
 
 Private — All rights reserved.

@@ -541,7 +541,7 @@ Document the required env vars for the new integration:
 - **Other OAuth providers**: need `{PROVIDER}_CLIENT_ID` and `{PROVIDER}_CLIENT_SECRET`
 - **Org-key integrations**: users don't need env vars; org admin provides the key in the dashboard
 
-Tell the user which env vars to add to `.env.local` and Vercel.
+Tell the user which env vars to add to `.env.local` and Railway (via the Railway dashboard).
 
 ---
 

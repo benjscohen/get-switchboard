@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FieldLabel } from "@/components/ui/field-label";
 
 export interface ProxyIntegration {
   id: string;
@@ -158,7 +159,7 @@ export function IntegrationsCard() {
                   <div className="space-y-3">
                     {i.headerKeys.map((hk) => (
                       <div key={hk}>
-                        <label className="mb-1 block text-xs text-text-secondary">{hk}</label>
+                        <FieldLabel>{hk}</FieldLabel>
                         <Input
                           type="password"
                           placeholder={hk}
@@ -185,23 +186,26 @@ export function IntegrationsCard() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex gap-2">
-                    <Input
-                      type="password"
-                      placeholder={i.orgKeyLabel ?? "API key"}
-                      value={keyInputs[i.id] ?? ""}
-                      onChange={(e) =>
-                        setKeyInputs((k) => ({ ...k, [i.id]: e.target.value }))
-                      }
-                      className="max-w-xs"
-                    />
-                    <Button
-                      size="sm"
-                      onClick={() => saveKey(i.id)}
-                      disabled={saving[i.id] || !keyInputs[i.id]?.trim()}
-                    >
-                      {saving[i.id] ? "Validating..." : "Save Key"}
-                    </Button>
+                  <div>
+                    <FieldLabel>{i.orgKeyLabel ?? "API key"}</FieldLabel>
+                    <div className="flex gap-2">
+                      <Input
+                        type="password"
+                        placeholder={i.orgKeyLabel ?? "API key"}
+                        value={keyInputs[i.id] ?? ""}
+                        onChange={(e) =>
+                          setKeyInputs((k) => ({ ...k, [i.id]: e.target.value }))
+                        }
+                        className="max-w-xs"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => saveKey(i.id)}
+                        disabled={saving[i.id] || !keyInputs[i.id]?.trim()}
+                      >
+                        {saving[i.id] ? "Validating..." : "Save Key"}
+                      </Button>
+                    </div>
                   </div>
                 )}
                 {errors[i.id] && (

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { FieldLabel } from "@/components/ui/field-label";
 
 function SimpleMarkdown({ text }: { text: string }) {
   const elements = useMemo(() => {
@@ -137,14 +138,12 @@ export function UserKeyForm({
           )}
         </p>
       )}
-      <form onSubmit={handleSubmit} className="space-y-2">
+      <form onSubmit={handleSubmit} className="space-y-3">
         {isMultiHeader ? (
           <>
             {headerKeys.map((key) => (
-              <div key={key} className="flex items-center gap-2">
-                <span className="text-xs font-mono text-text-secondary w-40 shrink-0 truncate" title={key}>
-                  {key}
-                </span>
+              <div key={key}>
+                <FieldLabel>{key}</FieldLabel>
                 <input
                   type="password"
                   value={headerValues[key] ?? ""}
@@ -166,25 +165,28 @@ export function UserKeyForm({
           </>
         ) : (
           <>
-            <div className="flex items-center gap-2">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                required
-                placeholder={
-                  hasExistingKey
-                    ? "Enter new key to replace existing"
-                    : `API key for ${targetName}`
-                }
-                className="flex-1 rounded-lg border border-border bg-bg px-3 py-1.5 text-xs focus:border-accent focus:outline-none"
-              />
-              <Button size="sm" type="submit" disabled={saving || !apiKey}>
-                {saving ? "Validating..." : hasExistingKey ? "Update Key" : "Save"}
-              </Button>
-              <Button size="sm" variant="ghost" type="button" onClick={onCancel}>
-                Cancel
-              </Button>
+            <div>
+              <FieldLabel>API key</FieldLabel>
+              <div className="flex items-center gap-2">
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  required
+                  placeholder={
+                    hasExistingKey
+                      ? "Enter new key to replace existing"
+                      : `API key for ${targetName}`
+                  }
+                  className="flex-1 rounded-lg border border-border bg-bg px-3 py-1.5 text-xs focus:border-accent focus:outline-none"
+                />
+                <Button size="sm" type="submit" disabled={saving || !apiKey}>
+                  {saving ? "Validating..." : hasExistingKey ? "Update Key" : "Save"}
+                </Button>
+                <Button size="sm" variant="ghost" type="button" onClick={onCancel}>
+                  Cancel
+                </Button>
+              </div>
             </div>
             {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
           </>

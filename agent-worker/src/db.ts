@@ -444,20 +444,51 @@ export async function claimDueSchedules(): Promise<
   }>;
 }
 
+export interface ClaimedPendingRun {
+  run_id: string;
+  schedule_id: string;
+  run_prompt: string;
+  run_model: string | null;
+  schedule_name: string;
+  agent_id: string | null;
+  skill_id: string | null;
+  skill_arguments: Record<string, unknown> | null;
+  tool_access: string[] | null;
+  schedule_model: string | null;
+  cron_expression: string;
+  timezone: string;
+  delivery: Array<{ type: string; channel_id?: string; path?: string }>;
+  created_by: string;
+  run_count: number;
+  consecutive_failures: number;
+}
+
+export async function claimPendingRuns(): Promise<ClaimedPendingRun[]> {
+  const { data, error } = await supabase.rpc("claim_pending_runs", { max_count: 10 });
+  if (error) {
+    console.error("[db] claim_pending_runs error:", error);
+    return [];
+  }
+  return (data ?? []) as ClaimedPendingRun[];
+}
+
 export async function createScheduleRun(data: {
   schedule_id: string;
   scheduled_at: string;
   prompt: string;
   model: string | null;
+  status?: string;
+  started_at?: string;
 }): Promise<string> {
   const { data: row, error } = await supabase
     .from("schedule_runs")
     .insert({
       schedule_id: data.schedule_id,
-      status: "pending",
+      status: data.status ?? "pending",
       scheduled_at: data.scheduled_at,
       prompt: data.prompt,
       model: data.model,
+      ...(data.started_at ? { started_at: data.started_at } : {}),
     })
     .select("id")
     .single();
