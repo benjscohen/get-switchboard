@@ -40,7 +40,7 @@ function isPdfFile(file: SlackFile): boolean {
 
 const MAX_CONCURRENT_SESSIONS = 10;
 const TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
-const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes — close session after no follow-ups
+
 
 const TEXT_EXTENSIONS = new Set([
   ".txt",
@@ -602,18 +602,6 @@ export async function processMessage(
     registerSession(threadKey, runningSession);
     console.log(`[session ${sessionId}] registered — thread=${threadKey} active=${activeCount}`);
 
-    // Idle timeout: close the stream if no follow-up arrives within IDLE_TIMEOUT_MS
-    let idleTimer: ReturnType<typeof setTimeout> | null = null;
-    const resetIdleTimer = () => {
-      if (idleTimer) clearTimeout(idleTimer);
-      // Don't start idle timer while waiting for plan approval
-      if (runningSession.pendingPlanApproval) return;
-      idleTimer = setTimeout(() => {
-        console.log(`[session ${sessionId}] Idle timeout — closing stream`);
-        stream.close();
-      }, IDLE_TIMEOUT_MS);
-    };
-
     // 15. Run Claude Code SDK (multi-turn)
     let lastResultText: string | null = null;
     let checkedOff = false;
@@ -686,7 +674,6 @@ export async function processMessage(
                       });
 
                       // Block until user approves or provides revision feedback
-                      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
                       const decision = await new Promise<PlanDecision>((resolve) => {
                         runningSession.pendingPlanApproval = {
                           plan,
@@ -792,7 +779,6 @@ export async function processMessage(
             lastMessageAt = Date.now();
             if (waitingForFollowUp) {
               waitingForFollowUp = false;
-              if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
               await db.updateSession(sessionId, { status: "running" });
             }
 
@@ -944,7 +930,6 @@ export async function processMessage(
                 // Mark as waiting for user follow-up and open the gate for the next message
                 waitingForFollowUp = true;
                 await db.updateSession(sessionId, { status: "idle" });
-                resetIdleTimer();
                 stream.openGate();
               } else {
                 // Error result — surface to user via retry flow
@@ -1009,7 +994,6 @@ export async function processMessage(
       }
 
       clearTimeout(timeoutId);
-      if (idleTimer) clearTimeout(idleTimer);
 
       if (!lastResultText) {
         console.warn(`[session ${sessionId}] fallback — no result text after conversation completed`);
@@ -1022,7 +1006,6 @@ export async function processMessage(
       }
     } catch (err: unknown) {
       clearTimeout(timeoutId);
-      if (idleTimer) clearTimeout(idleTimer);
       stream.close();
 
       console.error(`[session ${sessionId}] error caught: type=${err instanceof Error ? err.constructor?.name : typeof err} message=${err instanceof Error ? err.message : String(err)}`);
