@@ -36,6 +36,12 @@ function wrapBase64(data: string, lineLength = 76): string {
   return lines.join("\r\n");
 }
 
+/** RFC 2047 encode a header value if it contains non-ASCII characters */
+export function encodeRfc2047(value: string): string {
+  if (!/[^\x00-\x7F]/.test(value)) return value;
+  return `=?UTF-8?B?${Buffer.from(value, "utf-8").toString("base64")}?=`;
+}
+
 export function plaintextToHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -78,7 +84,7 @@ export function buildMimeMessage(opts: {
   headerLines.push(`To: ${opts.to}`);
   if (opts.cc) headerLines.push(`Cc: ${opts.cc}`);
   if (opts.bcc) headerLines.push(`Bcc: ${opts.bcc}`);
-  headerLines.push(`Subject: ${opts.subject}`);
+  headerLines.push(`Subject: ${encodeRfc2047(opts.subject)}`);
   if (opts.replyTo) headerLines.push(`Reply-To: ${opts.replyTo}`);
   if (opts.inReplyTo) headerLines.push(`In-Reply-To: ${opts.inReplyTo}`);
   if (opts.references) headerLines.push(`References: ${opts.references}`);
@@ -152,7 +158,9 @@ async function getSenderInfo(
   const signatureHtml = primary?.signature || null;
 
   const displayName = meta?.senderName || primary?.displayName || "";
-  const fromHeader = displayName ? `"${displayName}" <${email}>` : email;
+  const fromHeader = displayName
+    ? `${encodeRfc2047(displayName)} <${email}>`
+    : email;
 
   return { fromHeader, signatureHtml, email };
 }

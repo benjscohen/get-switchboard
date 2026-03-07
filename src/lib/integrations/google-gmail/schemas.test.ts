@@ -25,7 +25,7 @@ import {
   getProfileSchema,
   listHistorySchema,
 } from "./schemas";
-import { GMAIL_TOOLS, buildMimeMessage, plaintextToHtml } from "./tools";
+import { GMAIL_TOOLS, buildMimeMessage, plaintextToHtml, encodeRfc2047 } from "./tools";
 
 // ── Tool count ──
 
@@ -793,6 +793,54 @@ describe("buildMimeMessage", () => {
 
     it("handles empty string", () => {
       expect(plaintextToHtml("")).toBe("");
+    });
+  });
+
+  describe("RFC 2047 encoding", () => {
+    it("passes ASCII subjects through unchanged", () => {
+      expect(encodeRfc2047("Hello world")).toBe("Hello world");
+    });
+
+    it("encodes non-ASCII subjects with RFC 2047 base64", () => {
+      const subject = "Weekly Update — March 2026";
+      const encoded = encodeRfc2047(subject);
+      expect(encoded).toMatch(/^=\?UTF-8\?B\?.+\?=$/);
+      // Decode to verify round-trip
+      const b64 = encoded.replace("=?UTF-8?B?", "").replace("?=", "");
+      expect(Buffer.from(b64, "base64").toString("utf-8")).toBe(subject);
+    });
+
+    it("applies RFC 2047 to Subject header in MIME output", () => {
+      const mime = buildMimeMessage({
+        ...base,
+        subject: "Test — Subject",
+      });
+      const subjectLine = mime.split("\r\n").find((l) => l.startsWith("Subject: "));
+      expect(subjectLine).toMatch(/^Subject: =\?UTF-8\?B\?.+\?=$/);
+    });
+
+    it("leaves ASCII Subject header unencoded", () => {
+      const mime = buildMimeMessage(base);
+      const subjectLine = mime.split("\r\n").find((l) => l.startsWith("Subject: "));
+      expect(subjectLine).toBe("Subject: hi");
+    });
+
+    it("encodes non-ASCII From display name in MIME output", () => {
+      const mime = buildMimeMessage({
+        ...base,
+        from: `${encodeRfc2047("José García")} <jose@example.com>`,
+      });
+      const fromLine = mime.split("\r\n").find((l) => l.startsWith("From: "));
+      expect(fromLine).toMatch(/^From: =\?UTF-8\?B\?.+\?= <jose@example\.com>$/);
+    });
+
+    it("leaves ASCII From display name unencoded", () => {
+      const mime = buildMimeMessage({
+        ...base,
+        from: `${encodeRfc2047("John Smith")} <john@example.com>`,
+      });
+      const fromLine = mime.split("\r\n").find((l) => l.startsWith("From: "));
+      expect(fromLine).toBe("From: John Smith <john@example.com>");
     });
   });
 
