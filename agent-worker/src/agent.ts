@@ -8,6 +8,7 @@ import { extractClaudeMd, buildSystemPrompt } from "./prompt.js";
 import { buildErrorWithRetryBlocks, buildPlanApprovalBlocks, buildPlanApprovedBlocks } from "./slack-blocks.js";
 import { createMessageStream } from "./message-stream.js";
 import { extractFileUploads, uploadExtractedFiles } from "./file-uploads.js";
+import { StreamingStatusUpdater, type StreamEventLike } from "./streaming.js";
 import { archiveWorkspace, restoreWorkspace } from "./workspace-storage.js";
 import {
   buildThreadKey,
@@ -730,10 +731,16 @@ export async function processMessage(
         };
       };
 
+      // Create streaming status updater for live progress in Slack
+      let statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread });
+
       const runConversation = async () => {
         const conversation = query({
           prompt: stream.iterable,
-          options: buildQueryOptions(),
+          options: {
+            ...buildQueryOptions(),
+            includePartialMessages: true,
+          },
         });
 
         // Expose setPermissionMode so the plan approval hook can switch modes
@@ -787,6 +794,12 @@ export async function processMessage(
               await db.updateSession(sessionId, { status: "running" });
             }
 
+            // Stream events — update the live status line in Slack
+            if (message.type === "stream_event") {
+              statusUpdater.handleStreamEvent((message as { event: StreamEventLike }).event);
+              continue;
+            }
+
             // Capture session_id from any message
             if ("session_id" in message && message.session_id && !claudeSessionId) {
               claudeSessionId = message.session_id;
@@ -801,6 +814,7 @@ export async function processMessage(
 
             // Log assistant message metadata and capture text content
             if (message.type === "assistant") {
+              statusUpdater.handleAssistantMessage();
               const msg = message as {
                 message?: {
                   id?: string;
@@ -834,6 +848,10 @@ export async function processMessage(
                 console.log(
                   `[session ${sessionId}] result:success — len=${text.length} preview=${JSON.stringify(text.slice(0, 200))}`,
                 );
+
+                // Finalize streaming status line
+                await statusUpdater.finalize();
+
                 lastAssistantText = ""; // reset for next turn
                 lastResultText = text;
                 totalTurns += message.num_turns;
@@ -1025,6 +1043,10 @@ export async function processMessage(
         ]);
 
         stream.close();
+
+        // Fresh status updater for the execution phase
+        statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread });
+
         const executionPrompt = [
           "The following plan was approved by the user. Execute it now.",
           "",
@@ -1053,6 +1075,9 @@ export async function processMessage(
         await runConversation();
       }
 
+      // Finalize streaming status if not already done
+      await statusUpdater.finalize();
+
       clearTimeout(timeoutId);
 
       if (!lastResultText) {
@@ -1069,6 +1094,10 @@ export async function processMessage(
       stream.close();
 
       console.error(`[session ${sessionId}] error caught: type=${err instanceof Error ? err.constructor?.name : typeof err} message=${err instanceof Error ? err.message : String(err)}`);
+
+      // Finalize streaming status with error state
+      await statusUpdater.finalizeError(err instanceof Error ? err.message : "Unknown error").catch(() => {});
+
       const isAbort =
         err instanceof Error &&
         (err.message.includes("aborted by user") ||
