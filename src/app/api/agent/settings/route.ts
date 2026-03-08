@@ -10,7 +10,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("preferred_agent_model")
+    .select("preferred_agent_model, show_thinking")
     .eq("id", authResult.userId)
     .single();
 
@@ -18,7 +18,10 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 });
   }
 
-  return NextResponse.json({ preferredModel: data.preferred_agent_model });
+  return NextResponse.json({
+    preferredModel: data.preferred_agent_model,
+    showThinking: data.show_thinking ?? true,
+  });
 }
 
 export async function PATCH(request: Request) {
@@ -26,11 +29,34 @@ export async function PATCH(request: Request) {
   if (!authResult.authenticated) return authResult.response;
 
   const body = await request.json();
-  const model = body.model;
+  const { model, showThinking } = body;
 
-  if (!model || !ALLOWED_MODEL_IDS.includes(model)) {
+  // Build the update patch
+  const patch: Record<string, unknown> = {};
+
+  if (model !== undefined) {
+    if (!ALLOWED_MODEL_IDS.includes(model)) {
+      return NextResponse.json(
+        { error: `model must be one of: ${ALLOWED_MODEL_IDS.join(", ")}` },
+        { status: 400 }
+      );
+    }
+    patch.preferred_agent_model = model;
+  }
+
+  if (showThinking !== undefined) {
+    if (typeof showThinking !== "boolean") {
+      return NextResponse.json(
+        { error: "showThinking must be a boolean" },
+        { status: 400 }
+      );
+    }
+    patch.show_thinking = showThinking;
+  }
+
+  if (Object.keys(patch).length === 0) {
     return NextResponse.json(
-      { error: `model must be one of: ${ALLOWED_MODEL_IDS.join(", ")}` },
+      { error: "No valid fields to update" },
       { status: 400 }
     );
   }
@@ -38,12 +64,15 @@ export async function PATCH(request: Request) {
   const supabase = await createClient();
   const { error } = await supabase
     .from("profiles")
-    .update({ preferred_agent_model: model })
+    .update(patch)
     .eq("id", authResult.userId);
 
   if (error) {
     return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
   }
 
-  return NextResponse.json({ preferredModel: model });
+  return NextResponse.json({
+    ...(model !== undefined ? { preferredModel: model } : {}),
+    ...(showThinking !== undefined ? { showThinking } : {}),
+  });
 }

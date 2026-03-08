@@ -91,7 +91,7 @@ export async function lookupUserBySlackId(
   // 2. Get profile for org ID and preferred model
   const { data: profile, error: profileErr } = await supabase
     .from("profiles")
-    .select("organization_id, preferred_agent_model, name, email")
+    .select("organization_id, preferred_agent_model, name, email, show_thinking")
     .eq("id", userId)
     .single();
 
@@ -103,6 +103,7 @@ export async function lookupUserBySlackId(
   const model = (profile.preferred_agent_model as string) || "claude-sonnet-4-20250514";
   const name = (profile.name as string) || undefined;
   const email = (profile.email as string) || undefined;
+  const showThinking = (profile.show_thinking as boolean) ?? true;
 
   // 3. Get the user's active agent API key
   const { data: apiKey, error: keyErr } = await supabase
@@ -124,7 +125,7 @@ export async function lookupUserBySlackId(
 
   const agentKey = decrypt(apiKey.encrypted_raw_key as string);
 
-  return { ok: true, userId, organizationId, agentKey, model, name, email, slackUserId };
+  return { ok: true, userId, organizationId, agentKey, model, name, email, slackUserId, showThinking };
 }
 
 // ---------------------------------------------------------------------------
@@ -335,7 +336,7 @@ export async function lookupUserById(
 ): Promise<UserLookup | null> {
   const { data: profile, error: profileErr } = await supabase
     .from("profiles")
-    .select("organization_id, preferred_agent_model, name, email")
+    .select("organization_id, preferred_agent_model, name, email, show_thinking")
     .eq("id", userId)
     .single();
 
@@ -348,6 +349,7 @@ export async function lookupUserById(
   const model = (profile.preferred_agent_model as string) || "claude-sonnet-4-20250514";
   const name = (profile.name as string) || undefined;
   const email = (profile.email as string) || undefined;
+  const showThinking = (profile.show_thinking as boolean) ?? true;
 
   const { data: apiKey, error: keyErr } = await supabase
     .from("api_keys")
@@ -366,7 +368,7 @@ export async function lookupUserById(
   if (!apiKey) return null;
 
   const agentKey = decrypt(apiKey.encrypted_raw_key as string);
-  return { userId, organizationId, agentKey, model, name, email };
+  return { userId, organizationId, agentKey, model, name, email, showThinking };
 }
 
 // ---------------------------------------------------------------------------

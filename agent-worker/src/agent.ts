@@ -613,7 +613,7 @@ export async function processMessage(
     let planApproved = false;
     let planExecutionStarted = false;
     let approvedPlanText: string | null = null;
-    let statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread });
+    let statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false });
 
     try {
       const systemPrompt = buildSystemPrompt(claudeMdContent, undefined, {
@@ -749,7 +749,7 @@ export async function processMessage(
       };
 
       // Reset streaming status updater for this conversation run
-      statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread });
+      statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false });
 
       const runConversation = async () => {
         const conversation = query({
@@ -868,6 +868,9 @@ export async function processMessage(
 
                 // Finalize streaming status line
                 await statusUpdater.finalize();
+
+                // Reset for next turn so follow-up messages get their own status line
+                statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false });
 
                 lastAssistantText = ""; // reset for next turn
                 lastResultText = text;
@@ -1062,7 +1065,7 @@ export async function processMessage(
         stream.close();
 
         // Fresh status updater for the execution phase
-        statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread });
+        statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false });
 
         const executionPrompt = [
           "The following plan was approved by the user. Execute it now.",

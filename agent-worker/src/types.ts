@@ -6,6 +6,7 @@ export interface UserLookup {
   name?: string;
   email?: string;
   slackUserId?: string;
+  showThinking?: boolean;
 }
 
 export interface SlackFile {

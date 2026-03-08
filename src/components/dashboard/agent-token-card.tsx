@@ -21,6 +21,7 @@ interface AgentTokenCardProps {
   } | null;
   preferredAgentModel: string;
   availableIntegrations: AvailableIntegration[];
+  initialShowThinking: boolean;
 }
 
 function permsSummary(
@@ -37,11 +38,14 @@ export function AgentTokenCard({
   initialAgentKey,
   preferredAgentModel,
   availableIntegrations,
+  initialShowThinking,
 }: AgentTokenCardProps) {
   const [agentKey, setAgentKey] = useState(initialAgentKey);
   const [model, setModel] = useState(preferredAgentModel);
   const [loading, setLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showThinking, setShowThinking] = useState(initialShowThinking);
+  const [savingThinking, setSavingThinking] = useState(false);
 
   // Permissions form state (shared between enable + edit flows)
   const [permMode, setPermMode] = useState<"all" | "specific">("all");
@@ -97,6 +101,23 @@ export function AgentTokenCard({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: newModel }),
     });
+  }
+
+  async function toggleShowThinking() {
+    setSavingThinking(true);
+    const next = !showThinking;
+    try {
+      const res = await fetch("/api/agent/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ showThinking: next }),
+      });
+      if (res.ok) {
+        setShowThinking(next);
+      }
+    } finally {
+      setSavingThinking(false);
+    }
   }
 
   async function savePermissions() {
@@ -282,6 +303,31 @@ export function AgentTokenCard({
               Model
             </label>
             {modelSelect}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-text-secondary">Show Thinking</p>
+              <p className="text-xs text-text-tertiary mt-0.5">
+                Show a real-time status line in Slack threads while the agent works.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showThinking}
+              disabled={savingThinking}
+              onClick={toggleShowThinking}
+              className={`relative ml-4 inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:opacity-50 ${
+                showThinking ? "bg-accent" : "bg-border"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+                  showThinking ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
           </div>
 
           <div>

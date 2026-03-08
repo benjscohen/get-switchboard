@@ -44,6 +44,7 @@ export type StreamEventLike = {
 export interface StatusUpdaterOptions {
   channelId: string;
   threadTs: string;
+  enabled?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +156,7 @@ export function buildStatusText(
 export class StreamingStatusUpdater {
   private readonly channelId: string;
   private readonly threadTs: string;
+  private readonly enabled: boolean;
 
   // Slack message state
   private statusTs: string | null = null;
@@ -179,6 +181,7 @@ export class StreamingStatusUpdater {
   constructor(opts: StatusUpdaterOptions) {
     this.channelId = opts.channelId;
     this.threadTs = opts.threadTs;
+    this.enabled = opts.enabled !== false;
   }
 
   // -------------------------------------------------------------------------
@@ -190,7 +193,7 @@ export class StreamingStatusUpdater {
    * Call this for every SDKPartialAssistantMessage.event.
    */
   handleStreamEvent(event: StreamEventLike): void {
-    if (this.finalized) return;
+    if (this.finalized || !this.enabled) return;
 
     if (event.type === "content_block_start") {
       const block = event.content_block;
@@ -233,7 +236,7 @@ export class StreamingStatusUpdater {
    * Used to detect when the agent is generating text (before tool calls).
    */
   handleAssistantMessage(): void {
-    if (this.finalized) return;
+    if (this.finalized || !this.enabled) return;
     // If we haven't posted anything yet, show thinking
     if (!this.statusTs && this.toolCount === 0) {
       this.setStatus(buildStatusText("thinking"));
@@ -245,7 +248,7 @@ export class StreamingStatusUpdater {
    * Call this on result:success.
    */
   async finalize(): Promise<void> {
-    if (this.finalized) return;
+    if (this.finalized || !this.enabled) return;
     this.finalized = true;
     this.clearFlushTimer();
 
@@ -258,7 +261,7 @@ export class StreamingStatusUpdater {
    * Finalize with an error state.
    */
   async finalizeError(errorMessage?: string): Promise<void> {
-    if (this.finalized) return;
+    if (this.finalized || !this.enabled) return;
     this.finalized = true;
     this.clearFlushTimer();
 
