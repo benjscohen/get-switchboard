@@ -582,7 +582,8 @@ export async function processMessage(
 
     // 13. Set up timeout via AbortController
     const abortController = new AbortController();
-    const timeoutId = setTimeout(() => abortController.abort(), TIMEOUT_MS);
+    let timeoutId = setTimeout(() => abortController.abort(), TIMEOUT_MS);
+    let sessionIsIdle = false; // true when agent completed reply and is waiting for user follow-up
 
     // 14. Create message stream + register in session registry
     const threadKey = buildThreadKey(channelId, threadTs || messageTs);
@@ -774,6 +775,9 @@ export async function processMessage(
         let lastMessageAt = Date.now();
         let waitingForFollowUp = false; // true after result:success — waiting for user, not SDK
 
+        // Sync with outer scope so the catch block knows if we were idle
+        const syncIdleState = (idle: boolean) => { waitingForFollowUp = idle; sessionIsIdle = idle; };
+
         // Independent heartbeat — logging-only (no inactivity abort; 4-hour hard ceiling is the only timeout)
         const heartbeat = setInterval(() => {
           const elapsed = Math.round((Date.now() - startTime) / 1000);
@@ -809,8 +813,11 @@ export async function processMessage(
             if (recentMessages.length > 10) recentMessages.shift();
             lastMessageAt = Date.now();
             if (waitingForFollowUp) {
-              waitingForFollowUp = false;
+              syncIdleState(false);
               await db.updateSession(sessionId, { status: "running" });
+              // Restart the 4-hour timeout for this new active turn
+              clearTimeout(timeoutId);
+              timeoutId = setTimeout(() => abortController.abort(), TIMEOUT_MS);
             }
 
             // Stream events — update the live status line in Slack
@@ -989,8 +996,10 @@ export async function processMessage(
                 }
 
                 // Mark as waiting for user follow-up and open the gate for the next message
-                waitingForFollowUp = true;
+                syncIdleState(true);
                 await db.updateSession(sessionId, { status: "idle" });
+                // Clear the active-processing timeout — session is idle, not stuck
+                clearTimeout(timeoutId);
                 stream.openGate();
               } else {
                 // Error result — surface to user via retry flow
@@ -1117,12 +1126,27 @@ export async function processMessage(
       clearTimeout(timeoutId);
       stream.close();
 
-      console.error(`[session ${sessionId}] error caught: type=${err instanceof Error ? err.constructor?.name : typeof err} message=${err instanceof Error ? err.message : String(err)}`);
-
       const isAbort =
         err instanceof Error &&
         (err.message.includes("aborted by user") ||
           err.message === "Operation aborted");
+
+      // If the session was idle (agent already responded, waiting for user follow-up)
+      // and got killed by timeout/reaper, silently complete — don't post a scary error.
+      if (isAbort && sessionIsIdle) {
+        console.log(`[session ${sessionId}] idle session aborted by timeout — completing silently (no error posted)`);
+        await statusUpdater.finalize().catch(() => {});
+        await db.updateSession(sessionId, {
+          status: "completed",
+          result: lastResultText,
+          total_turns: totalTurns,
+          completed_at: new Date().toISOString(),
+        }).catch(() => {});
+        return;
+      }
+
+      console.error(`[session ${sessionId}] error caught: type=${err instanceof Error ? err.constructor?.name : typeof err} message=${err instanceof Error ? err.message : String(err)}`);
+
       const isUserKill = isAbort && runningSession.killedByUser;
 
       if (isUserKill) {
