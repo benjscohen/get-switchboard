@@ -239,12 +239,17 @@ async function start() {
     if (n > 0) console.log(`Cleaned up ${n} old workspace archives`);
   }).catch((err) => console.error("Workspace cleanup failed:", err));
 
-  startScheduler();
-  startReaper();
+  const jobsEnabled = process.env.ENABLE_SCHEDULED_JOBS === "true";
+  if (jobsEnabled) {
+    startScheduler();
+    startReaper();
+  } else {
+    console.log("[jobs] Scheduled jobs disabled (set ENABLE_SCHEDULED_JOBS=true to enable)");
+  }
 
   await app.start();
   console.log(
-    `Switchboard Agent Worker running (socket mode, ${getActiveSessionCount()} active sessions)`,
+    `Switchboard Agent Worker running (socket mode, jobs=${jobsEnabled ? "on" : "off"}, ${getActiveSessionCount()} active sessions)`,
   );
 }
 
