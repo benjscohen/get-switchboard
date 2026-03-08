@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 
 import * as slack from "./slack.js";
+import { buildStatusWithStopBlocks, buildStatusStoppedBlocks } from "./slack-blocks.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -45,6 +46,8 @@ export interface StatusUpdaterOptions {
   channelId: string;
   threadTs: string;
   enabled?: boolean;
+  /** When set, the status line includes a "Stop" button tied to this session. */
+  sessionId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +160,7 @@ export class StreamingStatusUpdater {
   private readonly channelId: string;
   private readonly threadTs: string;
   private readonly enabled: boolean;
+  private readonly sessionId: string | null;
 
   // Slack message state
   private statusTs: string | null = null;
@@ -182,6 +186,7 @@ export class StreamingStatusUpdater {
     this.channelId = opts.channelId;
     this.threadTs = opts.threadTs;
     this.enabled = opts.enabled !== false;
+    this.sessionId = opts.sessionId ?? null;
   }
 
   // -------------------------------------------------------------------------
@@ -270,6 +275,31 @@ export class StreamingStatusUpdater {
   }
 
   /**
+   * Finalize with a "stopped by user" state.
+   * Called when the user clicks the Stop button.
+   */
+  async finalizeKilled(): Promise<void> {
+    if (this.finalized || !this.enabled) return;
+    this.finalized = true;
+    this.clearFlushTimer();
+
+    const elapsed = Math.round((Date.now() - this.startTime) / 1000);
+    const currentStatusText = this.currentText || "";
+
+    if (this.statusTs) {
+      const blocks = buildStatusStoppedBlocks(currentStatusText, elapsed);
+      const fallbackText = currentStatusText
+        ? `${currentStatusText}\n:stop_sign: Stopped by user (${elapsed}s)`
+        : `:stop_sign: Stopped by user (${elapsed}s)`;
+      try {
+        await slack.updateMessage(this.channelId, this.statusTs, fallbackText, blocks);
+      } catch (err) {
+        console.error("[streaming] Failed to update killed status:", err instanceof Error ? err.message : err);
+      }
+    }
+  }
+
+  /**
    * Get the current tool count (for external logging / metrics).
    */
   getToolCount(): number {
@@ -338,14 +368,18 @@ export class StreamingStatusUpdater {
     this.pendingText = null;
 
     try {
+      const blocks = this.sessionId
+        ? buildStatusWithStopBlocks(text, this.sessionId)
+        : undefined;
+
       if (!this.statusTs) {
         // First post
-        this.statusTs = await slack.postMessage(this.channelId, text, this.threadTs);
+        this.statusTs = await slack.postMessage(this.channelId, text, this.threadTs, blocks);
         this.currentText = text;
         this.lastUpdateAt = Date.now();
       } else if (text !== this.currentText) {
         // Update in-place
-        await slack.updateMessage(this.channelId, this.statusTs, text);
+        await slack.updateMessage(this.channelId, this.statusTs, text, blocks);
         this.currentText = text;
         this.lastUpdateAt = Date.now();
       }

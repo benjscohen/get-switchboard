@@ -600,6 +600,8 @@ export async function processMessage(
       planPhase: (planModeRequested ? "exploring" : "off") as PlanPhase,
       pendingPlanApproval: null as import("./session-registry.js").PendingPlanApproval | null,
       setPermissionMode: null as ((mode: import("@anthropic-ai/claude-code").PermissionMode) => Promise<void>) | null,
+      abortController,
+      killedByUser: false,
     };
     registerSession(threadKey, runningSession);
     console.log(`[session ${sessionId}] registered — thread=${threadKey} active=${activeCount}`);
@@ -613,7 +615,7 @@ export async function processMessage(
     let planApproved = false;
     let planExecutionStarted = false;
     let approvedPlanText: string | null = null;
-    let statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false });
+    let statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false, sessionId });
 
     try {
       const systemPrompt = buildSystemPrompt(claudeMdContent, undefined, {
@@ -749,7 +751,7 @@ export async function processMessage(
       };
 
       // Reset streaming status updater for this conversation run
-      statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false });
+      statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false, sessionId });
 
       const runConversation = async () => {
         const conversation = query({
@@ -870,7 +872,7 @@ export async function processMessage(
                 await statusUpdater.finalize();
 
                 // Reset for next turn so follow-up messages get their own status line
-                statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false });
+                statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false, sessionId });
 
                 lastAssistantText = ""; // reset for next turn
                 lastResultText = text;
@@ -1065,7 +1067,7 @@ export async function processMessage(
         stream.close();
 
         // Fresh status updater for the execution phase
-        statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false });
+        statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false, sessionId });
 
         const executionPrompt = [
           "The following plan was approved by the user. Execute it now.",
@@ -1117,27 +1119,48 @@ export async function processMessage(
 
       console.error(`[session ${sessionId}] error caught: type=${err instanceof Error ? err.constructor?.name : typeof err} message=${err instanceof Error ? err.message : String(err)}`);
 
-      // Finalize streaming status with error state
-      await statusUpdater.finalizeError(err instanceof Error ? err.message : "Unknown error").catch(() => {});
-
       const isAbort =
         err instanceof Error &&
         (err.message.includes("aborted by user") ||
           err.message === "Operation aborted");
-      const errorMessage = isAbort
-        ? "The agent stopped responding and was automatically terminated. Please try again."
-        : err instanceof Error
-          ? err.message
-          : "An unknown error occurred";
+      const isUserKill = isAbort && runningSession.killedByUser;
 
-      await postErrorWithRetry({
-        channelId,
-        messageTs,
-        replyThread,
-        errorMessage,
-        sessionId,
-        status: isAbort ? "timeout" : "failed",
-      });
+      if (isUserKill) {
+        // User clicked Stop — clean finalization, no error message
+        await statusUpdater.finalizeKilled().catch(() => {});
+
+        // Swap eyes → stop_sign on the original message
+        await Promise.all([
+          slack.removeReaction(channelId, messageTs, "eyes").catch(() => {}),
+          slack.addReaction(channelId, messageTs, "octagonal_sign").catch(() => {}),
+        ]);
+
+        await db.updateSession(sessionId, {
+          status: "completed",
+          result: "Session stopped by user.",
+          completed_at: new Date().toISOString(),
+        }).catch(() => {});
+
+        console.log(`[session ${sessionId}] cleanly stopped by user`);
+      } else {
+        // Finalize streaming status with error state
+        await statusUpdater.finalizeError(err instanceof Error ? err.message : "Unknown error").catch(() => {});
+
+        const errorMessage = isAbort
+          ? "The agent stopped responding and was automatically terminated. Please try again."
+          : err instanceof Error
+            ? err.message
+            : "An unknown error occurred";
+
+        await postErrorWithRetry({
+          channelId,
+          messageTs,
+          replyThread,
+          errorMessage,
+          sessionId,
+          status: isAbort ? "timeout" : "failed",
+        });
+      }
 
       return;
     }

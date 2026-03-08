@@ -12,6 +12,11 @@ vi.mock("./slack.js", () => ({
   updateMessage: (...args: unknown[]) => mockUpdateMessage(...args),
 }));
 
+vi.mock("./slack-blocks.js", () => ({
+  buildStatusWithStopBlocks: (text: string, sessionId: string) => [{ type: "section", text: { type: "mrkdwn", text }, accessory: { action_id: "kill_session", value: sessionId } }],
+  buildStatusStoppedBlocks: (text: string, elapsed: number) => [{ type: "section", text: { type: "mrkdwn", text } }, { type: "context", elements: [{ type: "mrkdwn", text: `:stop_sign: Stopped by user (${elapsed}s)` }] }],
+}));
+
 import {
   StreamingStatusUpdater,
   formatToolInputPreview,
@@ -223,6 +228,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       ":hourglass_flowing_sand: Thinking…",
       "thread-ts-1",
+      undefined,
     );
   });
 
@@ -237,6 +243,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       ":gear: Using tool: *Read*",
       "thread-ts-1",
+      undefined,
     );
   });
 
@@ -282,6 +289,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       "status-ts-1",
       ":gear: Using tool: *Bash*",
+      undefined,
     );
   });
 
@@ -303,6 +311,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       "status-ts-1",
       expect.stringContaining("*Bash*"),
+      undefined,
     );
   });
 
@@ -328,6 +337,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       "status-ts-1",
       ":gear: Using tool: *Bash* — npm test",
+      undefined,
     );
   });
 
@@ -361,6 +371,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       ":gear: Using tool: *file_read*",
       "thread-ts-1",
+      undefined,
     );
   });
 
@@ -388,6 +399,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       "status-ts-1",
       expect.stringMatching(/:white_check_mark: Done \(2 tool calls, \d+s\)/),
+      undefined,
     );
   });
 
@@ -403,6 +415,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       "status-ts-1",
       ":x: Error: timeout",
+      undefined,
     );
   });
 
@@ -481,6 +494,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       ":hourglass_flowing_sand: Thinking…",
       "thread-ts-1",
+      undefined,
     );
   });
 
@@ -532,6 +546,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       expect.stringContaining(":white_check_mark: Done"),
       "thread-ts-1",
+      undefined,
     );
   });
 
@@ -545,6 +560,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       ":x: Error: something broke",
       "thread-ts-1",
+      undefined,
     );
   });
 

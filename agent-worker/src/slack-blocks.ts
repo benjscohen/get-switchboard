@@ -140,6 +140,55 @@ export function buildPlanRevisingBlocks(planText: string): KnownBlock[] {
 /**
  * Build Block Kit blocks for an expired plan (session ended before approval).
  */
+// ---------------------------------------------------------------------------
+// Session stop blocks (kill from Slack)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build Block Kit blocks for the streaming status line with a "Stop" button.
+ * The button fires the `kill_session` action with the sessionId as value.
+ */
+export function buildStatusWithStopBlocks(
+  statusText: string,
+  sessionId: string,
+): KnownBlock[] {
+  return [
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: statusText },
+      accessory: {
+        type: "button",
+        text: { type: "plain_text", text: "Stop" },
+        action_id: "kill_session",
+        value: sessionId,
+        style: "danger",
+      },
+    },
+  ];
+}
+
+/**
+ * Build Block Kit blocks for a stopped (user-killed) status line.
+ * No button — just the final state with a stop sign.
+ */
+export function buildStatusStoppedBlocks(
+  statusText: string,
+  elapsed: number,
+): KnownBlock[] {
+  return [
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: statusText },
+    },
+    {
+      type: "context",
+      elements: [
+        { type: "mrkdwn", text: `:stop_sign: Stopped by user (${elapsed}s)` },
+      ],
+    },
+  ];
+}
+
 export function buildPlanExpiredBlocks(planText: string): KnownBlock[] {
   return [
     {
