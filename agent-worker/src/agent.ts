@@ -1138,7 +1138,7 @@ export async function processMessage(
         await statusUpdater.finalize().catch(() => {});
         await db.updateSession(sessionId, {
           status: "completed",
-          result: lastResultText,
+          ...(lastResultText ? { result: lastResultText } : {}),
           total_turns: totalTurns,
           completed_at: new Date().toISOString(),
         }).catch(() => {});
