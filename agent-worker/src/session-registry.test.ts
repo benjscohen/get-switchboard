@@ -20,6 +20,8 @@ function makeSession(overrides?: Partial<RunningSession>): RunningSession {
     planPhase: "off",
     pendingPlanApproval: null,
     setPermissionMode: null,
+    abortController: null,
+    killedByUser: false,
     ...overrides,
   };
 }

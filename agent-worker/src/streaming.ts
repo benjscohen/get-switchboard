@@ -2,15 +2,17 @@
 // Streaming status updater for Slack
 //
 // Posts a single "status line" message in a Slack thread and updates it
-// in-place as the agent works. Throttled to avoid Slack rate limits.
+// in-place as the agent works. Tool calls ACCUMULATE into a visible log
+// so users can see the full activity history at a glance — like Claude Code.
 //
 // Lifecycle:
 //   1. First meaningful event → post status message
-//   2. Subsequent events → update in-place (max once per THROTTLE_MS)
-//   3. finalize() → collapse to summary line
+//   2. Subsequent events → update in-place with accumulated log (throttled)
+//   3. finalize() → append summary footer
 // ---------------------------------------------------------------------------
 
 import * as slack from "./slack.js";
+import { buildStatusWithStopBlocks, buildStatusStoppedBlocks } from "./slack-blocks.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -21,6 +23,9 @@ const THROTTLE_MS = 3_000;
 
 /** Max characters for the tool input preview */
 const MAX_INPUT_PREVIEW = 80;
+
+/** Max completed tools to show before collapsing older entries */
+const MAX_VISIBLE_TOOLS = 50;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,6 +50,15 @@ export interface StatusUpdaterOptions {
   channelId: string;
   threadTs: string;
   enabled?: boolean;
+  /** When set, the status line includes a "Stop" button tied to this session. */
+  sessionId?: string;
+}
+
+/** A completed tool call for the accumulated log. */
+export interface CompletedToolEntry {
+  name: string;
+  preview: string;
+  isSubAgent: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +122,6 @@ export function formatToolInputPreview(
 /**
  * Format a friendly tool name for display.
  * Strips MCP server prefixes (e.g. "switchboard__file_read" → "file_read")
- * and converts snake_case to Title Case.
  */
 export function formatToolName(rawName: string): string {
   // Strip MCP prefix (mcp__servername__toolname → toolname)
@@ -121,7 +134,74 @@ export function formatToolName(rawName: string): string {
 }
 
 /**
+ * Detect whether a tool call is a sub-agent invocation (Task tool).
+ */
+export function isSubAgentTool(toolName: string): boolean {
+  const lower = toolName.toLowerCase();
+  return lower === "task" || lower.includes("task");
+}
+
+/**
+ * Format a single completed tool line for the accumulated log.
+ */
+export function formatCompletedToolLine(entry: CompletedToolEntry): string {
+  const icon = entry.isSubAgent ? ":robot_face:" : ":white_check_mark:";
+  const label = entry.isSubAgent ? `*${entry.name}* (sub-agent)` : `*${entry.name}*`;
+  return entry.preview
+    ? `${icon} ${label} — ${entry.preview}`
+    : `${icon} ${label}`;
+}
+
+/**
+ * Format the currently-active tool line (spinner style).
+ */
+export function formatActiveToolLine(name: string, preview?: string, isSubAgent?: boolean): string {
+  const icon = isSubAgent ? ":robot_face:" : ":gear:";
+  const label = isSubAgent ? `*${name}* (sub-agent)` : `*${name}*`;
+  return preview
+    ? `${icon} ${label} — ${preview}`
+    : `${icon} ${label}`;
+}
+
+/**
+ * Build the full accumulated status text from completed + active tool state.
+ */
+export function buildAccumulatedStatus(
+  completedTools: CompletedToolEntry[],
+  activeTool?: { name: string; preview?: string; isSubAgent?: boolean },
+  footer?: string,
+): string {
+  const lines: string[] = [];
+
+  // Collapse older entries if too many
+  if (completedTools.length > MAX_VISIBLE_TOOLS) {
+    const hidden = completedTools.length - MAX_VISIBLE_TOOLS;
+    lines.push(`_… ${hidden} earlier tool calls_`);
+    for (const entry of completedTools.slice(hidden)) {
+      lines.push(formatCompletedToolLine(entry));
+    }
+  } else {
+    for (const entry of completedTools) {
+      lines.push(formatCompletedToolLine(entry));
+    }
+  }
+
+  // Active tool (currently running)
+  if (activeTool) {
+    lines.push(formatActiveToolLine(activeTool.name, activeTool.preview, activeTool.isSubAgent));
+  }
+
+  // Footer (done / error)
+  if (footer) {
+    lines.push(footer);
+  }
+
+  return lines.join("\n");
+}
+
+/**
  * Build the status text for a given phase.
+ * Kept for backward compatibility — used for simple single-line statuses.
  */
 export function buildStatusText(
   phase: "thinking" | "tool" | "done" | "error",
@@ -157,6 +237,7 @@ export class StreamingStatusUpdater {
   private readonly channelId: string;
   private readonly threadTs: string;
   private readonly enabled: boolean;
+  private readonly sessionId: string | null;
 
   // Slack message state
   private statusTs: string | null = null;
@@ -174,6 +255,11 @@ export class StreamingStatusUpdater {
   // Track tool_use input accumulation
   private activeToolName: string | null = null;
   private activeToolInput: string = "";
+  private activeToolIsSubAgent: boolean = false;
+  private activeToolPreview: string = "";
+
+  // Accumulated completed tool log
+  private completedTools: CompletedToolEntry[] = [];
 
   // Track whether finalized
   private finalized: boolean = false;
@@ -182,6 +268,7 @@ export class StreamingStatusUpdater {
     this.channelId = opts.channelId;
     this.threadTs = opts.threadTs;
     this.enabled = opts.enabled !== false;
+    this.sessionId = opts.sessionId ?? null;
   }
 
   // -------------------------------------------------------------------------
@@ -198,13 +285,21 @@ export class StreamingStatusUpdater {
     if (event.type === "content_block_start") {
       const block = event.content_block;
       if (block?.type === "tool_use" && block.name) {
+        // Finalize previous active tool (if any) before starting a new one
+        this.finalizeActiveTool();
+
         this.toolCount++;
-        this.activeToolName = formatToolName(block.name);
+        const formatted = formatToolName(block.name);
+        this.activeToolName = formatted;
         this.activeToolInput = "";
-        this.setStatus(buildStatusText("tool", { toolName: this.activeToolName }));
+        this.activeToolIsSubAgent = isSubAgentTool(formatted);
+        this.activeToolPreview = "";
+
+        // Show accumulated log + new active tool
+        this.rebuildStatus();
       } else if (block?.type === "text") {
         // Agent is generating text (thinking / composing response)
-        if (this.toolCount === 0) {
+        if (this.toolCount === 0 && this.completedTools.length === 0) {
           this.setStatus(buildStatusText("thinking"));
         }
       }
@@ -225,8 +320,6 @@ export class StreamingStatusUpdater {
       // Final attempt to parse tool input for preview
       if (this.activeToolName) {
         this.tryUpdateToolPreview();
-        this.activeToolName = null;
-        this.activeToolInput = "";
       }
     }
   }
@@ -252,9 +345,18 @@ export class StreamingStatusUpdater {
     this.finalized = true;
     this.clearFlushTimer();
 
+    // Finalize any active tool
+    this.finalizeActiveTool();
+
     const elapsed = Math.round((Date.now() - this.startTime) / 1000);
-    const text = buildStatusText("done", { toolCount: this.toolCount, elapsed });
-    await this.forceUpdate(text);
+    const footer = buildStatusText("done", { toolCount: this.toolCount, elapsed });
+
+    if (this.completedTools.length > 0) {
+      const text = buildAccumulatedStatus(this.completedTools, undefined, footer);
+      await this.forceUpdate(text);
+    } else {
+      await this.forceUpdate(footer);
+    }
   }
 
   /**
@@ -265,8 +367,47 @@ export class StreamingStatusUpdater {
     this.finalized = true;
     this.clearFlushTimer();
 
-    const text = buildStatusText("error", { errorMessage });
-    await this.forceUpdate(text);
+    this.finalizeActiveTool();
+
+    const footer = buildStatusText("error", { errorMessage });
+
+    if (this.completedTools.length > 0) {
+      const text = buildAccumulatedStatus(this.completedTools, undefined, footer);
+      await this.forceUpdate(text);
+    } else {
+      await this.forceUpdate(footer);
+    }
+  }
+
+  /**
+   * Finalize with a "stopped by user" state.
+   * Called when the user clicks the Stop button.
+   */
+  async finalizeKilled(): Promise<void> {
+    if (this.finalized || !this.enabled) return;
+    this.finalized = true;
+    this.clearFlushTimer();
+
+    this.finalizeActiveTool();
+
+    const elapsed = Math.round((Date.now() - this.startTime) / 1000);
+
+    if (this.statusTs) {
+      // Build final accumulated text for the stopped state
+      const accumulatedText = this.completedTools.length > 0
+        ? buildAccumulatedStatus(this.completedTools)
+        : this.currentText || "";
+
+      const blocks = buildStatusStoppedBlocks(accumulatedText, elapsed);
+      const fallbackText = accumulatedText
+        ? `${accumulatedText}\n:stop_sign: Stopped by user (${elapsed}s)`
+        : `:stop_sign: Stopped by user (${elapsed}s)`;
+      try {
+        await slack.updateMessage(this.channelId, this.statusTs, fallbackText, blocks);
+      } catch (err) {
+        console.error("[streaming] Failed to update killed status:", err instanceof Error ? err.message : err);
+      }
+    }
   }
 
   /**
@@ -274,6 +415,13 @@ export class StreamingStatusUpdater {
    */
   getToolCount(): number {
     return this.toolCount;
+  }
+
+  /**
+   * Get the list of completed tools (for external inspection / testing).
+   */
+  getCompletedTools(): ReadonlyArray<CompletedToolEntry> {
+    return this.completedTools;
   }
 
   /**
@@ -287,6 +435,37 @@ export class StreamingStatusUpdater {
   // Internal
   // -------------------------------------------------------------------------
 
+  /**
+   * Move the active tool into the completed log.
+   */
+  private finalizeActiveTool(): void {
+    if (this.activeToolName) {
+      this.completedTools.push({
+        name: this.activeToolName,
+        preview: this.activeToolPreview,
+        isSubAgent: this.activeToolIsSubAgent,
+      });
+      this.activeToolName = null;
+      this.activeToolInput = "";
+      this.activeToolIsSubAgent = false;
+      this.activeToolPreview = "";
+    }
+  }
+
+  /**
+   * Rebuild the accumulated status text from current state.
+   */
+  private rebuildStatus(): void {
+    const activeTool = this.activeToolName
+      ? { name: this.activeToolName, preview: this.activeToolPreview || undefined, isSubAgent: this.activeToolIsSubAgent }
+      : undefined;
+
+    if (this.completedTools.length === 0 && !activeTool) return;
+
+    const text = buildAccumulatedStatus(this.completedTools, activeTool);
+    this.setStatus(text);
+  }
+
   private tryUpdateToolPreview(): void {
     if (!this.activeToolName) return;
     try {
@@ -295,7 +474,8 @@ export class StreamingStatusUpdater {
       if (typeof parsed === "object" && parsed !== null) {
         const preview = formatToolInputPreview(this.activeToolName, parsed);
         if (preview) {
-          this.setStatus(buildStatusText("tool", { toolName: this.activeToolName, toolPreview: preview }));
+          this.activeToolPreview = preview;
+          this.rebuildStatus();
         }
       }
     } catch {
@@ -338,14 +518,20 @@ export class StreamingStatusUpdater {
     this.pendingText = null;
 
     try {
+      // Only show the Stop button while the agent is actively working.
+      // Once finalized (done / error), render a clean status line with no button.
+      const blocks = this.sessionId && !this.finalized
+        ? buildStatusWithStopBlocks(text, this.sessionId)
+        : undefined;
+
       if (!this.statusTs) {
         // First post
-        this.statusTs = await slack.postMessage(this.channelId, text, this.threadTs);
+        this.statusTs = await slack.postMessage(this.channelId, text, this.threadTs, blocks);
         this.currentText = text;
         this.lastUpdateAt = Date.now();
       } else if (text !== this.currentText) {
         // Update in-place
-        await slack.updateMessage(this.channelId, this.statusTs, text);
+        await slack.updateMessage(this.channelId, this.statusTs, text, blocks);
         this.currentText = text;
         this.lastUpdateAt = Date.now();
       }

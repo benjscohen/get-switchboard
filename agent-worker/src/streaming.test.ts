@@ -12,12 +12,22 @@ vi.mock("./slack.js", () => ({
   updateMessage: (...args: unknown[]) => mockUpdateMessage(...args),
 }));
 
+vi.mock("./slack-blocks.js", () => ({
+  buildStatusWithStopBlocks: (text: string, sessionId: string) => [{ type: "section", text: { type: "mrkdwn", text }, accessory: { action_id: "kill_session", value: sessionId } }],
+  buildStatusStoppedBlocks: (text: string, elapsed: number) => [{ type: "section", text: { type: "mrkdwn", text } }, { type: "context", elements: [{ type: "mrkdwn", text: `:stop_sign: Stopped by user (${elapsed}s)` }] }],
+}));
+
 import {
   StreamingStatusUpdater,
   formatToolInputPreview,
   formatToolName,
   buildStatusText,
+  isSubAgentTool,
+  formatCompletedToolLine,
+  formatActiveToolLine,
+  buildAccumulatedStatus,
   type StreamEventLike,
+  type CompletedToolEntry,
 } from "./streaming.js";
 
 // ---------------------------------------------------------------------------
@@ -159,6 +169,116 @@ describe("buildStatusText", () => {
 });
 
 // ---------------------------------------------------------------------------
+// New accumulated status helper tests
+// ---------------------------------------------------------------------------
+
+describe("isSubAgentTool", () => {
+  it("detects Task tool as sub-agent", () => {
+    expect(isSubAgentTool("Task")).toBe(true);
+  });
+
+  it("detects lowercase task as sub-agent", () => {
+    expect(isSubAgentTool("task")).toBe(true);
+  });
+
+  it("does not flag normal tools as sub-agent", () => {
+    expect(isSubAgentTool("Read")).toBe(false);
+    expect(isSubAgentTool("Bash")).toBe(false);
+    expect(isSubAgentTool("Grep")).toBe(false);
+  });
+});
+
+describe("formatCompletedToolLine", () => {
+  it("formats a regular completed tool with preview", () => {
+    const entry: CompletedToolEntry = { name: "Read", preview: "/src/index.ts", isSubAgent: false };
+    expect(formatCompletedToolLine(entry)).toBe(":white_check_mark: *Read* — /src/index.ts");
+  });
+
+  it("formats a regular completed tool without preview", () => {
+    const entry: CompletedToolEntry = { name: "Bash", preview: "", isSubAgent: false };
+    expect(formatCompletedToolLine(entry)).toBe(":white_check_mark: *Bash*");
+  });
+
+  it("formats a sub-agent tool with robot icon", () => {
+    const entry: CompletedToolEntry = { name: "Task", preview: "Research auth flow", isSubAgent: true };
+    expect(formatCompletedToolLine(entry)).toBe(":robot_face: *Task* (sub-agent) — Research auth flow");
+  });
+
+  it("formats a sub-agent tool without preview", () => {
+    const entry: CompletedToolEntry = { name: "Task", preview: "", isSubAgent: true };
+    expect(formatCompletedToolLine(entry)).toBe(":robot_face: *Task* (sub-agent)");
+  });
+});
+
+describe("formatActiveToolLine", () => {
+  it("formats active tool with gear icon", () => {
+    expect(formatActiveToolLine("Bash", "npm test")).toBe(":gear: *Bash* — npm test");
+  });
+
+  it("formats active tool without preview", () => {
+    expect(formatActiveToolLine("Read")).toBe(":gear: *Read*");
+  });
+
+  it("formats active sub-agent with robot icon", () => {
+    expect(formatActiveToolLine("Task", "Research flow", true)).toBe(":robot_face: *Task* (sub-agent) — Research flow");
+  });
+});
+
+describe("buildAccumulatedStatus", () => {
+  it("shows only active tool when no completed tools", () => {
+    const text = buildAccumulatedStatus([], { name: "Read", preview: "/src/index.ts" });
+    expect(text).toBe(":gear: *Read* — /src/index.ts");
+  });
+
+  it("shows completed + active tool", () => {
+    const completed: CompletedToolEntry[] = [
+      { name: "Read", preview: "/src/index.ts", isSubAgent: false },
+    ];
+    const text = buildAccumulatedStatus(completed, { name: "Bash", preview: "npm test" });
+    expect(text).toBe(
+      ":white_check_mark: *Read* — /src/index.ts\n:gear: *Bash* — npm test"
+    );
+  });
+
+  it("shows completed tools with footer", () => {
+    const completed: CompletedToolEntry[] = [
+      { name: "Read", preview: "/src/index.ts", isSubAgent: false },
+      { name: "Bash", preview: "npm test", isSubAgent: false },
+    ];
+    const text = buildAccumulatedStatus(completed, undefined, ":white_check_mark: Done (2 tool calls, 5s)");
+    expect(text).toBe(
+      ":white_check_mark: *Read* — /src/index.ts\n" +
+      ":white_check_mark: *Bash* — npm test\n" +
+      ":white_check_mark: Done (2 tool calls, 5s)"
+    );
+  });
+
+  it("shows sub-agent tools distinctly", () => {
+    const completed: CompletedToolEntry[] = [
+      { name: "Read", preview: "/src/index.ts", isSubAgent: false },
+      { name: "Task", preview: "Research auth", isSubAgent: true },
+    ];
+    const text = buildAccumulatedStatus(completed);
+    expect(text).toContain(":robot_face: *Task* (sub-agent) — Research auth");
+    expect(text).toContain(":white_check_mark: *Read*");
+  });
+
+  it("collapses older entries when exceeding MAX_VISIBLE_TOOLS", () => {
+    const completed: CompletedToolEntry[] = [];
+    for (let i = 0; i < 55; i++) {
+      completed.push({ name: `Tool${i}`, preview: "", isSubAgent: false });
+    }
+    const text = buildAccumulatedStatus(completed);
+    expect(text).toContain("_… 5 earlier tool calls_");
+    // Should show the last 50 tools
+    expect(text).toContain("*Tool54*");
+    expect(text).toContain("*Tool5*");
+    // First 5 should be hidden
+    expect(text).not.toContain("*Tool4*");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // StreamingStatusUpdater tests
 // ---------------------------------------------------------------------------
 
@@ -223,20 +343,23 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       ":hourglass_flowing_sand: Thinking…",
       "thread-ts-1",
+      undefined,
     );
   });
 
-  it("posts tool status on first tool_use block", async () => {
+  it("posts active tool status on first tool_use block", async () => {
     const updater = createUpdater();
     updater.handleStreamEvent(toolUseStartEvent("Read"));
 
     await vi.advanceTimersByTimeAsync(0);
 
     expect(mockPostMessage).toHaveBeenCalledOnce();
+    // First tool — no completed tools yet, just the active tool line
     expect(mockPostMessage).toHaveBeenCalledWith(
       "C-TEST",
-      ":gear: Using tool: *Read*",
+      ":gear: *Read*",
       "thread-ts-1",
+      undefined,
     );
   });
 
@@ -255,6 +378,70 @@ describe("StreamingStatusUpdater", () => {
     await vi.advanceTimersByTimeAsync(3_000);
 
     expect(updater.getToolCount()).toBe(2);
+  });
+
+  // -------------------------------------------------------------------------
+  // Accumulated behavior
+  // -------------------------------------------------------------------------
+
+  it("accumulates completed tools into the status message", async () => {
+    const updater = createUpdater();
+
+    // First tool: Read
+    updater.handleStreamEvent(toolUseStartEvent("Read"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Complete Read with input
+    updater.handleStreamEvent(toolInputDeltaEvent('{"file_path":"/src/index.ts"}'));
+    updater.handleStreamEvent(contentBlockStopEvent());
+
+    // Wait for throttle
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    // Second tool: Bash
+    updater.handleStreamEvent(toolUseStartEvent("Bash"));
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    // The update should show Read as completed + Bash as active
+    const lastCall = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1];
+    expect(lastCall[2]).toContain(":white_check_mark: *Read*");
+    expect(lastCall[2]).toContain(":gear: *Bash*");
+  });
+
+  it("tracks completed tools in getCompletedTools()", async () => {
+    const updater = createUpdater();
+
+    updater.handleStreamEvent(toolUseStartEvent("Read"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    updater.handleStreamEvent(toolInputDeltaEvent('{"file_path":"/src/index.ts"}'));
+    updater.handleStreamEvent(contentBlockStopEvent());
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    // Start and complete a second tool to push Read into completed
+    updater.handleStreamEvent(toolUseStartEvent("Bash"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Read should now be in completed tools (finalized when Bash started)
+    const completed = updater.getCompletedTools();
+    expect(completed).toHaveLength(1);
+    expect(completed[0].name).toBe("Read");
+    expect(completed[0].preview).toBe("/src/index.ts");
+  });
+
+  it("detects sub-agent (Task) tools and marks them accordingly", async () => {
+    const updater = createUpdater();
+
+    updater.handleStreamEvent(toolUseStartEvent("Task"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Should show robot icon for sub-agent
+    expect(mockPostMessage).toHaveBeenCalledWith(
+      "C-TEST",
+      ":robot_face: *Task* (sub-agent)",
+      "thread-ts-1",
+      undefined,
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -278,11 +465,10 @@ describe("StreamingStatusUpdater", () => {
     // After throttle period — should flush
     await vi.advanceTimersByTimeAsync(3_000);
     expect(mockUpdateMessage).toHaveBeenCalledOnce();
-    expect(mockUpdateMessage).toHaveBeenCalledWith(
-      "C-TEST",
-      "status-ts-1",
-      ":gear: Using tool: *Bash*",
-    );
+    // Should show accumulated: Read completed + Bash active
+    const updateText = mockUpdateMessage.mock.calls[0][2];
+    expect(updateText).toContain(":white_check_mark: *Read*");
+    expect(updateText).toContain(":gear: *Bash*");
   });
 
   it("does not skip the last pending update", async () => {
@@ -297,13 +483,13 @@ describe("StreamingStatusUpdater", () => {
     updater.handleStreamEvent(contentBlockStopEvent());
     updater.handleStreamEvent(toolUseStartEvent("Bash"));
 
-    // After full throttle period — should show the latest (Bash)
+    // After full throttle period — should show the latest accumulated state
     await vi.advanceTimersByTimeAsync(3_000);
-    expect(mockUpdateMessage).toHaveBeenCalledWith(
-      "C-TEST",
-      "status-ts-1",
-      expect.stringContaining("*Bash*"),
-    );
+    const lastUpdateText = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1][2];
+    // Should contain both Read and Edit as completed, Bash as active
+    expect(lastUpdateText).toContain("*Read*");
+    expect(lastUpdateText).toContain("*Edit*");
+    expect(lastUpdateText).toContain("*Bash*");
   });
 
   // -------------------------------------------------------------------------
@@ -324,11 +510,13 @@ describe("StreamingStatusUpdater", () => {
     updater.handleStreamEvent(contentBlockStopEvent());
 
     await vi.advanceTimersByTimeAsync(3_000);
-    expect(mockUpdateMessage).toHaveBeenCalledWith(
-      "C-TEST",
-      "status-ts-1",
-      ":gear: Using tool: *Bash* — npm test",
-    );
+    // The update should include the Bash preview
+    const lastCall = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1];
+    // At this point Bash might be in completed (if another tool started) or still active
+    // Since no new tool started, Bash is still active — but content_block_stop doesn't finalize the active tool
+    // Actually, looking at the code: content_block_stop only triggers tryUpdateToolPreview, not finalizeActiveTool
+    // The active tool stays active until a new tool starts or finalize is called
+    expect(lastCall[2]).toContain("npm test");
   });
 
   it("handles incomplete JSON gracefully", async () => {
@@ -343,7 +531,6 @@ describe("StreamingStatusUpdater", () => {
 
     // Should still show tool name without preview
     await vi.advanceTimersByTimeAsync(3_000);
-    // No update needed if text didn't change, which is fine
     expect(updater.getToolCount()).toBe(1);
   });
 
@@ -359,16 +546,17 @@ describe("StreamingStatusUpdater", () => {
 
     expect(mockPostMessage).toHaveBeenCalledWith(
       "C-TEST",
-      ":gear: Using tool: *file_read*",
+      ":gear: *file_read*",
       "thread-ts-1",
+      undefined,
     );
   });
 
   // -------------------------------------------------------------------------
-  // Finalize
+  // Finalize — accumulated
   // -------------------------------------------------------------------------
 
-  it("finalizes with done summary", async () => {
+  it("finalizes with accumulated log + done footer", async () => {
     const updater = createUpdater();
 
     updater.handleStreamEvent(toolUseStartEvent("Read"));
@@ -383,15 +571,15 @@ describe("StreamingStatusUpdater", () => {
 
     await updater.finalize();
 
-    // Should update with done text
-    expect(mockUpdateMessage).toHaveBeenLastCalledWith(
-      "C-TEST",
-      "status-ts-1",
-      expect.stringMatching(/:white_check_mark: Done \(2 tool calls, \d+s\)/),
-    );
+    // Should update with accumulated log + done footer
+    const lastCall = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1];
+    const text = lastCall[2];
+    expect(text).toContain(":white_check_mark: *Read*");
+    expect(text).toContain(":white_check_mark: *Bash*");
+    expect(text).toMatch(/:white_check_mark: Done \(2 tool calls, \d+s\)/);
   });
 
-  it("finalizes with error status", async () => {
+  it("finalizes with error and accumulated log", async () => {
     const updater = createUpdater();
 
     updater.handleStreamEvent(toolUseStartEvent("Read"));
@@ -399,11 +587,11 @@ describe("StreamingStatusUpdater", () => {
 
     await updater.finalizeError("timeout");
 
-    expect(mockUpdateMessage).toHaveBeenLastCalledWith(
-      "C-TEST",
-      "status-ts-1",
-      ":x: Error: timeout",
-    );
+    const lastCall = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1];
+    const text = lastCall[2];
+    // Should show Read as completed (finalized by finalizeError) + error footer
+    expect(text).toContain(":white_check_mark: *Read*");
+    expect(text).toContain(":x: Error: timeout");
   });
 
   it("finalize is idempotent — second call does nothing", async () => {
@@ -481,6 +669,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       ":hourglass_flowing_sand: Thinking…",
       "thread-ts-1",
+      undefined,
     );
   });
 
@@ -502,25 +691,6 @@ describe("StreamingStatusUpdater", () => {
   // Edge cases
   // -------------------------------------------------------------------------
 
-  it("does not update if text has not changed", async () => {
-    const updater = createUpdater();
-
-    updater.handleStreamEvent(toolUseStartEvent("Read"));
-    await vi.advanceTimersByTimeAsync(0);
-
-    // Same tool again — should not trigger update since text is the same
-    updater.handleStreamEvent(contentBlockStopEvent());
-    updater.handleStreamEvent(toolUseStartEvent("Read"));
-    await vi.advanceTimersByTimeAsync(3_000);
-
-    // The update should still happen because tool count changed → text is different
-    // (tool name is the same but it's still a separate status update)
-    // Actually the text IS the same (:gear: Using tool: *Read*), so it should NOT update
-    // Wait — the text is the same since formatToolName("Read") + no preview is the same
-    // But the tool count incremented, so finalize will reflect 2 tools
-    expect(updater.getToolCount()).toBe(2);
-  });
-
   it("finalize posts new message if no status was posted yet", async () => {
     const updater = createUpdater();
 
@@ -532,6 +702,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       expect.stringContaining(":white_check_mark: Done"),
       "thread-ts-1",
+      undefined,
     );
   });
 
@@ -545,6 +716,7 @@ describe("StreamingStatusUpdater", () => {
       "C-TEST",
       ":x: Error: something broke",
       "thread-ts-1",
+      undefined,
     );
   });
 
@@ -577,5 +749,100 @@ describe("StreamingStatusUpdater", () => {
 
     await vi.advanceTimersByTimeAsync(10_000);
     expect(updater.getElapsedSeconds()).toBe(15);
+  });
+
+  // -------------------------------------------------------------------------
+  // Stop button integration with accumulated status
+  // -------------------------------------------------------------------------
+
+  it("includes Stop button blocks when sessionId is provided", async () => {
+    const updater = new StreamingStatusUpdater({
+      channelId: "C-TEST",
+      threadTs: "thread-ts-1",
+      sessionId: "sess-123",
+    });
+
+    updater.handleStreamEvent(toolUseStartEvent("Read"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Should pass blocks to postMessage
+    const lastCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
+    expect(lastCall[3]).toBeDefined();
+    expect(lastCall[3][0].accessory.action_id).toBe("kill_session");
+    expect(lastCall[3][0].accessory.value).toBe("sess-123");
+  });
+
+  it("removes Stop button blocks on finalize (done state)", async () => {
+    const updater = new StreamingStatusUpdater({
+      channelId: "C-TEST",
+      threadTs: "thread-ts-1",
+      sessionId: "sess-123",
+    });
+
+    updater.handleStreamEvent(toolUseStartEvent("Read"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // During streaming — should have blocks (Stop button)
+    const streamingCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
+    expect(streamingCall[3]).toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await updater.finalize();
+
+    // After finalize — blocks should be undefined (no Stop button)
+    const finalCall = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1];
+    expect(finalCall[2]).toMatch(/:white_check_mark: Done/);
+    expect(finalCall[3]).toBeUndefined();
+  });
+
+  it("removes Stop button blocks on finalizeError", async () => {
+    const updater = new StreamingStatusUpdater({
+      channelId: "C-TEST",
+      threadTs: "thread-ts-1",
+      sessionId: "sess-123",
+    });
+
+    updater.handleStreamEvent(toolUseStartEvent("Read"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // During streaming — should have blocks
+    const streamingCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
+    expect(streamingCall[3]).toBeDefined();
+
+    await updater.finalizeError("timeout");
+
+    // After finalizeError — blocks should be undefined (no Stop button)
+    const finalCall = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1];
+    expect(finalCall[2]).toContain(":x: Error: timeout");
+    expect(finalCall[3]).toBeUndefined();
+  });
+
+  it("finalizeKilled shows accumulated log with stopped state", async () => {
+    const updater = new StreamingStatusUpdater({
+      channelId: "C-TEST",
+      threadTs: "thread-ts-1",
+      sessionId: "sess-123",
+    });
+
+    // Start and complete a tool
+    updater.handleStreamEvent(toolUseStartEvent("Read"));
+    await vi.advanceTimersByTimeAsync(0);
+    updater.handleStreamEvent(toolInputDeltaEvent('{"file_path":"/src/index.ts"}'));
+    updater.handleStreamEvent(contentBlockStopEvent());
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    // Start another tool
+    updater.handleStreamEvent(toolUseStartEvent("Bash"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // User kills the session
+    await updater.finalizeKilled();
+
+    // Should show accumulated log in the stopped state
+    const lastCall = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1];
+    const fallbackText = lastCall[2];
+    expect(fallbackText).toContain(":white_check_mark: *Read*");
+    expect(fallbackText).toContain(":white_check_mark: *Bash*");
+    expect(fallbackText).toContain(":stop_sign: Stopped by user");
   });
 });

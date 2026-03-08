@@ -35,6 +35,10 @@ export interface RunningSession {
   planPhase: PlanPhase;
   pendingPlanApproval: PendingPlanApproval | null;
   setPermissionMode: ((mode: PermissionMode) => Promise<void>) | null;
+  /** AbortController wired to the Claude Code SDK — calling abort() kills the session. */
+  abortController: AbortController | null;
+  /** True when the session was killed by the user (not a timeout or crash). */
+  killedByUser: boolean;
 }
 
 const registry = new Map<string, RunningSession>();
