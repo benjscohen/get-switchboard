@@ -1,6 +1,7 @@
 import { query } from "@anthropic-ai/claude-code";
 import { fetchUserFiles, writeFilesToStableDir } from "./files.js";
 import { extractClaudeMd, buildSystemPrompt, type UserIdentity } from "./prompt.js";
+import { ensureChromeRunning, cleanupTabs } from "./chrome.js";
 
 // ---------------------------------------------------------------------------
 // Headless agent execution (no Slack, no multi-turn — single prompt in/out)
@@ -51,6 +52,15 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
       systemPrompt = `${systemPromptOverride}\n\n${systemPrompt}`;
     }
 
+    // 2b. Ensure headless Chrome is running for browser tools
+    if (process.env.ENABLE_CHROME_MCP !== "false") {
+      try {
+        await ensureChromeRunning();
+      } catch (err) {
+        console.error("[headless] Chrome startup failed (non-fatal):", err);
+      }
+    }
+
     // 3. Set up timeout
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
@@ -78,6 +88,13 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
                 Authorization: `Bearer ${agentKey}`,
               },
             },
+            ...(process.env.ENABLE_CHROME_MCP !== "false" ? {
+              "chrome-devtools": {
+                type: "stdio" as const,
+                command: "chrome-devtools-mcp",
+                args: [] as string[],
+              },
+            } : {}),
           },
           abortController,
           stderr: (data: string) => {
@@ -166,5 +183,12 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
       status: "failed",
       error: err instanceof Error ? err.message : "Unknown error",
     };
+  } finally {
+    // Clean up Chrome tabs opened during this session
+    if (process.env.ENABLE_CHROME_MCP !== "false") {
+      cleanupTabs().catch((err) => {
+        console.error("[headless] Chrome tab cleanup failed:", err);
+      });
+    }
   }
 }

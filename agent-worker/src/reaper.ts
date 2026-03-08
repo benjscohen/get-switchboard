@@ -9,7 +9,8 @@
 import { exec } from "node:child_process";
 
 const REAPER_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const REAPER_MAX_AGE_MS = 4.5 * 60 * 60 * 1000; // 4.5 hours
+const REAPER_MAX_AGE_MS = 4.5 * 60 * 60 * 1000; // 4.5 hours (claude)
+const REAPER_CHROME_MAX_AGE_MS = 5 * 60 * 60 * 1000; // 5 hours (chromium)
 
 interface ProcessInfo {
   pid: number;
@@ -34,17 +35,17 @@ function findClaudeProcesses(): Promise<ProcessInfo[]> {
         const trimmed = line.trim();
         if (!trimmed) continue;
 
-        // Match lines containing "claude" binary (the SDK spawns this)
+        // Match lines containing "claude" binary or "chromium" (the SDK spawns these)
         // Avoid matching this reaper process itself or grep
         if (
-          !trimmed.includes("claude") ||
+          !(trimmed.includes("claude") || trimmed.includes("chromium")) ||
           trimmed.includes("reaper") ||
           trimmed.includes("grep")
         ) {
           continue;
         }
 
-        // Only match the actual claude CLI process
+        // Only match the actual claude CLI or chromium process
         const match = trimmed.match(
           /^\s*(\d+)\s+([\d:.-]+)\s+(.+)$/,
         );
@@ -54,11 +55,13 @@ function findClaudeProcesses(): Promise<ProcessInfo[]> {
         const etimeStr = match[2];
         const command = match[3];
 
-        // Only target claude CLI processes (not node processes that import claude)
-        if (
-          !command.includes("/claude") &&
-          !command.match(/\bclaude\s/)
-        ) {
+        // Target claude CLI processes and chromium processes
+        const isClaudeProcess =
+          command.includes("/claude") || !!command.match(/\bclaude\s/);
+        const isChromiumProcess =
+          command.includes("/chromium") || !!command.match(/\bchromium\b/);
+
+        if (!isClaudeProcess && !isChromiumProcess) {
           continue;
         }
 
@@ -110,9 +113,11 @@ async function reap(): Promise<void> {
   try {
     const processes = await findClaudeProcesses();
     const maxAgeSec = REAPER_MAX_AGE_MS / 1000;
+    const chromeMaxAgeSec = REAPER_CHROME_MAX_AGE_MS / 1000;
 
     for (const proc of processes) {
-      if (proc.etime > maxAgeSec) {
+      const limit = proc.command.includes("chromium") ? chromeMaxAgeSec : maxAgeSec;
+      if (proc.etime > limit) {
         const ageMin = Math.round(proc.etime / 60);
         console.log(
           `[reaper] killing orphan PID=${proc.pid} age=${ageMin}min cmd=${proc.command.slice(0, 80)}`,

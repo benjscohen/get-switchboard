@@ -18,6 +18,7 @@ import {
 } from "./session-registry.js";
 import type { PlanDecision, PlanPhase } from "./session-registry.js";
 import type { SlackFile } from "./types.js";
+import { ensureChromeRunning, cleanupTabs } from "./chrome.js";
 
 // ---------------------------------------------------------------------------
 // Image / PDF / text detection helpers
@@ -607,6 +608,15 @@ export async function processMessage(
     registerSession(threadKey, runningSession);
     console.log(`[session ${sessionId}] registered — thread=${threadKey} active=${activeCount}`);
 
+    // 14b. Ensure headless Chrome is running for browser tools
+    if (process.env.ENABLE_CHROME_MCP !== "false") {
+      try {
+        await ensureChromeRunning();
+      } catch (err) {
+        console.error(`[session ${sessionId}] Chrome startup failed (non-fatal):`, err);
+      }
+    }
+
     // 15. Run Claude Code SDK (multi-turn)
     let lastResultText: string | null = null;
     let checkedOff = false;
@@ -638,6 +648,13 @@ export async function processMessage(
                 Authorization: `Bearer ${lookup.agentKey}`,
               },
             },
+            ...(process.env.ENABLE_CHROME_MCP !== "false" ? {
+              "chrome-devtools": {
+                type: "stdio" as const,
+                command: "chrome-devtools-mcp",
+                args: [] as string[],
+              },
+            } : {}),
           },
           abortController,
           ...(resumeSessionId ? { resume: resumeSessionId } : {}),
@@ -1221,6 +1238,13 @@ export async function processMessage(
     unregisterSession(threadKey);
     console.log(`[session ${sessionId}] unregistered — thread=${threadKey} active=${activeCount}`);
     // tempDir is stable (keyed by userId) and reused across sessions — no cleanup
+
+    // Clean up Chrome tabs opened during this session
+    if (process.env.ENABLE_CHROME_MCP !== "false") {
+      cleanupTabs().catch((err) => {
+        console.error(`[session ${sessionId}] Chrome tab cleanup failed:`, err);
+      });
+    }
   }
 }
 

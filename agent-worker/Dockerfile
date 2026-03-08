@@ -23,6 +23,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     gnupg \
     software-properties-common \
+    chromium \
+    fonts-liberation \
   && rm -rf /var/lib/apt/lists/*
 
 # Install Terraform
@@ -34,10 +36,14 @@ RUN curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/sh
 
 COPY package*.json ./
 RUN npm ci
+RUN npm install -g chrome-devtools-mcp@latest
 COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npm run build
 RUN npm prune --production
+
+ENV CHROME_PATH=/usr/bin/chromium
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 # Worker user with sudo access (container is ephemeral)
 RUN useradd -m -s /bin/bash worker \
