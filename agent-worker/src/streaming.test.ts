@@ -772,6 +772,51 @@ describe("StreamingStatusUpdater", () => {
     expect(lastCall[3][0].accessory.value).toBe("sess-123");
   });
 
+  it("removes Stop button blocks on finalize (done state)", async () => {
+    const updater = new StreamingStatusUpdater({
+      channelId: "C-TEST",
+      threadTs: "thread-ts-1",
+      sessionId: "sess-123",
+    });
+
+    updater.handleStreamEvent(toolUseStartEvent("Read"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // During streaming — should have blocks (Stop button)
+    const streamingCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
+    expect(streamingCall[3]).toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await updater.finalize();
+
+    // After finalize — blocks should be undefined (no Stop button)
+    const finalCall = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1];
+    expect(finalCall[2]).toMatch(/:white_check_mark: Done/);
+    expect(finalCall[3]).toBeUndefined();
+  });
+
+  it("removes Stop button blocks on finalizeError", async () => {
+    const updater = new StreamingStatusUpdater({
+      channelId: "C-TEST",
+      threadTs: "thread-ts-1",
+      sessionId: "sess-123",
+    });
+
+    updater.handleStreamEvent(toolUseStartEvent("Read"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // During streaming — should have blocks
+    const streamingCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
+    expect(streamingCall[3]).toBeDefined();
+
+    await updater.finalizeError("timeout");
+
+    // After finalizeError — blocks should be undefined (no Stop button)
+    const finalCall = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1];
+    expect(finalCall[2]).toContain(":x: Error: timeout");
+    expect(finalCall[3]).toBeUndefined();
+  });
+
   it("finalizeKilled shows accumulated log with stopped state", async () => {
     const updater = new StreamingStatusUpdater({
       channelId: "C-TEST",

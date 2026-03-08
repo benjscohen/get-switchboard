@@ -518,7 +518,9 @@ export class StreamingStatusUpdater {
     this.pendingText = null;
 
     try {
-      const blocks = this.sessionId
+      // Only show the Stop button while the agent is actively working.
+      // Once finalized (done / error), render a clean status line with no button.
+      const blocks = this.sessionId && !this.finalized
         ? buildStatusWithStopBlocks(text, this.sessionId)
         : undefined;
 
