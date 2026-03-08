@@ -166,6 +166,23 @@ describe("registerVaultTools", () => {
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toBe("Provide either name or id");
     });
+
+    it("appends security safety notice to response", async () => {
+      const secretData = { id: "s1", name: "test", fields: [{ name: "key", value: "secret123" }] };
+      vi.mocked(getSecret).mockResolvedValue({ ok: true, data: secretData as never });
+      const handler = server._registeredTools["vault_get_secret"].handler;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = (await handler({ id: "s1" }, makeExtra())) as any;
+      const text = result.content[0].text;
+      expect(text).toContain(JSON.stringify(secretData, null, 2));
+      expect(text).toContain("⚠️ SECURITY");
+      expect(text).toContain("DO NOT:");
+      expect(text).toContain("Include secret values in your response to the user");
+      expect(text).toContain("Write secrets to files");
+      expect(text).toContain("Commit secrets to git");
+      expect(text).toContain("DO:");
+      expect(text).toContain("Use secrets only in-memory");
+    });
   });
 
   // ---------- vault_set_secret ----------

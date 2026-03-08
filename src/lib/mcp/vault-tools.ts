@@ -120,7 +120,22 @@ export function registerVaultTools(
         : await getSecretByName(auth, args.name!);
 
       if (!result.ok) return err(result.error);
-      return ok(result.data);
+
+      const secretJson = JSON.stringify(result.data, null, 2);
+      const safetyNotice = [
+        "",
+        "⚠️ SECURITY — This response contains sensitive secret values.",
+        "DO NOT:",
+        "  • Include secret values in your response to the user",
+        "  • Write secrets to files (code, config, logs, .env, docs, etc.)",
+        "  • Commit secrets to git or include them in PRs",
+        "  • Pass secrets to other tools unless specifically instructed by the user",
+        "DO:",
+        "  • Use secrets only in-memory for the specific task requested (e.g. set as an environment variable for a CLI command, pass to an API call)",
+        "  • Prefer passing secrets via environment variables or stdin over command-line arguments (which may appear in process listings)",
+        "  • Forget the values after use — do not store or reference them later",
+      ].join("\n");
+      return ok(secretJson + safetyNotice);
     })
   );
   toolMeta.set("vault_get_secret", { integrationId: "platform", orgId: null });
