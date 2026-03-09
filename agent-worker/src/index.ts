@@ -16,6 +16,17 @@ import { buildThreadKey, getRunningSession, findRunningSessionBySessionId } from
 import { cleanupOldArchives } from "./workspace-storage.js";
 import type { SlackFile } from "./types.js";
 import { logger } from "./logger.js";
+import {
+  isRedisEnabled,
+  markProcessedRedis,
+  getSessionOwner,
+  publishFollowUp,
+  subscribeFollowUps,
+  startHeartbeatLoop,
+  shutdownRedis,
+  getInstanceId,
+  type FollowUpPayload,
+} from "./redis.js";
 
 // ---------------------------------------------------------------------------
 // Deduplication: track event IDs for 5 minutes to prevent double-processing
@@ -23,7 +34,12 @@ import { logger } from "./logger.js";
 
 const processedEvents = new Set<string>();
 
-function markProcessed(eventId: string): boolean {
+async function markProcessed(eventId: string): Promise<boolean> {
+  // Use Redis for cross-instance dedup when available
+  if (isRedisEnabled()) {
+    return markProcessedRedis(eventId);
+  }
+  // Fallback: in-memory dedup (single-instance mode)
   if (processedEvents.has(eventId)) {
     return false;
   }
@@ -52,7 +68,7 @@ app.message(async ({ message, body }) => {
 
   // Deduplicate
   const eventId = body.event_id;
-  if (!markProcessed(eventId)) return;
+  if (!(await markProcessed(eventId))) return;
 
   const slackUserId = message.user;
   const channelId = message.channel;
@@ -118,6 +134,25 @@ app.message(async ({ message, body }) => {
       // If injection failed (session just closed), fall through to normal flow
       logger.info({ threadKey }, "[follow-up] injection failed, falling through to new session");
       await slack.removeReaction(channelId, messageTs, "eyes").catch(() => {});
+    }
+  }
+
+  // Cross-instance follow-up routing: if no local session but Redis knows the owner
+  if (threadTs && isRedisEnabled()) {
+    const owner = await getSessionOwner(buildThreadKey(channelId, threadTs));
+    if (owner && owner.instanceId !== getInstanceId()) {
+      // Session lives on another instance — forward via pub/sub
+      logger.info({ threadKey: buildThreadKey(channelId, threadTs), targetInstance: owner.instanceId }, "[follow-up] forwarding to remote instance");
+      await slack.addReaction(channelId, messageTs, "eyes").catch(() => {});
+      await publishFollowUp(owner.instanceId, {
+        threadKey: buildThreadKey(channelId, threadTs),
+        sessionId: owner.sessionId,
+        slackUserId,
+        text,
+        files,
+        messageTs,
+      });
+      return;
     }
   }
 
@@ -248,11 +283,35 @@ async function start() {
     logger.info("[jobs] Scheduled jobs disabled (set ENABLE_SCHEDULED_JOBS=true to enable)");
   }
 
+  // Phase 2: Redis-based scaling
+  if (isRedisEnabled()) {
+    startHeartbeatLoop();
+    subscribeFollowUps(async (payload: FollowUpPayload) => {
+      const { threadKey, sessionId, slackUserId, text, files, messageTs } = payload;
+      const running = getRunningSession(threadKey);
+      if (running) {
+        await injectFollowUp(threadKey, sessionId, slackUserId, text, files as SlackFile[], messageTs);
+      } else {
+        logger.warn({ threadKey, sessionId }, "[redis] received follow-up but no local session");
+      }
+    });
+    logger.info({ instanceId: getInstanceId() }, "[redis] scaling enabled");
+  }
+
   await app.start();
   logger.info(
-    { jobs: jobsEnabled ? "on" : "off", activeSessions: getActiveSessionCount() },
+    { jobs: jobsEnabled ? "on" : "off", activeSessions: await getActiveSessionCount() },
     "Switchboard Agent Worker running (socket mode)",
   );
+}
+
+// Graceful shutdown
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, async () => {
+    logger.info({ signal }, "shutting down");
+    await shutdownRedis();
+    process.exit(0);
+  });
 }
 
 start().catch((err) => {

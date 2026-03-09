@@ -1,6 +1,7 @@
 import * as db from "./db.js";
 import { executeScheduledRun } from "./scheduled-execution.js";
 import { logger } from "./logger.js";
+import { isRedisEnabled, tryAcquireSchedulerLock, releaseSchedulerLock } from "./redis.js";
 
 // ---------------------------------------------------------------------------
 // Schedule polling loop
@@ -48,12 +49,19 @@ export function stopScheduler(): void {
 // ---------------------------------------------------------------------------
 
 async function pollDueSchedules(): Promise<void> {
-  const schedules = await db.claimDueSchedules();
-  if (schedules.length === 0) return;
+  // In multi-instance mode, only the lock holder polls
+  if (isRedisEnabled()) {
+    const acquired = await tryAcquireSchedulerLock();
+    if (!acquired) return;
+  }
 
-  logger.info({ count: schedules.length }, "[scheduler] Claimed due schedule(s)");
+  try {
+    const schedules = await db.claimDueSchedules();
+    if (schedules.length === 0) return;
 
-  for (const schedule of schedules) {
+    logger.info({ count: schedules.length }, "[scheduler] Claimed due schedule(s)");
+
+    for (const schedule of schedules) {
     // Create a run row as 'running' (not 'pending') so pollPendingRuns won't claim it
     try {
       const now = new Date().toISOString();
@@ -97,6 +105,11 @@ async function pollDueSchedules(): Promise<void> {
       await db.recomputeNextRunAt(schedule.id, schedule.cron_expression, schedule.timezone);
     }
   }
+  } finally {
+    if (isRedisEnabled()) {
+      await releaseSchedulerLock();
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -104,12 +117,18 @@ async function pollDueSchedules(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function pollPendingRuns(): Promise<void> {
-  const claimed = await db.claimPendingRuns();
-  if (claimed.length === 0) return;
+  if (isRedisEnabled()) {
+    const acquired = await tryAcquireSchedulerLock();
+    if (!acquired) return;
+  }
 
-  logger.info({ count: claimed.length }, "[scheduler] Claimed pending run(s)");
+  try {
+    const claimed = await db.claimPendingRuns();
+    if (claimed.length === 0) return;
 
-  for (const row of claimed) {
+    logger.info({ count: claimed.length }, "[scheduler] Claimed pending run(s)");
+
+    for (const row of claimed) {
     const schedule = {
       id: row.schedule_id,
       name: row.schedule_name,
@@ -150,6 +169,11 @@ async function pollPendingRuns(): Promise<void> {
         logger.error({ err: innerErr, runId: row.run_id }, "[scheduler] Failed to mark pending run as failed");
       }
     });
+  }
+  } finally {
+    if (isRedisEnabled()) {
+      await releaseSchedulerLock();
+    }
   }
 }
 
