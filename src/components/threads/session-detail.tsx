@@ -100,7 +100,7 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
     }
   };
 
-  const handleRespond = async (message: string) => {
+  const handleRespond = async (message: string, files: File[] = []) => {
     const optimistic: ThreadMessage = {
       id: `temp-${Date.now()}`,
       sessionId: session.id,
@@ -112,11 +112,23 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
     setMessages((prev) => [...prev, optimistic]);
 
     try {
-      await fetch(`/api/threads/${session.id}/respond`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
-      });
+      if (files.length > 0) {
+        const formData = new FormData();
+        formData.append("message", message);
+        for (const file of files) {
+          formData.append("files", file);
+        }
+        await fetch(`/api/threads/${session.id}/respond`, {
+          method: "POST",
+          body: formData,
+        });
+      } else {
+        await fetch(`/api/threads/${session.id}/respond`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+      }
       onAction();
     } catch {
       /* ignore */

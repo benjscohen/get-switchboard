@@ -23,18 +23,48 @@ export async function POST(
       return NextResponse.json({ error: "Session is not accepting input" }, { status: 400 });
     }
 
-    // Parse and validate request body
-    const body = await request.json();
-    const { message } = body as { message?: string };
+    // Parse request — support both JSON and FormData
+    let message: string;
+    let files: File[] = [];
+    const contentType = request.headers.get("content-type") ?? "";
 
-    if (!message || typeof message !== "string" || !message.trim()) {
-      return NextResponse.json({ error: "message is required" }, { status: 400 });
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      message = (formData.get("message") as string) ?? "";
+      files = formData.getAll("files") as File[];
+    } else {
+      const body = await request.json();
+      message = typeof body.message === "string" ? body.message : "";
+    }
+
+    if (!message.trim() && files.length === 0) {
+      return NextResponse.json({ error: "message or files required" }, { status: 400 });
+    }
+
+    // Upload files to storage
+    const fileAttachments: { name: string; storagePath: string; mimeType: string }[] = [];
+    for (const file of files) {
+      const storagePath = `${id}/uploads/${crypto.randomUUID()}-${file.name}`;
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const { error: uploadErr } = await supabaseAdmin.storage
+        .from("session-files")
+        .upload(storagePath, buffer, { contentType: file.type });
+
+      if (!uploadErr) {
+        fileAttachments.push({ name: file.name, storagePath, mimeType: file.type });
+      }
     }
 
     // Done sessions need a 'resume' command (no running in-memory process);
     // idle sessions use 'respond' (session is alive in the registry).
     const isDone = ["completed", "failed", "timeout"].includes(status);
     const command = isDone ? "resume" : "respond";
+
+    const payload: Record<string, unknown> = { message: message.trim() };
+    if (fileAttachments.length > 0) payload.fileAttachments = fileAttachments;
+
+    const metadata: Record<string, unknown> = { source: "web", userId: auth.userId };
+    if (fileAttachments.length > 0) metadata.fileAttachments = fileAttachments;
 
     // Insert command, user message, and optionally reactivate session
     const [commandResult, messageResult, ...rest] = await Promise.all([
@@ -43,7 +73,7 @@ export async function POST(
         .insert({
           session_id: id,
           command,
-          payload: { message },
+          payload,
           status: "pending",
           created_by: auth.userId,
         }),
@@ -52,8 +82,8 @@ export async function POST(
         .insert({
           session_id: id,
           role: "user",
-          content: message,
-          metadata: { source: "web", userId: auth.userId },
+          content: message.trim(),
+          metadata,
         }),
       ...(isDone
         ? [

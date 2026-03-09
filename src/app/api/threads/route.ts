@@ -72,8 +72,19 @@ export async function POST(request: NextRequest) {
   if (!auth.authenticated) return auth.response;
 
   try {
-    const body = await request.json();
-    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    // Parse request — support both JSON and FormData
+    let prompt: string;
+    let files: File[] = [];
+    const contentType = request.headers.get("content-type") ?? "";
+
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      prompt = ((formData.get("prompt") as string) ?? "").trim();
+      files = formData.getAll("files") as File[];
+    } else {
+      const body = await request.json();
+      prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    }
 
     if (!prompt) {
       return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
@@ -108,18 +119,38 @@ export async function POST(request: NextRequest) {
 
     const sessionId = session.id;
 
-    // 2. Insert user message + start command in parallel
+    // 2. Upload files to storage
+    const fileAttachments: { name: string; storagePath: string; mimeType: string }[] = [];
+    for (const file of files) {
+      const storagePath = `${sessionId}/uploads/${crypto.randomUUID()}-${file.name}`;
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const { error: uploadErr } = await supabaseAdmin.storage
+        .from("session-files")
+        .upload(storagePath, buffer, { contentType: file.type });
+
+      if (!uploadErr) {
+        fileAttachments.push({ name: file.name, storagePath, mimeType: file.type });
+      }
+    }
+
+    const metadata: Record<string, unknown> = { source: "web", userId: auth.userId };
+    if (fileAttachments.length > 0) metadata.fileAttachments = fileAttachments;
+
+    const payload: Record<string, unknown> = { prompt };
+    if (fileAttachments.length > 0) payload.fileAttachments = fileAttachments;
+
+    // 3. Insert user message + start command in parallel
     const [msgResult, cmdResult] = await Promise.all([
       supabaseAdmin.from("agent_messages").insert({
         session_id: sessionId,
         role: "user",
         content: prompt,
-        metadata: { source: "web", userId: auth.userId },
+        metadata,
       }),
       supabaseAdmin.from("session_commands").insert({
         session_id: sessionId,
         command: "start",
-        payload: { prompt },
+        payload,
         status: "pending",
         created_by: auth.userId,
       }),

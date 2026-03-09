@@ -255,10 +255,14 @@ export function MessageList({ messages, loading, sessionId }: MessageListProps) 
         const msg = group.message;
 
         if (msg.role === "user") {
+          const userFiles = (msg.metadata?.fileAttachments as FileAttachment[] | undefined) ?? [];
           return (
             <div key={msg.id} className="flex justify-end my-2">
               <div className="max-w-[80%] rounded-xl rounded-br-sm bg-accent/10 px-4 py-2.5 text-sm text-text-primary">
                 {msg.content}
+                {userFiles.length > 0 && (
+                  <FileAttachments files={userFiles} sessionId={sessionId} />
+                )}
               </div>
             </div>
           );
