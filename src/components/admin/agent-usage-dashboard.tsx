@@ -40,9 +40,10 @@ interface AgentUsageStats {
   }>;
   messagesOverTime: Array<{
     date: string;
-    user_msgs: number;
-    assistant_msgs: number;
-    tool_msgs: number;
+    total?: number;
+    user_msgs?: number;
+    assistant_msgs?: number;
+    tool_msgs?: number;
   }>;
   userBreakdown: Array<{
     userId: string;
@@ -203,8 +204,8 @@ export function AgentUsageDashboard() {
   })) ?? [];
 
   const messagesChartData = data?.messagesOverTime.map((d) => ({
-    ...d,
     date: formatDate(d.date),
+    total: d.total ?? ((d.user_msgs ?? 0) + (d.assistant_msgs ?? 0) + (d.tool_msgs ?? 0)),
   })) ?? [];
 
   // Loading skeleton
@@ -319,10 +320,7 @@ export function AgentUsageDashboard() {
                 <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#8898AA" }} />
                 <YAxis tick={{ fontSize: 12, fill: "#8898AA" }} allowDecimals={false} />
                 <Tooltip {...tooltipStyle} />
-                <Legend />
-                <Bar dataKey="user_msgs" name="User" stackId="a" fill={CHART_COLORS.accent} radius={[0, 0, 0, 0]} />
-                <Bar dataKey="assistant_msgs" name="Assistant" stackId="a" fill={CHART_COLORS.green} radius={[0, 0, 0, 0]} />
-                <Bar dataKey="tool_msgs" name="Tool" stackId="a" fill={CHART_COLORS.amber} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="total" name="Messages" fill={CHART_COLORS.accent} radius={[4, 4, 0, 0]} />
               </RechartsBarChart>
             </ResponsiveContainer>
           </div>

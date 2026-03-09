@@ -49,6 +49,7 @@ BEGIN
       SELECT count(*) FROM public.agent_messages m
       JOIN public.agent_sessions s ON s.id = m.session_id
       WHERE s.created_at >= since_date
+        AND m.role = 'user'
         AND (p_organization_id IS NULL OR s.organization_id = p_organization_id)
     ),
     'totalInputTokens', (
@@ -83,18 +84,17 @@ BEGIN
       ) t
     ), '[]'::json),
 
-    -- Messages over time (daily, by role)
+    -- Messages over time (daily total — user messages only)
     'messagesOverTime', COALESCE((
       SELECT json_agg(row_to_json(t) ORDER BY t.date)
       FROM (
         SELECT
           date(m.created_at) AS date,
-          count(*) FILTER (WHERE m.role = 'user') AS user_msgs,
-          count(*) FILTER (WHERE m.role = 'assistant') AS assistant_msgs,
-          count(*) FILTER (WHERE m.role = 'tool') AS tool_msgs
+          count(*) AS total
         FROM public.agent_messages m
         JOIN public.agent_sessions s ON s.id = m.session_id
         WHERE s.created_at >= since_date
+          AND m.role = 'user'
           AND (p_organization_id IS NULL OR s.organization_id = p_organization_id)
         GROUP BY date(m.created_at)
       ) t
@@ -116,6 +116,7 @@ BEGIN
           (SELECT count(*) FROM public.agent_messages m2
            JOIN public.agent_sessions s2 ON s2.id = m2.session_id
            WHERE s2.user_id = s.user_id
+             AND m2.role = 'user'
              AND s2.created_at >= since_date
              AND (p_organization_id IS NULL OR s2.organization_id = p_organization_id)
           ) AS "messageCount",

@@ -21,6 +21,14 @@ import type { SlackFile } from "./types.js";
 import { ensureChromeRunning, cleanupTabs, chromeMcpArgs } from "./chrome.js";
 import { logger } from "./logger.js";
 import { prepareWorkspaceForPlan } from "./plan-workspace.js";
+import {
+  isRedisEnabled,
+  registerSessionRedis,
+  unregisterSessionRedis,
+  incrementActiveCount,
+  decrementActiveCount,
+  getGlobalActiveCount,
+} from "./redis.js";
 
 // ---------------------------------------------------------------------------
 // Image / PDF / text detection helpers
@@ -42,8 +50,9 @@ function isPdfFile(file: SlackFile): boolean {
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_CONCURRENT_SESSIONS = 10;
+const MAX_CONCURRENT_SESSIONS = parseInt(process.env.MAX_CONCURRENT_SESSIONS || "25", 10);
 const TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
+const IDLE_TIMEOUT_MS = parseInt(process.env.IDLE_TIMEOUT_MS || String(10 * 60 * 1000), 10); // 10 minutes
 
 
 const TEXT_EXTENSIONS = new Set([
@@ -82,7 +91,10 @@ const ATTACHMENTS_DIR = "attachments"; // subdirectory in tempDir for inbound fi
 
 let activeCount = 0;
 
-export function getActiveSessionCount(): number {
+export async function getActiveSessionCount(): Promise<number> {
+  if (isRedisEnabled()) {
+    return getGlobalActiveCount();
+  }
   return activeCount;
 }
 
@@ -400,15 +412,26 @@ export async function processMessage(
     return;
   }
 
-  // 3. Check global concurrency limit
+  // 3. Check global concurrency limit (with wait queue)
   if (activeCount >= MAX_CONCURRENT_SESSIONS) {
-    await postErrorWithRetry({
-      channelId,
-      messageTs,
-      replyThread: threadTs || messageTs,
-      errorMessage: "I'm currently handling a lot of requests. Please try again in a moment.",
-    });
-    return;
+    logger.info({ activeCount, max: MAX_CONCURRENT_SESSIONS }, "at capacity — waiting for slot");
+    const WAIT_TIMEOUT_MS = 30_000;
+    const POLL_INTERVAL_MS = 2_000;
+    const waitStart = Date.now();
+    while (activeCount >= MAX_CONCURRENT_SESSIONS && Date.now() - waitStart < WAIT_TIMEOUT_MS) {
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+    if (activeCount >= MAX_CONCURRENT_SESSIONS) {
+      await postErrorWithRetry({
+        channelId,
+        messageTs,
+        replyThread: threadTs || messageTs,
+        errorMessage: `I'm at capacity right now (${activeCount}/${MAX_CONCURRENT_SESSIONS} active sessions). Please try again in a moment.`,
+        sessionId: undefined,
+      });
+      return;
+    }
+    logger.info({ activeCount, waitedMs: Date.now() - waitStart }, "slot opened — proceeding");
   }
 
   // 5. Look up previous Claude session for this thread (for resume)
@@ -463,6 +486,9 @@ export async function processMessage(
 
   // 8. Track concurrency
   activeCount++;
+  if (isRedisEnabled()) {
+    await incrementActiveCount();
+  }
 
   const replyThread = threadTs || messageTs;
 
@@ -647,6 +673,9 @@ export async function processMessage(
       killedByUser: false,
     };
     registerSession(threadKey, runningSession);
+    if (isRedisEnabled()) {
+      await registerSessionRedis(threadKey, sessionId);
+    }
     logger.info({ sessionId, threadKey, activeCount }, "session registered");
 
     // 14b. Ensure headless Chrome is running for browser tools
@@ -1100,6 +1129,7 @@ export async function processMessage(
                 await db.updateSession(sessionId, { status: "idle" });
                 // Clear the active-processing timeout — session is idle, not stuck
                 clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => abortController.abort(), IDLE_TIMEOUT_MS);
                 stream.openGate();
               } else {
                 // Error result — surface to user via retry flow
@@ -1325,8 +1355,14 @@ export async function processMessage(
     }).catch(() => {});
   } finally {
     activeCount--;
+    if (isRedisEnabled()) {
+      await decrementActiveCount();
+    }
     const threadKey = buildThreadKey(channelId, threadTs || messageTs);
     unregisterSession(threadKey);
+    if (isRedisEnabled()) {
+      await unregisterSessionRedis(threadKey);
+    }
     logger.info({ sessionId, threadKey, activeCount }, "session unregistered");
     // tempDir is stable (keyed by userId) and reused across sessions — no cleanup
 
