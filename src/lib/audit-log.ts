@@ -23,15 +23,19 @@ export const AuditEventType = {
   SKILL_UPDATED: "skill.updated",
   SKILL_DELETED: "skill.deleted",
   SKILL_ROLLED_BACK: "skill.rolled_back",
+  SKILL_SCOPE_CHANGED: "skill.scope_changed",
   // Agents
   AGENT_CREATED: "agent.created",
   AGENT_UPDATED: "agent.updated",
   AGENT_DELETED: "agent.deleted",
   AGENT_ROLLED_BACK: "agent.rolled_back",
+  AGENT_SCOPE_CHANGED: "agent.scope_changed",
   // Schedules
   SCHEDULE_CREATED: "schedule.created",
   SCHEDULE_UPDATED: "schedule.updated",
   SCHEDULE_DELETED: "schedule.deleted",
+  SCHEDULE_ROLLED_BACK: "schedule.rolled_back",
+  SCHEDULE_SCOPE_CHANGED: "schedule.scope_changed",
   // Teams
   TEAM_CREATED: "team.created",
   TEAM_UPDATED: "team.updated",

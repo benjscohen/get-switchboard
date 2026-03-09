@@ -34,6 +34,9 @@ export async function PATCH(
     content: body.content,
     arguments: body.arguments,
     enabled: body.enabled,
+    scope: body.scope,
+    teamId: body.teamId,
+    changeSummary: body.changeSummary,
   });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });

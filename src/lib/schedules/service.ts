@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { type ServiceResult, type ScopedAuth, slugify, canEditScopedEntity, canViewScopedEntity } from "@/lib/shared/scoped-entity";
+import { type ServiceResult, type ScopedAuth, slugify, canEditScopedEntity, canViewScopedEntity, buildScopeTransfer, getScopeInfo } from "@/lib/shared/scoped-entity";
 import { validateCron, getNextRun, describeCron } from "./cron-utils";
+import { logger } from "@/lib/logger";
 
 export { type ServiceResult, slugify } from "@/lib/shared/scoped-entity";
 
@@ -30,9 +31,34 @@ export interface ScheduleRow {
   last_run_status: string | null;
   run_count: number;
   consecutive_failures: number;
+  current_version: number;
   created_by: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface ScheduleVersionRow {
+  id: string;
+  schedule_id: string;
+  version: number;
+  name: string;
+  description: string | null;
+  cron_expression: string;
+  timezone: string;
+  prompt: string;
+  agent_id: string | null;
+  skill_id: string | null;
+  skill_arguments: Record<string, unknown>;
+  tool_access: string[];
+  model: string | null;
+  delivery: DeliveryTarget[];
+  enabled: boolean;
+  scope_type: string;
+  scope_id: string;
+  change_type: "created" | "updated" | "rolled_back" | "scope_changed";
+  changed_by: string;
+  change_summary: string | null;
+  created_at: string;
 }
 
 export interface ScheduleRunRow {
@@ -90,6 +116,9 @@ export interface UpdateScheduleInput {
   model?: string;
   delivery?: DeliveryTarget[];
   enabled?: boolean;
+  scope?: string;
+  teamId?: string;
+  changeSummary?: string;
 }
 
 // ── Helpers ──
@@ -122,10 +151,64 @@ export function formatSchedule(s: ScheduleRow) {
     lastRunStatus: s.last_run_status,
     runCount: s.run_count,
     consecutiveFailures: s.consecutive_failures,
+    currentVersion: s.current_version,
     createdBy: s.created_by,
     createdAt: s.created_at,
     updatedAt: s.updated_at,
   };
+}
+
+export function formatScheduleVersion(v: ScheduleVersionRow) {
+  return {
+    id: v.id,
+    scheduleId: v.schedule_id,
+    version: v.version,
+    name: v.name,
+    description: v.description,
+    cronExpression: v.cron_expression,
+    timezone: v.timezone,
+    prompt: v.prompt,
+    agentId: v.agent_id,
+    skillId: v.skill_id,
+    skillArguments: v.skill_arguments,
+    toolAccess: v.tool_access,
+    model: v.model,
+    delivery: v.delivery,
+    enabled: v.enabled,
+    scopeType: v.scope_type,
+    scopeId: v.scope_id,
+    changeType: v.change_type,
+    changedBy: v.changed_by,
+    changeSummary: v.change_summary,
+    createdAt: v.created_at,
+  };
+}
+
+function recordScheduleVersion(s: ScheduleRow, changeType: string, changedBy: string, changeSummary: string | null): void {
+  const scopeInfo = getScopeInfo(s);
+  supabaseAdmin.from("schedule_versions").insert({
+    schedule_id: s.id,
+    version: s.current_version,
+    name: s.name,
+    description: s.description,
+    cron_expression: s.cron_expression,
+    timezone: s.timezone,
+    prompt: s.prompt,
+    agent_id: s.agent_id,
+    skill_id: s.skill_id,
+    skill_arguments: s.skill_arguments,
+    tool_access: s.tool_access,
+    model: s.model,
+    delivery: s.delivery,
+    enabled: s.enabled,
+    scope_type: scopeInfo.scopeType,
+    scope_id: scopeInfo.scopeId,
+    change_type: changeType,
+    changed_by: changedBy,
+    change_summary: changeSummary,
+  }).then(({ error }) => {
+    if (error) logger.error({ errMessage: error.message }, "Failed to record schedule version");
+  });
 }
 
 export function formatRun(r: ScheduleRunRow) {
@@ -262,7 +345,10 @@ export async function createSchedule(auth: ScheduleAuth, input: CreateScheduleIn
     return { ok: false, error: error.message, status: 500 };
   }
 
-  return { ok: true, data: formatSchedule(schedule as ScheduleRow), status: 201 };
+  const created = schedule as ScheduleRow;
+  recordScheduleVersion(created, "created", auth.userId, null);
+
+  return { ok: true, data: formatSchedule(created), status: 201 };
 }
 
 export async function updateSchedule(auth: ScheduleAuth, id: string, input: UpdateScheduleInput): Promise<ServiceResult<ReturnType<typeof formatSchedule>>> {
@@ -274,7 +360,16 @@ export async function updateSchedule(auth: ScheduleAuth, id: string, input: Upda
     return { ok: false, error: "Forbidden", status: 403 };
   }
 
-  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  // Determine if this is a scope change
+  const currentScopeInfo = getScopeInfo(s);
+  const isScopeChange = input.scope !== undefined &&
+    input.scope !== currentScopeInfo.scopeType;
+
+  const newVersion = s.current_version + 1;
+  const updates: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    current_version: newVersion,
+  };
 
   if (input.name !== undefined) updates.name = input.name.trim();
   if (input.description !== undefined) updates.description = input.description?.trim() || null;
@@ -303,10 +398,136 @@ export async function updateSchedule(auth: ScheduleAuth, id: string, input: Upda
     updates.next_run_at = getNextRun(newCron, newTz).toISOString();
   }
 
+  // Handle scope transfer
+  let changeType: "updated" | "scope_changed" = "updated";
+  let changeSummary = input.changeSummary ?? null;
+  if (isScopeChange) {
+    const scopeResult = await buildScopeTransfer(auth, input.scope!, input.teamId);
+    if (!scopeResult.ok) return scopeResult as ServiceResult<never>;
+    Object.assign(updates, scopeResult.data);
+    changeType = "scope_changed";
+    changeSummary = changeSummary ?? `Scope changed from ${currentScopeInfo.scopeType} to ${input.scope}`;
+  }
+
   const { data: updated, error } = await supabaseAdmin.from("schedules").update(updates).eq("id", id).select("*").single();
+  if (error) {
+    if (error.code === "23505") {
+      return { ok: false, error: "A schedule with this slug already exists in the target scope", status: 409 };
+    }
+    return { ok: false, error: error.message, status: 500 };
+  }
+
+  const u = updated as ScheduleRow;
+  recordScheduleVersion(u, changeType, auth.userId, changeSummary);
+
+  return { ok: true, data: formatSchedule(u) };
+}
+
+// ── Version / Audit Functions ──
+
+export async function listScheduleVersions(
+  auth: ScheduleAuth,
+  scheduleId: string,
+): Promise<ServiceResult<ReturnType<typeof formatScheduleVersion>[]>> {
+  const { data: schedule } = await supabaseAdmin.from("schedules").select("*").eq("id", scheduleId).single();
+  if (!schedule) return { ok: false, error: "Schedule not found", status: 404 };
+
+  const s = schedule as ScheduleRow;
+  if (!canViewScopedEntity(auth, s)) {
+    return { ok: false, error: "Not found", status: 404 };
+  }
+
+  const { data: versions, error } = await supabaseAdmin
+    .from("schedule_versions")
+    .select("*")
+    .eq("schedule_id", scheduleId)
+    .order("version", { ascending: false });
+
+  if (error) return { ok: false, error: error.message, status: 500 };
+  return { ok: true, data: ((versions ?? []) as ScheduleVersionRow[]).map(formatScheduleVersion) };
+}
+
+export async function getScheduleVersion(
+  auth: ScheduleAuth,
+  scheduleId: string,
+  version: number,
+): Promise<ServiceResult<ReturnType<typeof formatScheduleVersion>>> {
+  const { data: schedule } = await supabaseAdmin.from("schedules").select("*").eq("id", scheduleId).single();
+  if (!schedule) return { ok: false, error: "Schedule not found", status: 404 };
+
+  const s = schedule as ScheduleRow;
+  if (!canViewScopedEntity(auth, s)) {
+    return { ok: false, error: "Not found", status: 404 };
+  }
+
+  const { data: ver, error } = await supabaseAdmin
+    .from("schedule_versions")
+    .select("*")
+    .eq("schedule_id", scheduleId)
+    .eq("version", version)
+    .single();
+
+  if (error || !ver) return { ok: false, error: "Version not found", status: 404 };
+  return { ok: true, data: formatScheduleVersion(ver as ScheduleVersionRow) };
+}
+
+export async function rollbackSchedule(
+  auth: ScheduleAuth,
+  scheduleId: string,
+  targetVersion: number,
+): Promise<ServiceResult<ReturnType<typeof formatSchedule>>> {
+  const { data: schedule } = await supabaseAdmin.from("schedules").select("*").eq("id", scheduleId).single();
+  if (!schedule) return { ok: false, error: "Schedule not found", status: 404 };
+
+  const s = schedule as ScheduleRow;
+  if (!(await canEditScopedEntity(auth, s))) {
+    return { ok: false, error: "Forbidden", status: 403 };
+  }
+
+  if (targetVersion === s.current_version) {
+    return { ok: false, error: "Already at this version", status: 400 };
+  }
+
+  const { data: ver } = await supabaseAdmin
+    .from("schedule_versions")
+    .select("*")
+    .eq("schedule_id", scheduleId)
+    .eq("version", targetVersion)
+    .single();
+
+  if (!ver) return { ok: false, error: "Version not found", status: 404 };
+
+  const newVersion = s.current_version + 1;
+
+  const { data: updated, error } = await supabaseAdmin
+    .from("schedules")
+    .update({
+      name: ver.name,
+      description: ver.description,
+      cron_expression: ver.cron_expression,
+      timezone: ver.timezone,
+      prompt: ver.prompt,
+      agent_id: ver.agent_id,
+      skill_id: ver.skill_id,
+      skill_arguments: ver.skill_arguments,
+      tool_access: ver.tool_access,
+      model: ver.model,
+      delivery: ver.delivery,
+      enabled: ver.enabled,
+      current_version: newVersion,
+      next_run_at: getNextRun(ver.cron_expression, ver.timezone).toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", scheduleId)
+    .select("*")
+    .single();
+
   if (error) return { ok: false, error: error.message, status: 500 };
 
-  return { ok: true, data: formatSchedule(updated as ScheduleRow) };
+  const u = updated as ScheduleRow;
+  recordScheduleVersion(u, "rolled_back", auth.userId, `Rolled back to version ${targetVersion}`);
+
+  return { ok: true, data: formatSchedule(u) };
 }
 
 export async function deleteSchedule(auth: ScheduleAuth, id: string): Promise<ServiceResult<{ ok: true }>> {

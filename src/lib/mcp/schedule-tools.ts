@@ -10,11 +10,15 @@ import {
   resumeSchedule,
   triggerSchedule,
   listScheduleRuns,
+  listScheduleVersions,
+  getScheduleVersion,
+  rollbackSchedule,
 } from "@/lib/schedules/service";
 import type { DeliveryTarget } from "@/lib/schedules/service";
 import type { ToolMeta } from "./tool-filtering";
 import { withToolLogging } from "./tool-logging";
 import { getFullMcpAuth, ok, err } from "./types";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 const TOOL_DESCRIPTION = `Manage scheduled agent runs. Schedules trigger agents on a cron schedule and deliver results to Slack or files.
 
@@ -28,6 +32,9 @@ Operations:
   resume    — Resume a paused schedule (resets failure count)
   trigger   — Manually run a schedule now (great for testing)
   history   — View execution history for a schedule
+  versions  — View version history for a schedule
+  version   — View a specific version snapshot
+  rollback  — Rollback a schedule to a previous version
 
 Scope:
   "user"         — Only you can see/use it
@@ -60,6 +67,7 @@ export function registerScheduleTools(
       operation: z.enum([
         "list", "get", "create", "update", "delete",
         "pause", "resume", "trigger", "history",
+        "versions", "version", "rollback",
       ]).describe("Operation to perform."),
       id: z.string().optional()
         .describe("Schedule UUID. Required for: get, update, delete, pause, resume, trigger, history."),
@@ -100,6 +108,8 @@ export function registerScheduleTools(
         .describe("Enable/disable the schedule. Only used with 'update'."),
       limit: z.number().optional()
         .describe("Number of history entries to return (default 20). Only used with 'history'."),
+      version: z.number().optional()
+        .describe("Version number (for 'version' to view a specific version, for 'rollback' as target)."),
     },
     withToolLogging("manage_schedules", "platform", async (args, extra) => {
       if (args.operation === "list") {
@@ -186,6 +196,16 @@ export function registerScheduleTools(
 
           if (!result.ok) return err(result.error);
 
+          logAuditEvent({
+            organizationId: auth.organizationId,
+            actorId: auth.userId,
+            eventType: AuditEventType.SCHEDULE_CREATED,
+            resourceType: "schedule",
+            resourceId: result.data.id,
+            description: `Created schedule "${result.data.name}" (${args.scope}) via MCP`,
+            metadata: { name: result.data.name, scope: args.scope, cron: args.cron },
+          });
+
           return ok({
             ...result.data,
             tip: `Schedule created! Next run: ${result.data.nextRunAt}. Use 'trigger' to test it now, or 'history' to view past runs.`,
@@ -208,16 +228,42 @@ export function registerScheduleTools(
             model: args.model,
             delivery: args.delivery as DeliveryTarget[] | undefined,
             enabled: args.enabled,
+            scope: args.scope,
+            teamId: args.team_id,
           });
 
           if (!result.ok) return err(result.error);
-          return ok({ ...result.data, tip: "Schedule updated." });
+
+          const isScopeChange = args.scope !== undefined;
+          logAuditEvent({
+            organizationId: auth.organizationId,
+            actorId: auth.userId,
+            eventType: isScopeChange ? AuditEventType.SCHEDULE_SCOPE_CHANGED : AuditEventType.SCHEDULE_UPDATED,
+            resourceType: "schedule",
+            resourceId: args.id,
+            description: isScopeChange
+              ? `Schedule scope changed to ${args.scope} via MCP`
+              : `Updated schedule via MCP`,
+            metadata: { name: args.name, scope: args.scope, version: result.data.currentVersion },
+          });
+
+          return ok({ ...result.data, tip: `Schedule updated (v${result.data.currentVersion}).` });
         }
 
         case "delete": {
           if (!args.id) return err("Missing required field: id (schedule UUID).\n\nUse operation 'list' to find schedule IDs.");
           const result = await deleteSchedule(auth, args.id);
           if (!result.ok) return err(result.error);
+
+          logAuditEvent({
+            organizationId: auth.organizationId,
+            actorId: auth.userId,
+            eventType: AuditEventType.SCHEDULE_DELETED,
+            resourceType: "schedule",
+            resourceId: args.id,
+            description: `Deleted schedule via MCP`,
+          });
+
           return ok({ deleted: true, tip: "Schedule deleted." });
         }
 
@@ -252,6 +298,45 @@ export function registerScheduleTools(
           }
 
           return ok({ runs: result.data, count: result.data.length });
+        }
+
+        case "versions": {
+          if (!args.id) return err("Missing required field: id (schedule UUID).\n\nUse operation 'list' to find schedule IDs.");
+          const result = await listScheduleVersions(auth, args.id);
+          if (!result.ok) return err(result.error);
+          return ok(result.data);
+        }
+
+        case "version": {
+          if (!args.id || args.version === undefined) {
+            return err("Missing required fields: id, version.\n\nUse 'versions' to see available versions for a schedule.");
+          }
+          const result = await getScheduleVersion(auth, args.id, args.version);
+          if (!result.ok) return err(result.error);
+          return ok(result.data);
+        }
+
+        case "rollback": {
+          if (!args.id || args.version === undefined) {
+            return err("Missing required fields: id, version.\n\nUse 'versions' to see available versions for a schedule.");
+          }
+          const result = await rollbackSchedule(auth, args.id, args.version);
+          if (!result.ok) return err(result.error);
+
+          logAuditEvent({
+            organizationId: auth.organizationId,
+            actorId: auth.userId,
+            eventType: AuditEventType.SCHEDULE_ROLLED_BACK,
+            resourceType: "schedule",
+            resourceId: args.id,
+            description: `Rolled back schedule to version ${args.version} via MCP`,
+            metadata: { targetVersion: args.version, newVersion: result.data.currentVersion },
+          });
+
+          return ok({
+            ...result.data,
+            tip: `Rolled back to version ${args.version}. Now at v${result.data.currentVersion}.`,
+          });
         }
       }
     })

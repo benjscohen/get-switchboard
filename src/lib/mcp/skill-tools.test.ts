@@ -2,6 +2,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/supabase/admin", () => ({ supabaseAdmin: {} }));
 vi.mock("@/lib/usage-log", () => ({ logUsage: vi.fn() }));
+vi.mock("@/lib/audit-log", () => ({
+  logAuditEvent: vi.fn(),
+  AuditEventType: {
+    SKILL_CREATED: "skill.created",
+    SKILL_UPDATED: "skill.updated",
+    SKILL_DELETED: "skill.deleted",
+    SKILL_ROLLED_BACK: "skill.rolled_back",
+    SKILL_SCOPE_CHANGED: "skill.scope_changed",
+  },
+}));
 vi.mock("@/lib/skills/service", () => ({
   listSkills: vi.fn(),
   createSkill: vi.fn(),

@@ -40,6 +40,9 @@ export async function PATCH(
     toolAccess: body.toolAccess,
     model: body.model,
     enabled: body.enabled,
+    scope: body.scope,
+    teamId: body.teamId,
+    changeSummary: body.changeSummary,
   });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });

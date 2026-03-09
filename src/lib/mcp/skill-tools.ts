@@ -18,6 +18,7 @@ import {
 import type { ToolMeta } from "./tool-filtering";
 import { withToolLogging } from "./tool-logging";
 import { getFullMcpAuth, ok, err } from "./types";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export function registerSkillTools(
   server: McpServer,
@@ -138,6 +139,17 @@ export function registerSkillTools(
           });
 
           if (!result.ok) return err(result.error);
+
+          logAuditEvent({
+            organizationId: auth.organizationId,
+            actorId: auth.userId,
+            eventType: AuditEventType.SKILL_CREATED,
+            resourceType: "skill",
+            resourceId: result.data.id,
+            description: `Created skill "${result.data.name}" (${args.scope}) via MCP`,
+            metadata: { name: result.data.name, scope: args.scope, slug: result.data.slug },
+          });
+
           return ok(JSON.stringify(result.data, null, 2) + "\n\nNote: This skill will be available as an MCP prompt after server restart.");
         }
 
@@ -150,9 +162,25 @@ export function registerSkillTools(
             content: args.content,
             arguments: args.arguments,
             enabled: args.enabled,
+            scope: args.scope,
+            teamId: args.team_id,
           });
 
           if (!result.ok) return err(result.error);
+
+          const isScopeChange = result.data.scope !== undefined && args.scope !== undefined;
+          logAuditEvent({
+            organizationId: auth.organizationId,
+            actorId: auth.userId,
+            eventType: isScopeChange ? AuditEventType.SKILL_SCOPE_CHANGED : AuditEventType.SKILL_UPDATED,
+            resourceType: "skill",
+            resourceId: args.id,
+            description: isScopeChange
+              ? `Skill scope changed to ${args.scope} via MCP`
+              : `Updated skill via MCP`,
+            metadata: { name: args.name, scope: args.scope, version: result.data.currentVersion },
+          });
+
           return ok(JSON.stringify(result.data, null, 2) + "\n\nNote: MCP prompt changes take effect after server restart.");
         }
 
@@ -162,6 +190,16 @@ export function registerSkillTools(
           const result = await deleteSkillService(auth, args.id);
 
           if (!result.ok) return err(result.error);
+
+          logAuditEvent({
+            organizationId: auth.organizationId,
+            actorId: auth.userId,
+            eventType: AuditEventType.SKILL_DELETED,
+            resourceType: "skill",
+            resourceId: args.id,
+            description: `Deleted skill via MCP`,
+          });
+
           return ok("Skill deleted successfully.");
         }
 
@@ -190,6 +228,17 @@ export function registerSkillTools(
 
           const result = await rollbackSkill(auth, args.id, args.version);
           if (!result.ok) return err(result.error);
+
+          logAuditEvent({
+            organizationId: auth.organizationId,
+            actorId: auth.userId,
+            eventType: AuditEventType.SKILL_ROLLED_BACK,
+            resourceType: "skill",
+            resourceId: args.id,
+            description: `Rolled back skill to version ${args.version} via MCP`,
+            metadata: { targetVersion: args.version, newVersion: result.data.currentVersion },
+          });
+
           return ok(JSON.stringify(result.data, null, 2) + "\n\nRollback applied. MCP prompt changes take effect after server restart.");
         }
 

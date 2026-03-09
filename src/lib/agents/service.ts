@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { upsertEmbeddings, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore } from "@/lib/embeddings";
-import { type ServiceResult, type ScopedAuth, slugify, canEditScopedEntity, canViewScopedEntity } from "@/lib/shared/scoped-entity";
+import { type ServiceResult, type ScopedAuth, slugify, canEditScopedEntity, canViewScopedEntity, buildScopeTransfer, getScopeInfo } from "@/lib/shared/scoped-entity";
 import { normalizeToolAccess } from "@/lib/agents/tool-access-utils";
 import { DEFAULT_AGENT_TEMPLATES, type AgentTemplate } from "@/lib/agents/templates";
 import { logger } from "@/lib/logger";
@@ -38,7 +38,7 @@ export interface AgentVersionRow {
   tool_access: string[];
   model: string | null;
   enabled: boolean;
-  change_type: "created" | "updated" | "rolled_back";
+  change_type: "created" | "updated" | "rolled_back" | "scope_changed";
   changed_by: string;
   change_summary: string | null;
   created_at: string;
@@ -64,6 +64,9 @@ export interface UpdateAgentInput {
   toolAccess?: string[];
   model?: string;
   enabled?: boolean;
+  scope?: string;
+  teamId?: string;
+  changeSummary?: string;
 }
 
 // ── Helpers ──
@@ -279,6 +282,8 @@ export async function createAgent(auth: AgentAuth, input: CreateAgentInput): Pro
 
   const a = agent as AgentRow;
 
+  const scopeInfo = getScopeInfo(a);
+
   // Record version 1
   const { error: versionError } = await supabaseAdmin.from("agent_versions").insert({
     agent_id: a.id,
@@ -291,6 +296,8 @@ export async function createAgent(auth: AgentAuth, input: CreateAgentInput): Pro
     enabled: a.enabled,
     change_type: "created",
     changed_by: auth.userId,
+    scope_type: scopeInfo.scopeType,
+    scope_id: scopeInfo.scopeId,
   });
   if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record agent version");
 
@@ -313,6 +320,11 @@ export async function updateAgent(auth: AgentAuth, id: string, input: UpdateAgen
     return { ok: false, error: "Forbidden", status: 403 };
   }
 
+  // Determine if this is a scope change
+  const currentScopeInfo = getScopeInfo(a);
+  const isScopeChange = input.scope !== undefined &&
+    input.scope !== currentScopeInfo.scopeType;
+
   // Early return if no meaningful fields changed
   if (
     input.name === undefined &&
@@ -320,7 +332,8 @@ export async function updateAgent(auth: AgentAuth, id: string, input: UpdateAgen
     input.instructions === undefined &&
     input.toolAccess === undefined &&
     input.model === undefined &&
-    input.enabled === undefined
+    input.enabled === undefined &&
+    !isScopeChange
   ) {
     return { ok: true, data: formatAgent(a) };
   }
@@ -337,6 +350,17 @@ export async function updateAgent(auth: AgentAuth, id: string, input: UpdateAgen
   if (input.model !== undefined) updates.model = input.model?.trim() || null;
   if (input.enabled !== undefined) updates.enabled = input.enabled;
 
+  // Handle scope transfer
+  let changeType: "updated" | "scope_changed" = "updated";
+  let changeSummary = input.changeSummary ?? null;
+  if (isScopeChange) {
+    const scopeResult = await buildScopeTransfer(auth, input.scope!, input.teamId);
+    if (!scopeResult.ok) return scopeResult as ServiceResult<never>;
+    Object.assign(updates, scopeResult.data);
+    changeType = "scope_changed";
+    changeSummary = changeSummary ?? `Scope changed from ${currentScopeInfo.scopeType} to ${input.scope}`;
+  }
+
   const { data: updated, error } = await supabaseAdmin
     .from("agents")
     .update(updates)
@@ -345,10 +369,14 @@ export async function updateAgent(auth: AgentAuth, id: string, input: UpdateAgen
     .single();
 
   if (error) {
+    if (error.code === "23505") {
+      return { ok: false, error: "An agent with this slug already exists in the target scope", status: 409 };
+    }
     return { ok: false, error: error.message, status: 500 };
   }
 
   const u = updated as AgentRow;
+  const newScopeInfo = getScopeInfo(u);
 
   // Record new version
   const { error: versionError } = await supabaseAdmin.from("agent_versions").insert({
@@ -360,8 +388,11 @@ export async function updateAgent(auth: AgentAuth, id: string, input: UpdateAgen
     tool_access: u.tool_access,
     model: u.model,
     enabled: u.enabled,
-    change_type: "updated",
+    change_type: changeType,
     changed_by: auth.userId,
+    change_summary: changeSummary,
+    scope_type: newScopeInfo.scopeType,
+    scope_id: newScopeInfo.scopeId,
   });
   if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record agent version");
 
@@ -486,6 +517,9 @@ export async function rollbackAgent(
 
   if (error) return { ok: false, error: error.message, status: 500 };
 
+  const u = updated as AgentRow;
+  const rollbackScopeInfo = getScopeInfo(u);
+
   const { error: versionError } = await supabaseAdmin.from("agent_versions").insert({
     agent_id: agentId,
     version: newVersion,
@@ -498,12 +532,14 @@ export async function rollbackAgent(
     change_type: "rolled_back",
     changed_by: auth.userId,
     change_summary: `Rolled back to version ${targetVersion}`,
+    scope_type: rollbackScopeInfo.scopeType,
+    scope_id: rollbackScopeInfo.scopeId,
   });
   if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record agent version");
 
-  queueAgentEmbedding(updated as AgentRow);
+  queueAgentEmbedding(u);
 
-  return { ok: true, data: formatAgent(updated as AgentRow) };
+  return { ok: true, data: formatAgent(u) };
 }
 
 // ── Search ──

@@ -21,6 +21,7 @@ import type { ToolMeta } from "./tool-filtering";
 import { withToolLogging } from "./tool-logging";
 import { getFullMcpAuth, ok, err } from "./types";
 import { getFullCatalog } from "@/lib/integrations/catalog";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 const TOOL_DESCRIPTION = `Manage reusable AI agent configurations. Agents become MCP prompts that any team member can load with /agent:<name>.
 
@@ -230,6 +231,16 @@ export function registerAgentTools(
 
           const data = result.data;
           const promptName = `agent:${data.scope === "organization" ? "org" : data.scope}:${data.slug}`;
+
+          logAuditEvent({
+            organizationId: auth.organizationId,
+            actorId: auth.userId,
+            eventType: AuditEventType.AGENT_CREATED,
+            resourceType: "agent",
+            resourceId: data.id,
+            description: `Created agent "${data.name}" (${data.scope}) via MCP`,
+            metadata: { name: data.name, scope: data.scope, slug: data.slug },
+          });
           return ok({
             ...data,
             promptName,
@@ -292,12 +303,28 @@ export function registerAgentTools(
             toolAccess: args.tool_access,
             model: args.model,
             enabled: args.enabled,
+            scope: args.scope,
+            teamId: args.team_id,
           });
 
           if (!result.ok) return err(result.error);
 
           const data = result.data;
           const promptName = `agent:${data.scope === "organization" ? "org" : data.scope}:${data.slug}`;
+
+          const isScopeChange = args.scope !== undefined;
+          logAuditEvent({
+            organizationId: auth.organizationId,
+            actorId: auth.userId,
+            eventType: isScopeChange ? AuditEventType.AGENT_SCOPE_CHANGED : AuditEventType.AGENT_UPDATED,
+            resourceType: "agent",
+            resourceId: args.id,
+            description: isScopeChange
+              ? `Agent scope changed to ${args.scope} via MCP`
+              : `Updated agent via MCP`,
+            metadata: { name: args.name, scope: args.scope, version: data.currentVersion },
+          });
+
           return ok({
             ...data,
             promptName,
@@ -315,6 +342,16 @@ export function registerAgentTools(
 
           const result = await deleteAgentService(auth, args.id);
           if (!result.ok) return err(result.error);
+
+          logAuditEvent({
+            organizationId: auth.organizationId,
+            actorId: auth.userId,
+            eventType: AuditEventType.AGENT_DELETED,
+            resourceType: "agent",
+            resourceId: args.id,
+            description: `Deleted agent via MCP`,
+          });
+
           return ok({ deleted: true, tip: "Agent deleted. The MCP prompt will be removed after server restart." });
         }
 
@@ -367,6 +404,17 @@ export function registerAgentTools(
 
           const data = result.data;
           const promptName = `agent:${data.scope === "organization" ? "org" : data.scope}:${data.slug}`;
+
+          logAuditEvent({
+            organizationId: auth.organizationId,
+            actorId: auth.userId,
+            eventType: AuditEventType.AGENT_ROLLED_BACK,
+            resourceType: "agent",
+            resourceId: args.id!,
+            description: `Rolled back agent to version ${args.version} via MCP`,
+            metadata: { targetVersion: args.version, newVersion: data.currentVersion },
+          });
+
           return ok({
             ...data,
             promptName,

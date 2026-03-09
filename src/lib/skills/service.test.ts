@@ -8,6 +8,27 @@ vi.mock("@/lib/supabase/admin", () => ({
   },
 }));
 
+const mockLoggerError = vi.fn();
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    error: (...args: unknown[]) => mockLoggerError(...args),
+    warn: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+vi.mock("@/lib/embeddings", () => ({
+  upsertEmbeddings: vi.fn().mockResolvedValue(undefined),
+  getQueryEmbedding: vi.fn().mockResolvedValue([]),
+  extractKeywords: vi.fn().mockReturnValue([]),
+  searchByEmbedding: vi.fn().mockResolvedValue([]),
+  keywordScore: vi.fn().mockReturnValue(0),
+  hybridScore: vi.fn().mockReturnValue(0),
+  EMBEDDING_TABLES: {
+    skills: { table: "skill_embeddings", idColumn: "skill_id", rpc: "search_skill_embeddings", filterParam: "skill_ids" },
+  },
+}));
+
 import {
   listSkillVersions,
   getSkillVersion,
@@ -201,7 +222,6 @@ describe("updateSkill — version error logging", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("logs but does not fail when version insert errors", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const skill = makeSkill({ user_id: "user-1", organization_id: null });
     const updatedSkill = { ...skill, name: "Updated", current_version: 2, updated_at: "2024-01-02" };
 
@@ -221,6 +241,9 @@ describe("updateSkill — version error logging", () => {
         }));
         return chain;
       }
+      if (table === "skill_embeddings") {
+        return chainMock();
+      }
       return chainMock();
     });
 
@@ -228,16 +251,79 @@ describe("updateSkill — version error logging", () => {
     const result = await updateSkill(auth, "skill-1", { name: "Updated" });
 
     expect(result.ok).toBe(true);
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "Failed to record skill version:",
-      "version insert failed",
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      expect.objectContaining({ errMessage: "version insert failed" }),
+      "Failed to record skill version",
     );
-
-    consoleSpy.mockRestore();
   });
 });
 
-// ── 2d: Empty update guard ──
+// ── 2d: Scope change support ──
+
+describe("updateSkill — scope change", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("detects scope change and includes scope in update", async () => {
+    const skill = makeSkill({ user_id: "user-1", organization_id: null });
+    const updatedSkill = { ...skill, organization_id: "org-1", user_id: null, current_version: 2 };
+
+    let skillCallCount = 0;
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "skills") {
+        skillCallCount++;
+        if (skillCallCount === 1) return chainMock({ data: skill, error: null });
+        return chainMock({ data: updatedSkill, error: null });
+      }
+      if (table === "teams") {
+        return chainMock({ data: { id: "team-1" }, error: null });
+      }
+      return chainMock({ data: null, error: null });
+    });
+
+    const auth: SkillAuth = { userId: "user-1", organizationId: "org-1", orgRole: "admin" };
+    const result = await updateSkill(auth, "skill-1", { scope: "organization" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.scope).toBe("organization");
+    }
+  });
+
+  it("rejects scope change to organization when not admin", async () => {
+    const skill = makeSkill({ user_id: "user-1", organization_id: null });
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "skills") return chainMock({ data: skill, error: null });
+      return chainMock();
+    });
+
+    const auth: SkillAuth = { userId: "user-1", organizationId: "org-1", orgRole: "member" };
+    const result = await updateSkill(auth, "skill-1", { scope: "organization" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(403);
+      expect(result.error).toContain("org admins");
+    }
+  });
+
+  it("treats same scope as no-change (no-op)", async () => {
+    const skill = makeSkill({ user_id: "user-1", organization_id: null });
+    const skillChain = chainMock({ data: skill, error: null });
+    mockFrom.mockReturnValue(skillChain);
+
+    const auth: SkillAuth = { userId: "user-1", organizationId: "org-1", orgRole: "member" };
+    const result = await updateSkill(auth, "skill-1", { scope: "user" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // same scope = no-op, version not bumped
+      expect(result.data.currentVersion).toBe(1);
+    }
+  });
+});
+
+// ── 2e: Empty update guard ──
 
 describe("updateSkill — empty update guard", () => {
   beforeEach(() => vi.clearAllMocks());
