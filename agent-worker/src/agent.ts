@@ -20,6 +20,7 @@ import type { PlanDecision, PlanPhase } from "./session-registry.js";
 import type { SlackFile } from "./types.js";
 import { ensureChromeRunning, cleanupTabs, chromeMcpArgs } from "./chrome.js";
 import { logger } from "./logger.js";
+import { prepareWorkspaceForPlan } from "./plan-workspace.js";
 
 // ---------------------------------------------------------------------------
 // Image / PDF / text detection helpers
@@ -582,6 +583,44 @@ export async function processMessage(
       }
     }
 
+    // 12d. Plan mode workspace preparation — clone repos before entering read-only plan mode
+    if (planModeRequested && tempDir) {
+      try {
+        logger.info({ sessionId }, "[plan-prep] Starting workspace preparation");
+        const statusMsg = await slack.postMessage(
+          channelId,
+          ":mag: Setting up workspace for planning...",
+          replyThread,
+        );
+
+        const prepResult = await prepareWorkspaceForPlan({
+          prompt: effectivePrompt,
+          cwd: tempDir,
+          model: lookup.model,
+          mcpServerUrl: process.env.SWITCHBOARD_MCP_URL!.trim(),
+          agentKey: lookup.agentKey,
+        });
+
+        if (prepResult.success) {
+          logger.info({ sessionId, summary: prepResult.summary?.slice(0, 200) }, "[plan-prep] Workspace ready");
+          await slack.updateMessage(
+            channelId,
+            statusMsg,
+            `:white_check_mark: Workspace ready — now planning...`,
+          ).catch(() => {});
+        } else {
+          logger.warn({ sessionId, error: prepResult.error }, "[plan-prep] Workspace prep failed (non-fatal)");
+          await slack.updateMessage(
+            channelId,
+            statusMsg,
+            `:warning: Workspace setup had issues — planning with available context...`,
+          ).catch(() => {});
+        }
+      } catch (err) {
+        logger.error({ err, sessionId }, "[plan-prep] Workspace prep threw (non-fatal)");
+      }
+    }
+
     // 13. Set up timeout via AbortController
     const abortController = new AbortController();
     let timeoutId = setTimeout(() => abortController.abort(), TIMEOUT_MS);
@@ -610,7 +649,8 @@ export async function processMessage(
     logger.info({ sessionId, threadKey, activeCount }, "session registered");
 
     // 14b. Ensure headless Chrome is running for browser tools
-    if (process.env.ENABLE_CHROME_MCP !== "false") {
+    const chromeMcpEnabled = process.env.ENABLE_CHROME_MCP !== "false" && lookup.chromeMcpEnabled !== false;
+    if (chromeMcpEnabled) {
       try {
         await ensureChromeRunning();
       } catch (err) {
@@ -634,7 +674,7 @@ export async function processMessage(
         name: lookup.name,
         email: lookup.email,
         slackUserId,
-      });
+      }, { planMode: planModeRequested });
 
       const buildQueryOptions = () => {
         const baseOptions = {
@@ -649,7 +689,7 @@ export async function processMessage(
                 Authorization: `Bearer ${lookup.agentKey}`,
               },
             },
-            ...(process.env.ENABLE_CHROME_MCP !== "false" ? {
+            ...(chromeMcpEnabled ? {
               "chrome-devtools": {
                 type: "stdio" as const,
                 command: "chrome-devtools-mcp",
@@ -929,7 +969,28 @@ export async function processMessage(
 
                 // Upload FILE_UPLOAD directive files first (independent of text post)
                 if (uploads.length > 0) {
-                  await uploadExtractedFiles(uploads, channelId, replyThread, sessionId);
+                  const uploadResults = await uploadExtractedFiles(uploads, channelId, replyThread, sessionId);
+
+                  // Post visible warning to user for any failed uploads
+                  const failures = uploadResults.filter((r) => !r.success);
+                  if (failures.length > 0) {
+                    const failureMsg = failures.map((f) => `• ${f.filename}: ${f.error}`).join("\n");
+                    try {
+                      await slack.postMessage(
+                        channelId,
+                        `:warning: Failed to upload ${failures.length} file(s):\n${failureMsg}`,
+                        replyThread,
+                      );
+                    } catch (warnErr) {
+                      logger.error({ err: warnErr, sessionId }, "failed to post upload failure warning");
+                    }
+                  }
+
+                  // Log summary
+                  const successes = uploadResults.filter((r) => r.success);
+                  if (successes.length > 0) {
+                    logger.info({ sessionId, count: successes.length, files: successes.map((s) => s.filename) }, "FILE_UPLOAD summary");
+                  }
                 }
 
                 // Post text to Slack (skip if response was only FILE_UPLOAD directives)
@@ -1247,7 +1308,7 @@ export async function processMessage(
     // tempDir is stable (keyed by userId) and reused across sessions — no cleanup
 
     // Clean up Chrome tabs opened during this session
-    if (process.env.ENABLE_CHROME_MCP !== "false") {
+    if (chromeMcpEnabled) {
       cleanupTabs().catch((err) => {
         logger.error({ err, sessionId }, "Chrome tab cleanup failed");
       });

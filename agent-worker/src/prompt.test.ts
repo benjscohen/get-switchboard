@@ -405,6 +405,25 @@ describe("FILE_UPLOAD instructions", () => {
     expect(prompt).toContain("on its own line");
   });
 
+  it("instructs to verify file exists before referencing", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("VERIFY");
+    expect(prompt).toContain("ls -la");
+  });
+
+  it("warns about common formatting mistakes", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("Common mistakes");
+    expect(prompt).toContain("Do NOT indent");
+    expect(prompt).toContain("Do NOT put FILE_UPLOAD inside a markdown code block");
+  });
+
+  it("mentions upload failure warnings are shown to user", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("upload fails");
+    expect(prompt).toContain("warning");
+  });
+
   it("explains directive lines are stripped from message", () => {
     const prompt = buildSystemPrompt(null);
     expect(prompt).toContain("strips the directive");
@@ -419,6 +438,73 @@ describe("FILE_UPLOAD instructions", () => {
     const prompt = buildSystemPrompt(null);
     expect(prompt).not.toContain('"output/"');
     expect(prompt).not.toContain("output/ directory");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plan mode workspace instructions
+// ---------------------------------------------------------------------------
+
+describe("plan mode workspace instructions", () => {
+  it("includes plan mode instructions when planMode is true", () => {
+    const prompt = buildSystemPrompt(null, undefined, undefined, { planMode: true });
+    expect(prompt).toContain("PLAN MODE");
+    expect(prompt).toContain("pre-configured");
+  });
+
+  it("does not include plan mode instructions when planMode is false", () => {
+    const prompt = buildSystemPrompt(null, undefined, undefined, { planMode: false });
+    expect(prompt).not.toContain("PLAN MODE");
+  });
+
+  it("does not include plan mode instructions when options not provided", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).not.toContain("PLAN MODE");
+  });
+
+  it("instructs to use Glob, Grep, and Read for codebase exploration", () => {
+    const prompt = buildSystemPrompt(null, undefined, undefined, { planMode: true });
+    expect(prompt).toContain("Glob");
+    expect(prompt).toContain("Grep");
+    expect(prompt).toContain("Read");
+  });
+
+  it("instructs to reference specific files and functions in the plan", () => {
+    const prompt = buildSystemPrompt(null, undefined, undefined, { planMode: true });
+    expect(prompt).toContain("specific files");
+    expect(prompt).toContain("functions");
+  });
+
+  it("warns not to skip exploration", () => {
+    const prompt = buildSystemPrompt(null, undefined, undefined, { planMode: true });
+    expect(prompt).toContain("Do NOT skip the exploration step");
+  });
+
+  it("mentions repos have already been cloned", () => {
+    const prompt = buildSystemPrompt(null, undefined, undefined, { planMode: true });
+    expect(prompt).toContain("already been cloned");
+  });
+
+  it("places plan mode instructions after feedback instructions", () => {
+    const prompt = buildSystemPrompt(null, undefined, undefined, { planMode: true });
+    const feedback = prompt.indexOf("submit_feedback");
+    const planMode = prompt.indexOf("PLAN MODE");
+    expect(feedback).toBeGreaterThan(-1);
+    expect(planMode).toBeGreaterThan(-1);
+    expect(feedback).toBeLessThan(planMode);
+  });
+
+  it("works alongside all other options (claudeMd, identity, date)", () => {
+    const prompt = buildSystemPrompt(
+      "Custom rules",
+      "2026-03-09",
+      { name: "Benj", email: "benj@test.com" },
+      { planMode: true },
+    );
+    expect(prompt).toContain("PLAN MODE");
+    expect(prompt).toContain("Custom rules");
+    expect(prompt).toContain("Name: Benj");
+    expect(prompt).toContain("daily/2026-03-09");
   });
 });
 
