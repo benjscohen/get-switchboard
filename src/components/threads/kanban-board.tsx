@@ -8,7 +8,7 @@ interface KanbanBoardProps {
 
 export function KanbanBoard({ data, onSelectSession }: KanbanBoardProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div className="grid grid-cols-3 gap-6 h-full">
       <KanbanColumn
         title="Active"
         color="accent"
@@ -16,7 +16,7 @@ export function KanbanBoard({ data, onSelectSession }: KanbanBoardProps) {
         onSelect={onSelectSession}
       />
       <KanbanColumn
-        title="Waiting on User"
+        title="Waiting"
         color="yellow"
         sessions={data.waiting}
         onSelect={onSelectSession}

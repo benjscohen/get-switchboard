@@ -72,7 +72,6 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
   };
 
   const handleRespond = async (message: string) => {
-    // Optimistically add the message
     const optimistic: ThreadMessage = {
       id: `temp-${Date.now()}`,
       sessionId: session.id,
@@ -96,11 +95,11 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
   };
 
   return (
-    <div className="border border-border rounded-xl bg-bg-card flex flex-col max-h-[calc(100vh-180px)]">
+    <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 border-b border-border p-6">
+      <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-1.5">
             <Badge variant={config.variant}>{config.detailLabel}</Badge>
             {session.model && (
               <span className="text-xs text-text-tertiary">
@@ -113,7 +112,7 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
               </span>
             )}
           </div>
-          <p className="text-sm text-text-primary line-clamp-2">
+          <p className="text-sm text-text-primary line-clamp-2 leading-snug">
             {session.prompt}
           </p>
           <p className="mt-1 text-xs text-text-tertiary">
@@ -122,26 +121,7 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
               ` · Completed ${new Date(session.completedAt).toLocaleString()}`}
           </p>
         </div>
-        <button
-          onClick={onClose}
-          className="text-text-tertiary hover:text-text-primary p-1"
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Action bar */}
-      {(isActive || isIdle) && (
-        <div className="flex items-center gap-3 border-b border-border px-6 py-3">
+        <div className="flex items-center gap-2 shrink-0">
           {isActive && (
             <Button
               variant="secondary"
@@ -162,11 +142,28 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
               {completing ? "Completing..." : "Mark Done"}
             </Button>
           )}
-          {session.error && (
-            <span className="text-xs text-red-500 truncate">
-              {session.error}
-            </span>
-          )}
+          <button
+            onClick={onClose}
+            className="text-text-tertiary hover:text-text-primary p-1 rounded-md hover:bg-bg-hover transition-colors"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Error bar */}
+      {session.error && (
+        <div className="border-b border-red-200 bg-red-50 px-6 py-2">
+          <p className="text-xs text-red-600">{session.error}</p>
         </div>
       )}
 
@@ -175,7 +172,7 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
         <MessageList messages={messages} loading={loadingMsgs} />
       </div>
 
-      {/* Input (idle or done sessions) */}
+      {/* Input */}
       {(isIdle || isDone) && <MessageInput onSend={handleRespond} />}
     </div>
   );

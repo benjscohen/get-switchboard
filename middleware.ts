@@ -33,7 +33,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Protect /tools and /admin routes
-  if (!user && (pathname.startsWith("/tools") || pathname.startsWith("/agents") || pathname.startsWith("/workspace") || pathname.startsWith("/admin") || pathname.startsWith("/settings"))) {
+  if (!user && (pathname.startsWith("/tools") || pathname.startsWith("/agents") || pathname.startsWith("/threads") || pathname.startsWith("/workspace") || pathname.startsWith("/admin") || pathname.startsWith("/settings"))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

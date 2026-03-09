@@ -15,6 +15,12 @@ const dotColors = {
   green: "bg-green-500",
 };
 
+const bgColors = {
+  accent: "bg-accent/5",
+  yellow: "bg-yellow-500/5",
+  green: "bg-green-500/5",
+};
+
 export function KanbanColumn({
   title,
   color,
@@ -22,17 +28,19 @@ export function KanbanColumn({
   onSelect,
 }: KanbanColumnProps) {
   return (
-    <div className="flex flex-col">
-      <div className="mb-3 flex items-center gap-2">
+    <div className={cn("flex flex-col rounded-xl", bgColors[color])}>
+      <div className="flex items-center gap-2 px-4 py-3">
         <span className={cn("h-2 w-2 rounded-full", dotColors[color])} />
-        <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
-        <span className="text-xs text-text-tertiary">({sessions.length})</span>
+        <h2 className="text-sm font-medium text-text-primary">{title}</h2>
+        <span className="ml-auto rounded-full bg-bg px-2 py-0.5 text-xs font-medium text-text-tertiary">
+          {sessions.length}
+        </span>
       </div>
-      <div className="space-y-3 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
+      <div className="flex-1 space-y-2 overflow-y-auto px-3 pb-3">
         {sessions.length === 0 ? (
-          <p className="py-8 text-center text-sm text-text-tertiary">
-            No sessions
-          </p>
+          <div className="flex items-center justify-center py-12">
+            <p className="text-sm text-text-tertiary">No sessions</p>
+          </div>
         ) : (
           sessions.map((s) => (
             <SessionCard

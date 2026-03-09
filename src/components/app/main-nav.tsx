@@ -80,7 +80,7 @@ function NavDropdownItem({ link, isActive }: { link: NavLink; isActive: boolean 
         {link.label}
       </Link>
       <div
-        className={`absolute left-0 top-full pt-1 transition-opacity duration-100 ${
+        className={`absolute left-0 top-full z-50 pt-1 transition-opacity duration-100 ${
           open ? "opacity-100 visible" : "opacity-0 invisible"
         }`}
       >

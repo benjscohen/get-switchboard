@@ -1,9 +1,6 @@
 "use client";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { formatRelativeTime } from "@/lib/format-time";
 import { modelLabel } from "@/lib/agent-models";
-import { STATUS_CONFIG } from "@/lib/threads/status-config";
 import type { ThreadSession } from "@/lib/threads/types";
 
 interface SessionCardProps {
@@ -12,42 +9,44 @@ interface SessionCardProps {
 }
 
 export function SessionCard({ session, onClick }: SessionCardProps) {
-  const config = STATUS_CONFIG[session.status] ?? STATUS_CONFIG.pending;
   const isActive =
     session.status === "pending" || session.status === "running";
-  const truncatedPrompt =
-    session.prompt.length > 120
-      ? session.prompt.slice(0, 120) + "..."
+  const prompt =
+    session.prompt.length > 100
+      ? session.prompt.slice(0, 100) + "..."
       : session.prompt;
   const timeStr = session.completedAt
     ? formatRelativeTime(session.completedAt)
     : formatRelativeTime(session.updatedAt);
 
   return (
-    <Card className="cursor-pointer p-4" onClick={onClick}>
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-1.5">
+    <button
+      onClick={onClick}
+      className="w-full text-left rounded-lg border border-border bg-bg p-3.5 shadow-sm transition-all duration-150 hover:shadow-md hover:border-border-hover"
+    >
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-1.5 text-xs text-text-tertiary min-w-0 truncate">
           {isActive && (
-            <span className="relative flex h-2 w-2">
+            <span className="relative flex h-1.5 w-1.5 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
             </span>
           )}
-          <Badge variant={config.variant}>{config.label}</Badge>
+          {session.model && <span>{modelLabel(session.model)}</span>}
+          {session.totalTurns != null && (
+            <>
+              <span className="text-border">&middot;</span>
+              <span>{session.totalTurns} turns</span>
+            </>
+          )}
         </div>
-        <span className="text-xs text-text-tertiary whitespace-nowrap">
+        <span className="text-[11px] text-text-tertiary whitespace-nowrap shrink-0">
           {timeStr}
         </span>
       </div>
-      <p className="text-sm text-text-primary mb-2 line-clamp-3">
-        {truncatedPrompt}
+      <p className="text-sm text-text-primary leading-snug line-clamp-2">
+        {prompt}
       </p>
-      <div className="flex items-center gap-3 text-xs text-text-tertiary">
-        {session.model && <span>{modelLabel(session.model)}</span>}
-        {session.totalTurns != null && (
-          <span>{session.totalTurns} turns</span>
-        )}
-      </div>
-    </Card>
+    </button>
   );
 }

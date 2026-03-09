@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAuthProfile } from "@/lib/auth-cache";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { Container } from "@/components/ui/container";
 import { UserMenu } from "@/components/app/user-menu";
 import { MainNav } from "@/components/app/main-nav";
@@ -14,6 +15,21 @@ export default async function AppLayout({
   if (!auth) redirect("/login");
 
   const { user, profile } = auth;
+  const orgId = profile?.organization_id as string | undefined;
+
+  // Check if org has the Slack agent bot enabled (active agent key)
+  let hasAgentBot = false;
+  if (orgId) {
+    const { data: agentKey } = await supabaseAdmin
+      .from("api_keys")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("is_agent_key", true)
+      .is("revoked_at", null)
+      .limit(1)
+      .maybeSingle();
+    hasAgentBot = !!agentKey;
+  }
 
   const displayName = profile?.name ?? user.user_metadata?.full_name ?? user.email ?? "";
   const avatarUrl = profile?.image ?? user.user_metadata?.avatar_url ?? null;
@@ -28,7 +44,7 @@ export default async function AppLayout({
       <header className="border-b border-border bg-bg/80 backdrop-blur-xl">
         <Container className="flex h-14 items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/tools" className="flex items-center gap-2 text-lg font-bold">
+            <Link href={hasAgentBot ? "/threads" : "/tools"} className="flex items-center gap-2 text-lg font-bold">
               <svg
                 width="20"
                 height="20"
@@ -80,12 +96,13 @@ export default async function AppLayout({
               </span>
             )}
             <MainNav links={[
+              ...(hasAgentBot ? [{ href: "/threads", label: "Threads" }] : []),
               { href: "/tools", label: "Tools" },
               { href: "/agents", label: "Agents", children: [
                 { href: "/agents", label: "Agents" },
                 { href: "/agents/schedules", label: "Schedules" },
               ]},
-              { href: "/threads", label: "Threads" },
+              ...(!hasAgentBot ? [{ href: "/threads", label: "Threads" }] : []),
               { href: "/workspace", label: "Workspace", children: [
                 { href: "/workspace/files", label: "Files" },
                 { href: "/workspace/vault", label: "Vault" },
