@@ -37,7 +37,7 @@ Syntax rules:
 - NEVER describe the file without including FILE_UPLOAD — the user will not receive it
 
 Common mistakes to avoid:
-- Do NOT put FILE_UPLOAD inside a markdown code block (\`\`\`)
+- Do NOT put FILE_UPLOAD inside a markdown code block (\\\`\\\`\\\`)
 - Do NOT indent the FILE_UPLOAD line
 - Do NOT use a bullet point or list item before FILE_UPLOAD
 - Do NOT wrap FILE_UPLOAD in any formatting
@@ -110,6 +110,24 @@ If you encounter a bug, confusing behavior, or a missing capability while using 
 `.trim();
 
 // ---------------------------------------------------------------------------
+// Plan mode instructions
+// ---------------------------------------------------------------------------
+
+const PLAN_MODE_WORKSPACE_INSTRUCTIONS = `
+You are in PLAN MODE. Your workspace has been pre-configured — any repositories or codebases referenced in the user's request have already been cloned into your working directory.
+
+BEFORE creating your plan, you MUST thoroughly explore the codebase using your read-only tools:
+- Use Glob to discover file structure (e.g., "**/*.ts", "src/**/*")
+- Use Grep to search for relevant code patterns, functions, and types
+- Use Read to examine specific files in detail
+- Use Task (sub-agent) for complex multi-step research
+
+Your plan should be grounded in the ACTUAL code you find — reference specific files, functions, types, and line numbers. A plan without codebase exploration is not acceptable.
+
+Do NOT skip the exploration step. The quality of your plan depends on understanding the real codebase structure.
+`.trim();
+
+// ---------------------------------------------------------------------------
 // Extract /CLAUDE.md from file list
 // ---------------------------------------------------------------------------
 
@@ -136,6 +154,7 @@ export function buildSystemPrompt(
   claudeMdContent: string | null,
   todayDate?: string,
   userIdentity?: UserIdentity,
+  options?: { planMode?: boolean },
 ): string {
   const sections: string[] = [];
 
@@ -176,6 +195,10 @@ export function buildSystemPrompt(
   }
 
   sections.push(FEEDBACK_INSTRUCTIONS);
+
+  if (options?.planMode) {
+    sections.push(PLAN_MODE_WORKSPACE_INSTRUCTIONS);
+  }
 
   return sections.join("\n\n");
 }
