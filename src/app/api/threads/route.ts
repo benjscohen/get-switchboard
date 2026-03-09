@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { SessionStatus, ThreadSession, KanbanData } from "@/lib/threads/types";
@@ -61,6 +61,81 @@ export async function GET() {
     return NextResponse.json(data);
   } catch (err) {
     console.error("Failed to fetch threads:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+const MAX_PROMPT_LENGTH = 10_000;
+
+export async function POST(request: NextRequest) {
+  const auth = await requireAuth();
+  if (!auth.authenticated) return auth.response;
+
+  try {
+    const body = await request.json();
+    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+
+    if (!prompt) {
+      return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
+    }
+    if (prompt.length > MAX_PROMPT_LENGTH) {
+      return NextResponse.json(
+        { error: `Prompt must be under ${MAX_PROMPT_LENGTH} characters` },
+        { status: 400 },
+      );
+    }
+
+    // 1. Create the agent session
+    const { data: session, error: sessionErr } = await supabaseAdmin
+      .from("agent_sessions")
+      .insert({
+        user_id: auth.userId,
+        organization_id: auth.organizationId,
+        slack_channel_id: "web",
+        slack_thread_ts: null,
+        slack_message_ts: null,
+        prompt,
+        model: null,
+        status: "pending",
+      })
+      .select("id")
+      .single();
+
+    if (sessionErr || !session) {
+      console.error("Failed to create session:", sessionErr);
+      return NextResponse.json({ error: "Failed to create thread" }, { status: 500 });
+    }
+
+    const sessionId = session.id;
+
+    // 2. Insert user message + start command in parallel
+    const [msgResult, cmdResult] = await Promise.all([
+      supabaseAdmin.from("agent_messages").insert({
+        session_id: sessionId,
+        role: "user",
+        content: prompt,
+        metadata: { source: "web", userId: auth.userId },
+      }),
+      supabaseAdmin.from("session_commands").insert({
+        session_id: sessionId,
+        command: "start",
+        payload: { prompt },
+        status: "pending",
+        created_by: auth.userId,
+      }),
+    ]);
+
+    if (msgResult.error) {
+      console.error("Failed to insert user message:", msgResult.error);
+    }
+    if (cmdResult.error) {
+      console.error("Failed to insert start command:", cmdResult.error);
+      return NextResponse.json({ error: "Failed to queue start command" }, { status: 500 });
+    }
+
+    return NextResponse.json({ id: sessionId }, { status: 201 });
+  } catch (err) {
+    console.error("Failed to create thread:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

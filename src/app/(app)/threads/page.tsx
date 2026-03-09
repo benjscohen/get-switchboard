@@ -3,11 +3,13 @@ import { useState, useEffect, useCallback } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SessionList } from "@/components/threads/session-list";
 import { SessionDetail } from "@/components/threads/session-detail";
-import type { KanbanData } from "@/lib/threads/types";
+import { ComposeThread } from "@/components/threads/compose-thread";
+import type { KanbanData, ThreadSession } from "@/lib/threads/types";
 
 export default function ThreadsPage() {
   const [data, setData] = useState<KanbanData | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [composing, setComposing] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
@@ -27,14 +29,14 @@ export default function ThreadsPage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Auto-select first session if none selected
+  // Auto-select first session if none selected and not composing
   useEffect(() => {
-    if (!selectedId && data) {
+    if (!selectedId && !composing && data) {
       const first =
         data.active[0] ?? data.waiting[0] ?? data.done[0] ?? null;
       if (first) setSelectedId(first.id);
     }
-  }, [data, selectedId]);
+  }, [data, selectedId, composing]);
 
   const allSessions = data
     ? [...data.active, ...data.waiting, ...data.done]
@@ -45,6 +47,38 @@ export default function ThreadsPage() {
     : null;
 
   const totalCount = allSessions.length;
+
+  const handleNewThread = () => {
+    setSelectedId(null);
+    setComposing(true);
+  };
+
+  const handleCreated = (id: string) => {
+    // Optimistically inject a placeholder into active
+    if (data) {
+      const placeholder: ThreadSession = {
+        id,
+        status: "pending",
+        prompt: "Starting...",
+        result: null,
+        error: null,
+        model: null,
+        totalTurns: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        completedAt: null,
+      };
+      setData({
+        ...data,
+        active: [placeholder, ...data.active],
+      });
+    }
+    setComposing(false);
+    setSelectedId(id);
+    fetchData();
+  };
+
+  const showTwoPanel = !loading && (totalCount > 0 || composing);
 
   return (
     <div className="flex h-[calc(100vh-57px)] flex-col">
@@ -58,6 +92,14 @@ export default function ThreadsPage() {
             </span>
           )}
         </div>
+        {!loading && (
+          <button
+            onClick={handleNewThread}
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent/90"
+          >
+            + New
+          </button>
+        )}
       </div>
 
       {/* Main content area */}
@@ -78,13 +120,19 @@ export default function ThreadsPage() {
               </div>
             </div>
           </div>
-        ) : !data || totalCount === 0 ? (
+        ) : !data || (!showTwoPanel && totalCount === 0) ? (
           <div className="flex flex-1 items-center justify-center">
             <div className="text-center">
               <p className="text-sm text-text-secondary">No threads yet</p>
               <p className="mt-1 text-xs text-text-tertiary">
-                Sessions will appear here when agents run
+                Start a new thread to have an agent work on something
               </p>
+              <button
+                onClick={handleNewThread}
+                className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90"
+              >
+                New Thread
+              </button>
             </div>
           </div>
         ) : (
@@ -94,13 +142,21 @@ export default function ThreadsPage() {
               <SessionList
                 data={data}
                 selectedId={selectedId}
-                onSelect={setSelectedId}
+                onSelect={(id) => {
+                  setComposing(false);
+                  setSelectedId(id);
+                }}
                 onAction={fetchData}
               />
             </div>
             {/* Detail panel */}
             <div className="flex-1 min-w-0">
-              {selectedSession ? (
+              {composing ? (
+                <ComposeThread
+                  onCreated={handleCreated}
+                  onCancel={() => setComposing(false)}
+                />
+              ) : selectedSession ? (
                 <SessionDetail
                   session={selectedSession}
                   onClose={() => setSelectedId(null)}

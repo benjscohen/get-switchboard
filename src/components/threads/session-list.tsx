@@ -144,28 +144,38 @@ export function SessionList({ data, selectedId, onSelect, onAction }: SessionLis
           )
         ) : (
           // Grouped view
-          sections.map(({ key, label, dot }) => {
-            const sessions = data[key];
-            if (sessions.length === 0) return null;
-            return (
-              <div key={key}>
-                <div className="sticky top-0 z-10 flex items-center gap-2 bg-bg px-4 py-2 border-b border-border">
-                  <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
-                  <span className="text-xs font-medium text-text-secondary">{label}</span>
-                  <span className="text-[11px] text-text-tertiary">{sessions.length}</span>
+          (() => {
+            const hasAny = sections.some(({ key }) => data[key].length > 0);
+            if (!hasAny) {
+              return (
+                <div className="flex items-center justify-center py-12">
+                  <p className="text-xs text-text-tertiary">No threads yet</p>
                 </div>
-                {sessions.map((s) => (
-                  <SessionRow
-                    key={s.id}
-                    session={s}
-                    selected={s.id === selectedId}
-                    onClick={() => onSelect(s.id)}
-                    onMarkDone={s.status === "idle" ? () => handleMarkDone(s.id) : undefined}
-                  />
-                ))}
-              </div>
-            );
-          })
+              );
+            }
+            return sections.map(({ key, label, dot }) => {
+              const sessions = data[key];
+              if (sessions.length === 0) return null;
+              return (
+                <div key={key}>
+                  <div className="sticky top-0 z-10 flex items-center gap-2 bg-bg px-4 py-2 border-b border-border">
+                    <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
+                    <span className="text-xs font-medium text-text-secondary">{label}</span>
+                    <span className="text-[11px] text-text-tertiary">{sessions.length}</span>
+                  </div>
+                  {sessions.map((s) => (
+                    <SessionRow
+                      key={s.id}
+                      session={s}
+                      selected={s.id === selectedId}
+                      onClick={() => onSelect(s.id)}
+                      onMarkDone={s.status === "idle" ? () => handleMarkDone(s.id) : undefined}
+                    />
+                  ))}
+                </div>
+              );
+            });
+          })()
         )}
       </div>
     </div>

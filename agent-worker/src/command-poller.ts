@@ -18,7 +18,7 @@ let intervalHandle: ReturnType<typeof setInterval> | null = null;
 interface SessionCommand {
   id: string;
   session_id: string;
-  command: "stop" | "respond" | "resume";
+  command: "stop" | "respond" | "resume" | "start";
   payload: Record<string, unknown> | null;
   status: string;
   created_by: string;
@@ -143,6 +143,36 @@ async function processCommand(command: SessionCommand): Promise<void> {
       logger.info(
         { sessionId: command.session_id, commandId: command.id, createdBy: command.created_by },
         "[command-poller] resume initiated",
+      );
+      break;
+    }
+
+    case "start": {
+      const session = await db.getSessionById(command.session_id);
+      if (!session || session.status !== "pending") {
+        logger.warn(
+          { sessionId: command.session_id, status: session?.status, commandId: command.id },
+          "[command-poller] start: session not found or not pending",
+        );
+        await markCommand(command.id, "failed");
+        return;
+      }
+
+      const lookup = await db.lookupUserById(session.user_id);
+      if (!lookup) {
+        logger.warn({ userId: session.user_id, commandId: command.id }, "[command-poller] start: user lookup failed");
+        await markCommand(command.id, "failed");
+        return;
+      }
+
+      await markCommand(command.id, "completed");
+      resumeSession(command.session_id, lookup, session.prompt).catch((err) => {
+        logger.error({ err, sessionId: command.session_id }, "[command-poller] start threw");
+      });
+
+      logger.info(
+        { sessionId: command.session_id, commandId: command.id, createdBy: command.created_by },
+        "[command-poller] start initiated",
       );
       break;
     }
