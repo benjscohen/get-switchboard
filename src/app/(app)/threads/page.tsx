@@ -56,16 +56,22 @@ export default function ThreadsPage() {
           ))}
         </div>
       ) : data ? (
-        <KanbanBoard data={data} onSelectSession={setSelectedId} />
+        <div className="flex gap-6">
+          <div className={selectedSession ? "w-1/3 shrink-0" : "w-full"}>
+            <KanbanBoard data={data} onSelectSession={setSelectedId} />
+          </div>
+          {selectedSession && (
+            <div className="flex-1 min-w-0">
+              <SessionDetail
+                session={selectedSession}
+                onClose={() => setSelectedId(null)}
+                onAction={fetchData}
+              />
+            </div>
+          )}
+        </div>
       ) : (
         <p className="text-text-secondary">Failed to load threads.</p>
-      )}
-      {selectedSession && (
-        <SessionDetail
-          session={selectedSession}
-          onClose={() => setSelectedId(null)}
-          onAction={fetchData}
-        />
       )}
     </Container>
   );

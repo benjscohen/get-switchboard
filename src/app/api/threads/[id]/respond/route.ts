@@ -13,12 +13,14 @@ export async function POST(
   const { id } = await params;
 
   try {
-    const access = await verifySessionAccess(id, auth.organizationId, "status");
+    const access = await verifySessionAccess(id, auth.organizationId, auth.userId, "status");
     if (!access.ok) return access.response;
 
-    // Only idle sessions accept responses
-    if (access.session.status !== "idle") {
-      return NextResponse.json({ error: "Session is not waiting for input" }, { status: 400 });
+    const status = access.session.status as string;
+    const allowedStatuses = ["idle", "completed", "failed", "timeout"];
+
+    if (!allowedStatuses.includes(status)) {
+      return NextResponse.json({ error: "Session is not accepting input" }, { status: 400 });
     }
 
     // Parse and validate request body
@@ -29,8 +31,11 @@ export async function POST(
       return NextResponse.json({ error: "message is required" }, { status: 400 });
     }
 
-    // Insert respond command and user message in parallel
-    const [commandResult, messageResult] = await Promise.all([
+    // If session is in a done state, reactivate it to idle
+    const isDone = ["completed", "failed", "timeout"].includes(status);
+
+    // Insert respond command, user message, and optionally reactivate session
+    const [commandResult, messageResult, ...rest] = await Promise.all([
       supabaseAdmin
         .from("session_commands")
         .insert({
@@ -48,10 +53,19 @@ export async function POST(
           content: message,
           metadata: { source: "web", userId: auth.userId },
         }),
+      ...(isDone
+        ? [
+            supabaseAdmin
+              .from("agent_sessions")
+              .update({ status: "idle", completed_at: null })
+              .eq("id", id),
+          ]
+        : []),
     ]);
 
     if (commandResult.error) throw commandResult.error;
     if (messageResult.error) throw messageResult.error;
+    if (rest[0]?.error) throw rest[0].error;
 
     return NextResponse.json({ ok: true });
   } catch (err) {

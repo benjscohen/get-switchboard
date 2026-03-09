@@ -8,19 +8,21 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 export async function verifySessionAccess(
   sessionId: string,
   organizationId: string,
+  userId: string,
   extraFields?: string,
 ): Promise<
   | { ok: true; session: Record<string, unknown> }
   | { ok: false; response: NextResponse }
 > {
   const fields = extraFields
-    ? `id, organization_id, ${extraFields}`
-    : "id, organization_id";
+    ? `id, organization_id, user_id, ${extraFields}`
+    : "id, organization_id, user_id";
 
   const { data, error } = await supabaseAdmin
     .from("agent_sessions")
     .select(fields)
     .eq("id", sessionId)
+    .eq("user_id", userId)
     .single();
 
   if (error || !data) {

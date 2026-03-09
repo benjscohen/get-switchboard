@@ -28,18 +28,21 @@ export async function GET() {
         .from("agent_sessions")
         .select("id, status, prompt, result, error, model, total_turns, created_at, updated_at, completed_at")
         .eq("organization_id", auth.organizationId)
+        .eq("user_id", auth.userId)
         .in("status", ["pending", "running"])
         .order("created_at", { ascending: false }),
       supabaseAdmin
         .from("agent_sessions")
         .select("id, status, prompt, result, error, model, total_turns, created_at, updated_at, completed_at")
         .eq("organization_id", auth.organizationId)
+        .eq("user_id", auth.userId)
         .eq("status", "idle")
         .order("updated_at", { ascending: false }),
       supabaseAdmin
         .from("agent_sessions")
         .select("id, status, prompt, result, error, model, total_turns, created_at, updated_at, completed_at")
         .eq("organization_id", auth.organizationId)
+        .eq("user_id", auth.userId)
         .in("status", ["completed", "failed", "timeout"])
         .order("completed_at", { ascending: false, nullsFirst: false })
         .limit(50),

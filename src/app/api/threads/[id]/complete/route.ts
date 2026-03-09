@@ -16,27 +16,23 @@ export async function POST(
     const access = await verifySessionAccess(id, auth.organizationId, auth.userId, "status");
     if (!access.ok) return access.response;
 
-    // Only active sessions can be stopped
-    if (!["pending", "running", "idle"].includes(access.session.status as string)) {
-      return NextResponse.json({ error: "Session is not active" }, { status: 400 });
+    if (access.session.status !== "idle") {
+      return NextResponse.json(
+        { error: "Only idle sessions can be marked as done" },
+        { status: 400 }
+      );
     }
 
-    // Insert stop command
-    const { error: insertError } = await supabaseAdmin
-      .from("session_commands")
-      .insert({
-        session_id: id,
-        command: "stop",
-        payload: {},
-        status: "pending",
-        created_by: auth.userId,
-      });
+    const { error } = await supabaseAdmin
+      .from("agent_sessions")
+      .update({ status: "completed", completed_at: new Date().toISOString() })
+      .eq("id", id);
 
-    if (insertError) throw insertError;
+    if (error) throw error;
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("Failed to stop session:", err);
+    console.error("Failed to complete session:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

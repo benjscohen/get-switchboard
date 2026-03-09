@@ -25,7 +25,7 @@ export async function GET(
   const { id } = await params;
 
   try {
-    const access = await verifySessionAccess(id, auth.organizationId);
+    const access = await verifySessionAccess(id, auth.organizationId, auth.userId);
     if (!access.ok) return access.response;
 
     // Build messages query
