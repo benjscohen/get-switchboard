@@ -17,6 +17,13 @@ export interface ExtractResult {
   uploads: FileUpload[];
 }
 
+export interface UploadResult {
+  path: string;
+  filename: string;
+  success: boolean;
+  error?: string;
+}
+
 /**
  * Extract FILE_UPLOAD:/path directives from agent response text.
  * Returns the cleaned text (directives stripped) and the list of file paths.
@@ -41,28 +48,43 @@ export function extractFileUploads(text: string): ExtractResult {
 
 /**
  * Upload extracted files to a Slack channel/thread.
- * Non-fatal: logs and continues if a file is missing or upload fails.
+ * Returns per-file results so callers can report failures to the user.
  */
 export async function uploadExtractedFiles(
   uploads: FileUpload[],
   channelId: string,
   threadTs?: string,
   sessionId?: string,
-): Promise<void> {
+): Promise<UploadResult[]> {
   const tag = sessionId ?? "?";
-  await Promise.allSettled(
-    uploads.map(async (upload) => {
+  const results = await Promise.allSettled(
+    uploads.map(async (upload): Promise<UploadResult> => {
       const filename = path.basename(upload.path);
       try {
+        // Verify the file exists and is readable before uploading
+        await fs.access(upload.path, fs.constants.R_OK);
         const content = await fs.readFile(upload.path);
+        if (content.length === 0) {
+          const msg = "File is empty (0 bytes)";
+          console.error(`[session ${tag}] FILE_UPLOAD failed for ${upload.path}: ${msg}`);
+          return { path: upload.path, filename, success: false, error: msg };
+        }
         await slack.uploadFile({ channelId, threadTs, filename, content, title: filename });
-        console.log(`[session ${tag}] uploaded FILE_UPLOAD: ${filename}`);
+        console.log(`[session ${tag}] uploaded FILE_UPLOAD: ${filename} (${content.length} bytes)`);
+        return { path: upload.path, filename, success: true };
       } catch (err) {
-        console.error(
-          `[session ${tag}] FILE_UPLOAD failed for ${upload.path}:`,
-          err instanceof Error ? err.message : err,
-        );
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[session ${tag}] FILE_UPLOAD failed for ${upload.path}: ${msg}`);
+        return { path: upload.path, filename, success: false, error: msg };
       }
     }),
   );
+
+  // Unwrap settled results (all are fulfilled since we catch internally)
+  return results.map((r) => (r.status === "fulfilled" ? r.value : {
+    path: "unknown",
+    filename: "unknown",
+    success: false,
+    error: r.status === "rejected" ? String(r.reason) : "Unknown error",
+  }));
 }

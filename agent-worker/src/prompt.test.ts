@@ -405,6 +405,25 @@ describe("FILE_UPLOAD instructions", () => {
     expect(prompt).toContain("on its own line");
   });
 
+  it("instructs to verify file exists before referencing", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("VERIFY");
+    expect(prompt).toContain("ls -la");
+  });
+
+  it("warns about common formatting mistakes", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("Common mistakes");
+    expect(prompt).toContain("Do NOT indent");
+    expect(prompt).toContain("Do NOT put FILE_UPLOAD inside a markdown code block");
+  });
+
+  it("mentions upload failure warnings are shown to user", () => {
+    const prompt = buildSystemPrompt(null);
+    expect(prompt).toContain("upload fails");
+    expect(prompt).toContain("warning");
+  });
+
   it("explains directive lines are stripped from message", () => {
     const prompt = buildSystemPrompt(null);
     expect(prompt).toContain("strips the directive");

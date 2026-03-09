@@ -7,7 +7,7 @@ import { fetchUserFiles, writeFilesToStableDir, findSessionFile } from "./files.
 import { extractClaudeMd, buildSystemPrompt } from "./prompt.js";
 import { buildErrorWithRetryBlocks, buildPlanApprovalBlocks, buildPlanApprovedBlocks, buildPlanRevisingBlocks } from "./slack-blocks.js";
 import { createMessageStream } from "./message-stream.js";
-import { extractFileUploads, uploadExtractedFiles } from "./file-uploads.js";
+import { extractFileUploads, uploadExtractedFiles, type UploadResult } from "./file-uploads.js";
 import { StreamingStatusUpdater, type StreamEventLike } from "./streaming.js";
 import { archiveWorkspace, restoreWorkspace } from "./workspace-storage.js";
 import {
@@ -904,10 +904,29 @@ export async function processMessage(
 
                 // Extract FILE_UPLOAD directives before formatting
                 const { cleanText, uploads } = extractFileUploads(text);
+                if (uploads.length > 0) {
+                  console.log(`[session ${sessionId}] FILE_UPLOAD: found ${uploads.length} directive(s): ${uploads.map((u) => u.path).join(", ")}`);
+                } else if (text.includes("FILE_UPLOAD")) {
+                  // The text mentions FILE_UPLOAD but regex didn't match — likely formatting issue
+                  console.warn(`[session ${sessionId}] FILE_UPLOAD: text contains "FILE_UPLOAD" but no directives matched. Text preview: ${JSON.stringify(text.slice(Math.max(0, text.indexOf("FILE_UPLOAD") - 50), text.indexOf("FILE_UPLOAD") + 100))}`);
+                }
 
                 // Upload FILE_UPLOAD directive files first (independent of text post)
+                let uploadResults: UploadResult[] = [];
                 if (uploads.length > 0) {
-                  await uploadExtractedFiles(uploads, channelId, replyThread, sessionId);
+                  uploadResults = await uploadExtractedFiles(uploads, channelId, replyThread, sessionId);
+                  // Report failures visibly to the user
+                  const failures = uploadResults.filter((r) => !r.success);
+                  if (failures.length > 0) {
+                    const failureMsg = failures
+                      .map((f) => `• ${f.filename}: ${f.error}`)
+                      .join("\n");
+                    await slack.postMessage(
+                      channelId,
+                      `:warning: Failed to upload ${failures.length} file(s):\n${failureMsg}`,
+                      replyThread,
+                    ).catch((err) => console.error(`[session ${sessionId}] failed to post upload error:`, err));
+                  }
                 }
 
                 // Post text to Slack (skip if response was only FILE_UPLOAD directives)
@@ -949,10 +968,13 @@ export async function processMessage(
                     }
                   } else {
                     console.log(`[session ${sessionId}] no text to post (file-only response)`);
+                    const uploadSummary = uploadResults.length > 0
+                      ? uploadResults.map((r) => r.success ? `[Uploaded ${r.filename}]` : `[Failed: ${r.filename} — ${r.error}]`).join("\n")
+                      : uploads.map((u) => `[Uploaded ${u.path}]`).join("\n");
                     await db.createMessage({
                       sessionId,
                       role: "assistant",
-                      content: uploads.map((u) => `[Uploaded ${u.path}]`).join("\n"),
+                      content: uploadSummary,
                       slackTs: null,
                       metadata: { turns: message.num_turns, cost: message.total_cost_usd },
                     });

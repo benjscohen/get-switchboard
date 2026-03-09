@@ -137,12 +137,16 @@ describe("uploadExtractedFiles", () => {
     const filePath = path.join(tmpDir, "poem.txt");
     await fs.writeFile(filePath, "Roses are red...");
 
-    await uploadExtractedFiles(
+    const results = await uploadExtractedFiles(
       [{ path: filePath }],
       "C123",
       "1234.5678",
       "sess-1",
     );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(true);
+    expect(results[0].filename).toBe("poem.txt");
 
     expect(slack.uploadFile).toHaveBeenCalledOnce();
     expect(slack.uploadFile).toHaveBeenCalledWith({
@@ -163,24 +167,26 @@ describe("uploadExtractedFiles", () => {
     await fs.writeFile(file1, "aaa");
     await fs.writeFile(file2, "bbb");
 
-    await uploadExtractedFiles(
+    const results = await uploadExtractedFiles(
       [{ path: file1 }, { path: file2 }],
       "C123",
     );
 
+    expect(results).toHaveLength(2);
+    expect(results.every((r) => r.success)).toBe(true);
     expect(slack.uploadFile).toHaveBeenCalledTimes(2);
     const filenames = vi.mocked(slack.uploadFile).mock.calls.map((c) => c[0].filename);
     expect(filenames).toContain("a.txt");
     expect(filenames).toContain("b.txt");
   });
 
-  it("continues if a file is missing (non-fatal)", async () => {
+  it("returns failure result for missing files (non-fatal)", async () => {
     const existing = path.join(tmpDir, "exists.txt");
     await fs.writeFile(existing, "ok");
 
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await uploadExtractedFiles(
+    const results = await uploadExtractedFiles(
       [
         { path: "/nonexistent/missing.txt" },
         { path: existing },
@@ -190,20 +196,33 @@ describe("uploadExtractedFiles", () => {
       "sess-2",
     );
 
-    // The existing file should still be uploaded
+    // Both results should be returned
+    expect(results).toHaveLength(2);
+
+    // Missing file should be a failure
+    const missingResult = results.find((r) => r.filename === "missing.txt");
+    expect(missingResult).toBeDefined();
+    expect(missingResult!.success).toBe(false);
+    expect(missingResult!.error).toBeDefined();
+
+    // Existing file should succeed
+    const existsResult = results.find((r) => r.filename === "exists.txt");
+    expect(existsResult).toBeDefined();
+    expect(existsResult!.success).toBe(true);
+
+    // The existing file should still be uploaded to Slack
     expect(slack.uploadFile).toHaveBeenCalledOnce();
     expect(vi.mocked(slack.uploadFile).mock.calls[0][0].filename).toBe("exists.txt");
 
     // Error should be logged for missing file
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining("FILE_UPLOAD failed for /nonexistent/missing.txt"),
-      expect.any(String),
     );
 
     consoleSpy.mockRestore();
   });
 
-  it("continues if Slack upload fails (non-fatal)", async () => {
+  it("returns failure result when Slack upload fails (non-fatal)", async () => {
     const filePath = path.join(tmpDir, "fail.txt");
     await fs.writeFile(filePath, "data");
     const filePath2 = path.join(tmpDir, "ok.txt");
@@ -215,25 +234,38 @@ describe("uploadExtractedFiles", () => {
 
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await uploadExtractedFiles(
+    const results = await uploadExtractedFiles(
       [{ path: filePath }, { path: filePath2 }],
       "C123",
       undefined,
       "sess-3",
     );
 
+    expect(results).toHaveLength(2);
+
+    // First file failed
+    const failResult = results.find((r) => r.filename === "fail.txt");
+    expect(failResult).toBeDefined();
+    expect(failResult!.success).toBe(false);
+    expect(failResult!.error).toContain("Slack API error");
+
+    // Second file succeeded
+    const okResult = results.find((r) => r.filename === "ok.txt");
+    expect(okResult).toBeDefined();
+    expect(okResult!.success).toBe(true);
+
     // Both should be attempted
     expect(slack.uploadFile).toHaveBeenCalledTimes(2);
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining("FILE_UPLOAD failed"),
-      expect.stringContaining("Slack API error"),
     );
 
     consoleSpy.mockRestore();
   });
 
-  it("handles empty uploads array", async () => {
-    await uploadExtractedFiles([], "C123");
+  it("returns empty array for empty uploads", async () => {
+    const results = await uploadExtractedFiles([], "C123");
+    expect(results).toEqual([]);
     expect(slack.uploadFile).not.toHaveBeenCalled();
   });
 
@@ -261,8 +293,45 @@ describe("uploadExtractedFiles", () => {
     const filePath = path.join(subDir, "deep-file.csv");
     await fs.writeFile(filePath, "a,b,c");
 
-    await uploadExtractedFiles([{ path: filePath }], "C123");
+    const results = await uploadExtractedFiles([{ path: filePath }], "C123");
 
+    expect(results[0].filename).toBe("deep-file.csv");
     expect(vi.mocked(slack.uploadFile).mock.calls[0][0].filename).toBe("deep-file.csv");
+  });
+
+  it("returns failure for empty files", async () => {
+    const filePath = path.join(tmpDir, "empty.txt");
+    await fs.writeFile(filePath, "");
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const results = await uploadExtractedFiles(
+      [{ path: filePath }],
+      "C123",
+      undefined,
+      "sess-empty",
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(false);
+    expect(results[0].error).toContain("empty");
+    expect(slack.uploadFile).not.toHaveBeenCalled();
+
+    consoleSpy.mockRestore();
+  });
+
+  it("includes file size in success log", async () => {
+    const filePath = path.join(tmpDir, "sized.txt");
+    await fs.writeFile(filePath, "hello world");
+
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await uploadExtractedFiles([{ path: filePath }], "C123", undefined, "sess-size");
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("11 bytes"),
+    );
+
+    consoleSpy.mockRestore();
   });
 });
