@@ -24,7 +24,7 @@ export default async function DashboardPage() {
 
   // Phase 1: profile + connections in parallel (no orgId dependency)
   const [{ data: profile }, { data: connections }] = await Promise.all([
-    supabase.from("profiles").select("organization_id, role, org_role, discovery_mode, preferred_agent_model, show_thinking").eq("id", user.id).single(),
+    supabase.from("profiles").select("organization_id, role, org_role, discovery_mode, preferred_agent_model, show_thinking, chrome_mcp_enabled").eq("id", user.id).single(),
     supabase.from("connections").select("integration_id").eq("user_id", user.id),
   ]);
 
@@ -348,6 +348,7 @@ export default async function DashboardPage() {
           preferredAgentModel={preferredAgentModel}
           availableIntegrations={availableIntegrations}
           initialShowThinking={profile?.show_thinking ?? true}
+          initialChromeMcpEnabled={profile?.chrome_mcp_enabled ?? true}
         />
         <DiscoveryModeToggle initialValue={profile?.discovery_mode ?? false} />
         <IntegrationList

@@ -53,6 +53,8 @@ describe("AgentTokenCard — State A (not enabled)", () => {
         initialAgentKey={null}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -71,6 +73,8 @@ describe("AgentTokenCard — State A (not enabled)", () => {
         initialAgentKey={null}
         preferredAgentModel="claude-opus-4-6"
         availableIntegrations={[]}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -85,6 +89,8 @@ describe("AgentTokenCard — State A (not enabled)", () => {
         initialAgentKey={null}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -103,6 +109,8 @@ describe("AgentTokenCard — State A (not enabled)", () => {
         initialAgentKey={null}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={[]}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -127,6 +135,8 @@ describe("AgentTokenCard — State A (not enabled)", () => {
         initialAgentKey={null}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -160,6 +170,8 @@ describe("AgentTokenCard — State A (not enabled)", () => {
         initialAgentKey={null}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -188,6 +200,8 @@ describe("AgentTokenCard — State A (not enabled)", () => {
         initialAgentKey={null}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={[]}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -210,6 +224,8 @@ describe("AgentTokenCard — State A (not enabled)", () => {
         initialAgentKey={null}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={[]}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -230,6 +246,8 @@ describe("AgentTokenCard — State B (enabled)", () => {
         initialAgentKey={activeAgentKey}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -247,6 +265,8 @@ describe("AgentTokenCard — State B (enabled)", () => {
         initialAgentKey={activeAgentKey}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -269,6 +289,8 @@ describe("AgentTokenCard — State B (enabled)", () => {
         initialAgentKey={restrictedKey}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -288,6 +310,8 @@ describe("AgentTokenCard — State B (enabled)", () => {
         initialAgentKey={restrictedKey}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -304,6 +328,8 @@ describe("AgentTokenCard — State B (enabled)", () => {
         initialAgentKey={activeAgentKey}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -330,6 +356,8 @@ describe("AgentTokenCard — State B (enabled)", () => {
         initialAgentKey={activeAgentKey}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -350,6 +378,8 @@ describe("AgentTokenCard — State B (enabled)", () => {
         initialAgentKey={activeAgentKey}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -381,6 +411,8 @@ describe("AgentTokenCard — State B (enabled)", () => {
         initialAgentKey={activeAgentKey}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -408,6 +440,8 @@ describe("AgentTokenCard — State B (enabled)", () => {
         initialAgentKey={restrictedKey}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 
@@ -430,6 +464,8 @@ describe("AgentTokenCard — State B (enabled)", () => {
         initialAgentKey={activeAgentKey}
         preferredAgentModel="claude-sonnet-4-6"
         availableIntegrations={sampleIntegrations}
+        initialShowThinking={true}
+        initialChromeMcpEnabled={true}
       />
     );
 

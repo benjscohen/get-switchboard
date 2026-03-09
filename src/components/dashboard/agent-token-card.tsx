@@ -22,6 +22,7 @@ interface AgentTokenCardProps {
   preferredAgentModel: string;
   availableIntegrations: AvailableIntegration[];
   initialShowThinking: boolean;
+  initialChromeMcpEnabled: boolean;
 }
 
 function permsSummary(
@@ -39,6 +40,7 @@ export function AgentTokenCard({
   preferredAgentModel,
   availableIntegrations,
   initialShowThinking,
+  initialChromeMcpEnabled,
 }: AgentTokenCardProps) {
   const [agentKey, setAgentKey] = useState(initialAgentKey);
   const [model, setModel] = useState(preferredAgentModel);
@@ -46,6 +48,8 @@ export function AgentTokenCard({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showThinking, setShowThinking] = useState(initialShowThinking);
   const [savingThinking, setSavingThinking] = useState(false);
+  const [chromeMcpEnabled, setChromeMcpEnabled] = useState(initialChromeMcpEnabled);
+  const [savingChromeMcp, setSavingChromeMcp] = useState(false);
 
   // Permissions form state (shared between enable + edit flows)
   const [permMode, setPermMode] = useState<"all" | "specific">("all");
@@ -117,6 +121,23 @@ export function AgentTokenCard({
       }
     } finally {
       setSavingThinking(false);
+    }
+  }
+
+  async function toggleChromeMcp() {
+    setSavingChromeMcp(true);
+    const next = !chromeMcpEnabled;
+    try {
+      const res = await fetch("/api/agent/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chromeMcpEnabled: next }),
+      });
+      if (res.ok) {
+        setChromeMcpEnabled(next);
+      }
+    } finally {
+      setSavingChromeMcp(false);
     }
   }
 
@@ -325,6 +346,31 @@ export function AgentTokenCard({
               <span
                 className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
                   showThinking ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-text-secondary">Chrome DevTools</p>
+              <p className="text-xs text-text-tertiary mt-0.5">
+                Enable browser control tools for navigating pages, taking screenshots, and debugging.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={chromeMcpEnabled}
+              disabled={savingChromeMcp}
+              onClick={toggleChromeMcp}
+              className={`relative ml-4 inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:opacity-50 ${
+                chromeMcpEnabled ? "bg-accent" : "bg-border"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+                  chromeMcpEnabled ? "translate-x-6" : "translate-x-1"
                 }`}
               />
             </button>

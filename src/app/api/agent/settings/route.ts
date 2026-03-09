@@ -10,7 +10,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("preferred_agent_model, show_thinking")
+    .select("preferred_agent_model, show_thinking, chrome_mcp_enabled")
     .eq("id", authResult.userId)
     .single();
 
@@ -21,6 +21,7 @@ export async function GET() {
   return NextResponse.json({
     preferredModel: data.preferred_agent_model,
     showThinking: data.show_thinking ?? true,
+    chromeMcpEnabled: data.chrome_mcp_enabled ?? true,
   });
 }
 
@@ -29,7 +30,7 @@ export async function PATCH(request: Request) {
   if (!authResult.authenticated) return authResult.response;
 
   const body = await request.json();
-  const { model, showThinking } = body;
+  const { model, showThinking, chromeMcpEnabled } = body;
 
   // Build the update patch
   const patch: Record<string, unknown> = {};
@@ -54,6 +55,16 @@ export async function PATCH(request: Request) {
     patch.show_thinking = showThinking;
   }
 
+  if (chromeMcpEnabled !== undefined) {
+    if (typeof chromeMcpEnabled !== "boolean") {
+      return NextResponse.json(
+        { error: "chromeMcpEnabled must be a boolean" },
+        { status: 400 }
+      );
+    }
+    patch.chrome_mcp_enabled = chromeMcpEnabled;
+  }
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json(
       { error: "No valid fields to update" },
@@ -74,5 +85,6 @@ export async function PATCH(request: Request) {
   return NextResponse.json({
     ...(model !== undefined ? { preferredModel: model } : {}),
     ...(showThinking !== undefined ? { showThinking } : {}),
+    ...(chromeMcpEnabled !== undefined ? { chromeMcpEnabled } : {}),
   });
 }
