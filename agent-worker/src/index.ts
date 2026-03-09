@@ -1,6 +1,7 @@
 import { App, LogLevel } from "@slack/bolt";
 import {
   processMessage,
+  resumeSession,
   injectFollowUp,
   recoverStaleSessions,
   retrySession,
@@ -154,6 +155,38 @@ app.message(async ({ message, body }) => {
         messageTs,
       });
       return;
+    }
+  }
+
+  // Check for a completed/failed/timeout session in this thread — reuse it
+  if (threadTs) {
+    const existingSession = await db.findDoneSessionByThread(channelId, threadTs);
+    if (existingSession) {
+      const userLookup = await db.lookupUserById(existingSession.user_id);
+      if (userLookup) {
+        await slack.addReaction(channelId, messageTs, "eyes").catch(() => {});
+
+        // Store user message in DB (raw text; files are formatted by resumeSession)
+        await db.createMessage({
+          sessionId: existingSession.id,
+          role: "user",
+          content: text,
+          slackTs: messageTs,
+          metadata: { slackUserId, source: "slack" },
+        }).catch((err) => logger.error({ err }, "Failed to store resume message"));
+
+        // Set session back to pending
+        await db.updateSession(existingSession.id, { status: "pending" });
+
+        // Fire-and-forget resume (same as web respond flow)
+        resumeSession(existingSession.id, userLookup, text, {
+          slackMessageTs: messageTs,
+          files: files.length > 0 ? files : undefined,
+        }).catch((err) =>
+          logger.error({ err, sessionId: existingSession.id }, "resumeSession from Slack follow-up failed"),
+        );
+        return;
+      }
     }
   }
 

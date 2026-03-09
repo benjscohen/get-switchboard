@@ -266,6 +266,32 @@ export async function getThreadSession(
 }
 
 // ---------------------------------------------------------------------------
+// Thread session lookup: find a done session for a Slack thread (for resume)
+// ---------------------------------------------------------------------------
+
+export async function findDoneSessionByThread(
+  channelId: string,
+  threadTs: string,
+): Promise<SessionDbRow | null> {
+  const { data, error } = await supabase
+    .from("agent_sessions")
+    .select("id, user_id, organization_id, slack_channel_id, slack_thread_ts, slack_message_ts, claude_session_id, status, prompt, model, error")
+    .eq("slack_channel_id", channelId)
+    .eq("slack_thread_ts", threadTs)
+    .in("status", ["completed", "failed", "timeout"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    logger.error({ err: error }, "Error looking up done session by thread");
+    return null;
+  }
+
+  return data as SessionDbRow | null;
+}
+
+// ---------------------------------------------------------------------------
 // Session transcript persistence (for resume across deploys)
 // ---------------------------------------------------------------------------
 

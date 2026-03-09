@@ -1401,6 +1401,7 @@ export async function resumeSession(
   sessionId: string,
   lookup: UserLookup,
   message: string,
+  opts?: { slackMessageTs?: string; files?: SlackFile[] },
 ): Promise<void> {
   const session = await db.getSessionById(sessionId);
   if (!session) {
@@ -1409,7 +1410,8 @@ export async function resumeSession(
   }
 
   const previousClaudeSessionId = session.claude_session_id;
-  logger.info({ sessionId, previousClaudeSessionId }, "[resume] Starting");
+  const slackMessageTs = opts?.slackMessageTs;
+  logger.info({ sessionId, previousClaudeSessionId, slackMessageTs }, "[resume] Starting");
 
   activeCount++;
   if (isRedisEnabled()) {
@@ -1419,12 +1421,19 @@ export async function resumeSession(
   let tempDir: string | null = null;
   let claudeMdContent: string | null = null;
 
+  // Format file attachments (if any) and append to message
+  let effectiveMessage = message;
+  if (opts?.files && opts.files.length > 0) {
+    const fileText = await formatFiles(opts.files);
+    if (fileText) effectiveMessage += fileText;
+  }
+
   // Build a synthetic thread key so Slack follow-ups and web respond commands work
   const threadKey = session.slack_channel_id && session.slack_thread_ts
     ? buildThreadKey(session.slack_channel_id, session.slack_thread_ts)
     : `web:${sessionId}`;
 
-  let stream = createMessageStream(message);
+  let stream = createMessageStream(effectiveMessage);
   const abortController = new AbortController();
   let timeoutId = setTimeout(() => abortController.abort(), TIMEOUT_MS);
   let sessionIsIdle = false;
@@ -1691,6 +1700,12 @@ export async function resumeSession(
       inputTokens: totalInputTokens,
       outputTokens: totalOutputTokens,
     }));
+
+    // Slack reaction: eyes → checkmark
+    if (slackMessageTs && session.slack_channel_id) {
+      await slack.removeReaction(session.slack_channel_id, slackMessageTs, "eyes").catch(() => {});
+      await slack.addReaction(session.slack_channel_id, slackMessageTs, "white_check_mark").catch(() => {});
+    }
   } catch (err) {
     clearTimeout(timeoutId);
     stream.close();
@@ -1701,6 +1716,11 @@ export async function resumeSession(
 
     if (isAbort && sessionIsIdle) {
       logger.info({ sessionId }, "[resume] idle session timed out — completing silently");
+      // Slack reaction: eyes → checkmark (idle timeout is a normal completion)
+      if (slackMessageTs && session.slack_channel_id) {
+        await slack.removeReaction(session.slack_channel_id, slackMessageTs, "eyes").catch(() => {});
+        await slack.addReaction(session.slack_channel_id, slackMessageTs, "white_check_mark").catch(() => {});
+      }
       await db.updateSession(sessionId, buildCompletionUpdate({
         result: null,
         totalTurns: 0,
@@ -1713,6 +1733,13 @@ export async function resumeSession(
       : err instanceof Error ? err.message : "An unknown error occurred";
 
     logger.error({ err, sessionId }, "[resume] Session error");
+
+    // Slack reaction: eyes → x
+    if (slackMessageTs && session.slack_channel_id) {
+      await slack.removeReaction(session.slack_channel_id, slackMessageTs, "eyes").catch(() => {});
+      await slack.addReaction(session.slack_channel_id, slackMessageTs, "x").catch(() => {});
+    }
+
     await db.updateSession(sessionId, {
       status: "failed",
       error: errorMessage,
