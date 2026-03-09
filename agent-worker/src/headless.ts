@@ -23,6 +23,8 @@ export interface HeadlessRunResult {
   text: string;
   turns: number;
   cost: number;
+  inputTokens: number;
+  outputTokens: number;
   claudeSessionId: string | null;
   status: "completed" | "failed" | "timeout";
   error?: string;
@@ -73,6 +75,8 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
     let resultText = "";
     let totalTurns = 0;
     let totalCost = 0;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
     let lastAssistantText = "";
 
     try {
@@ -131,12 +135,18 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
             resultText = message.result || lastAssistantText || "(No response generated)";
             totalTurns += message.num_turns;
             totalCost += message.total_cost_usd;
+            if (message.usage) {
+              totalInputTokens += message.usage.input_tokens ?? 0;
+              totalOutputTokens += message.usage.output_tokens ?? 0;
+            }
           } else {
             clearTimeout(timeoutId);
             return {
               text: "",
               turns: 0,
               cost: 0,
+              inputTokens: 0,
+              outputTokens: 0,
               claudeSessionId,
               status: "failed",
               error: (message as { error?: string }).error || `Agent error: ${message.subtype}`,
@@ -151,6 +161,8 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
         text: resultText,
         turns: totalTurns,
         cost: totalCost,
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
         claudeSessionId,
         status: "completed",
       };
@@ -162,6 +174,8 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
           text: "",
           turns: totalTurns,
           cost: totalCost,
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
           claudeSessionId,
           status: "timeout",
           error: "Execution timed out",
@@ -172,6 +186,8 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
         text: "",
         turns: totalTurns,
         cost: totalCost,
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
         claudeSessionId,
         status: "failed",
         error: err instanceof Error ? err.message : "Unknown error",
@@ -182,6 +198,8 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
       text: "",
       turns: 0,
       cost: 0,
+      inputTokens: 0,
+      outputTokens: 0,
       claudeSessionId: null,
       status: "failed",
       error: err instanceof Error ? err.message : "Unknown error",

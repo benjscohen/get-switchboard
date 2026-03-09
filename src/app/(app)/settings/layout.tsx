@@ -28,6 +28,7 @@ export default async function SettingsLayout({
       { href: "/settings/teams", label: "Teams" },
       { href: "/settings/mcp-servers", label: "MCP Servers" },
       { href: "/settings/access", label: "Access" },
+      { href: "/settings/agent-usage", label: "Agent Usage" },
       { href: "/settings/audit-log", label: "Audit Log" },
     );
   }

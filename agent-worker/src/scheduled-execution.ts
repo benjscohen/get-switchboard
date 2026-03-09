@@ -111,6 +111,8 @@ export async function executeScheduledRun(
         error: result.error || null,
         claudeSessionId: result.claudeSessionId,
         totalTurns: result.turns,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
       });
     } catch (err) {
       logger.error({ err, scheduleId: schedule.id }, "[schedule] Failed to create agent session");

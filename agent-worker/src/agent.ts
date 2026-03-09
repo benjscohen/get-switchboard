@@ -665,6 +665,8 @@ export async function processMessage(
     let totalTurns = 0;
     let cachedSessionFilePath: string | null | undefined; // cached after first findSessionFile
     let totalCost = 0;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
     let planApproved = false;
     let planExecutionStarted = false;
     let approvedPlanText: string | null = null;
@@ -948,6 +950,10 @@ export async function processMessage(
                 lastResultText = text;
                 totalTurns += message.num_turns;
                 totalCost += message.total_cost_usd;
+                if (message.usage) {
+                  totalInputTokens += message.usage.input_tokens ?? 0;
+                  totalOutputTokens += message.usage.output_tokens ?? 0;
+                }
 
                 // Plan mode → suppress ALL result:success messages during plan phase.
                 // The plan itself is shown via approval blocks. Only the execution phase posts results.
@@ -1236,6 +1242,8 @@ export async function processMessage(
           status: "completed",
           ...(lastResultText ? { result: lastResultText } : {}),
           total_turns: totalTurns,
+          input_tokens: totalInputTokens,
+          output_tokens: totalOutputTokens,
           completed_at: new Date().toISOString(),
         }).catch(() => {});
         return;
@@ -1258,6 +1266,8 @@ export async function processMessage(
         await db.updateSession(sessionId, {
           status: "completed",
           result: "Session stopped by user.",
+          input_tokens: totalInputTokens,
+          output_tokens: totalOutputTokens,
           completed_at: new Date().toISOString(),
         }).catch(() => {});
 
@@ -1297,6 +1307,8 @@ export async function processMessage(
       status: "completed",
       result: lastResultText,
       total_turns: totalTurns,
+      input_tokens: totalInputTokens,
+      output_tokens: totalOutputTokens,
       completed_at: new Date().toISOString(),
     });
   } catch (err) {

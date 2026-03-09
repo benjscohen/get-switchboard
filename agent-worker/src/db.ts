@@ -204,6 +204,8 @@ export async function updateSession(
     error: string;
     claude_session_id: string;
     total_turns: number;
+    input_tokens: number;
+    output_tokens: number;
     completed_at: string;
     updated_at: string;
     retry_of: string;
@@ -577,6 +579,8 @@ export async function createScheduleAgentSession(data: {
   error: string | null;
   claudeSessionId: string | null;
   totalTurns: number;
+  inputTokens?: number;
+  outputTokens?: number;
 }): Promise<string> {
   const { data: row, error } = await supabase
     .from("agent_sessions")
@@ -590,6 +594,8 @@ export async function createScheduleAgentSession(data: {
       error: data.error,
       claude_session_id: data.claudeSessionId,
       total_turns: data.totalTurns,
+      input_tokens: data.inputTokens ?? 0,
+      output_tokens: data.outputTokens ?? 0,
       slack_channel_id: "scheduled",
       slack_thread_ts: null,
       slack_message_ts: null,
