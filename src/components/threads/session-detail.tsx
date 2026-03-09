@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useEscapeKey } from "@/hooks/use-escape-key";
+
 import { modelLabel } from "@/lib/agent-models";
 import { STATUS_CONFIG } from "@/lib/threads/status-config";
 import { MessageList } from "./message-list";
@@ -21,7 +21,6 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
   const [stopping, setStopping] = useState(false);
   const [completing, setCompleting] = useState(false);
 
-  useEscapeKey(onClose);
 
   const isActive = ["pending", "running", "idle"].includes(session.status);
   const isIdle = session.status === "idle";
@@ -29,6 +28,7 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
   const config = STATUS_CONFIG[session.status] ?? STATUS_CONFIG.pending;
 
   const latestCreatedAt = useRef<string | null>(null);
+  const polling = useRef(false);
 
   // Full fetch — used on initial load and session change
   const fetchAllMessages = useCallback(async () => {
@@ -50,7 +50,8 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
 
   // Incremental fetch — only new messages since last known timestamp
   const fetchNewMessages = useCallback(async () => {
-    if (!latestCreatedAt.current) return;
+    if (!latestCreatedAt.current || polling.current) return;
+    polling.current = true;
     try {
       const res = await fetch(
         `/api/threads/${session.id}/messages?after=${encodeURIComponent(latestCreatedAt.current)}`
@@ -59,11 +60,17 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
         const newMsgs: ThreadMessage[] = await res.json();
         if (newMsgs.length > 0) {
           latestCreatedAt.current = newMsgs[newMsgs.length - 1].createdAt;
-          setMessages((prev) => [...prev, ...newMsgs]);
+          const newIds = new Set(newMsgs.map((m) => m.id));
+          setMessages((prev) => [
+            ...prev.filter((m) => !m.id.startsWith("temp-") && !newIds.has(m.id)),
+            ...newMsgs,
+          ]);
         }
       }
     } catch {
       /* ignore */
+    } finally {
+      polling.current = false;
     }
   }, [session.id]);
 
@@ -163,7 +170,7 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {isActive && (
+          {session.status === "running" && (
             <Button
               variant="secondary"
               size="sm"
@@ -183,21 +190,6 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
               {completing ? "Completing..." : "Mark Done"}
             </Button>
           )}
-          <button
-            onClick={onClose}
-            className="text-text-tertiary hover:text-text-primary p-1 rounded-md hover:bg-bg-hover transition-colors"
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
         </div>
       </div>
 
