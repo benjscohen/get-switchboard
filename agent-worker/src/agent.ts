@@ -272,6 +272,26 @@ async function saveWorkspaceArchive(
 }
 
 // ---------------------------------------------------------------------------
+// Centralized completion helper (DRY: used by happy path, idle timeout, user kill)
+// ---------------------------------------------------------------------------
+
+function buildCompletionUpdate(opts: {
+  result?: string | null;
+  totalTurns?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+}): Record<string, unknown> {
+  return {
+    status: "completed",
+    ...(opts.result ? { result: opts.result } : {}),
+    ...(opts.totalTurns != null ? { total_turns: opts.totalTurns } : {}),
+    ...(opts.inputTokens != null ? { input_tokens: opts.inputTokens } : {}),
+    ...(opts.outputTokens != null ? { output_tokens: opts.outputTokens } : {}),
+    completed_at: new Date().toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Centralized error handler
 // ---------------------------------------------------------------------------
 
@@ -1265,17 +1285,18 @@ export async function processMessage(
 
       // If the session was idle (agent already responded, waiting for user follow-up)
       // and got killed by timeout/reaper, silently complete — don't post a scary error.
+      // NOTE: Do NOT call statusUpdater.finalize() here — the original turn's status
+      // was already finalized at result:success. The current statusUpdater is a fresh
+      // instance created for potential follow-ups; finalizing it would post a duplicate
+      // "Done" message to Slack.
       if (isAbort && sessionIsIdle) {
         logger.info({ sessionId }, "idle session aborted by timeout — completing silently");
-        await statusUpdater.finalize().catch(() => {});
-        await db.updateSession(sessionId, {
-          status: "completed",
-          ...(lastResultText ? { result: lastResultText } : {}),
-          total_turns: totalTurns,
-          input_tokens: totalInputTokens,
-          output_tokens: totalOutputTokens,
-          completed_at: new Date().toISOString(),
-        }).catch(() => {});
+        await db.updateSession(sessionId, buildCompletionUpdate({
+          result: lastResultText,
+          totalTurns,
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+        })).catch(() => {});
         return;
       }
 
@@ -1293,13 +1314,12 @@ export async function processMessage(
           slack.addReaction(channelId, messageTs, "octagonal_sign").catch(() => {}),
         ]);
 
-        await db.updateSession(sessionId, {
-          status: "completed",
+        await db.updateSession(sessionId, buildCompletionUpdate({
           result: "Session stopped by user.",
-          input_tokens: totalInputTokens,
-          output_tokens: totalOutputTokens,
-          completed_at: new Date().toISOString(),
-        }).catch(() => {});
+          totalTurns,
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+        })).catch(() => {});
 
         logger.info({ sessionId }, "cleanly stopped by user");
       } else {
@@ -1333,14 +1353,12 @@ export async function processMessage(
       ]);
     }
 
-    await db.updateSession(sessionId, {
-      status: "completed",
+    await db.updateSession(sessionId, buildCompletionUpdate({
       result: lastResultText,
-      total_turns: totalTurns,
-      input_tokens: totalInputTokens,
-      output_tokens: totalOutputTokens,
-      completed_at: new Date().toISOString(),
-    });
+      totalTurns,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+    }));
   } catch (err) {
     logger.error({ err, sessionId }, "Unexpected error in session");
     const errorMessage =
