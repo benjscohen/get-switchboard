@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import type { VaultSecretDetail } from "@/app/(app)/vault/page";
+import type { VaultSecretDetail } from "@/app/(app)/workspace/vault/page";
 
 interface FieldRow {
   name: string;

@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { VaultList } from "./vault-list";
-import type { VaultSecret } from "@/app/(app)/vault/page";
+import type { VaultSecret } from "@/app/(app)/workspace/vault/page";
 
 vi.mock("@/components/ui/card", () => ({
   Card: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

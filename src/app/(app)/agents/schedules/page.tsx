@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Container } from "@/components/ui/container";
 import { ScheduleList } from "@/components/schedules/schedule-list";
 import type { Schedule } from "@/components/schedules/types";
 
@@ -51,10 +50,7 @@ export default function SchedulesPage() {
   const userSchedules = schedules.user;
 
   return (
-    <Container className="py-10">
-      <div className="mb-2">
-        <h1 className="text-2xl font-bold">Schedules</h1>
-      </div>
+    <>
       <p className="mb-8 text-sm text-text-secondary">
         Automated agent runs on a cron schedule. Manage schedules via the <code className="rounded bg-bg-hover px-1.5 py-0.5 text-xs">manage_schedules</code> MCP tool.
       </p>
@@ -115,6 +111,6 @@ export default function SchedulesPage() {
           <ScheduleList schedules={userSchedules} teamNames={teamNames} />
         </div>
       )}
-    </Container>
+    </>
   );
 }

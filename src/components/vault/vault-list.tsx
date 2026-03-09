@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { VaultSecret, ShareSummary } from "@/app/(app)/vault/page";
+import type { VaultSecret, ShareSummary } from "@/app/(app)/workspace/vault/page";
 
 function formatShareSummary(s: ShareSummary): string {
   const parts: string[] = [];

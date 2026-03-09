@@ -1,3 +1,8 @@
+vi.mock("@/lib/audit-log", () => ({
+  logAuditEvent: vi.fn(),
+  AuditEventType: {},
+}));
+
 const mockGetUser = vi.fn();
 const mockFrom = vi.fn();
 

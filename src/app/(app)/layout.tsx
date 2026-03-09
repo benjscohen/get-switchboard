@@ -81,11 +81,9 @@ export default async function AppLayout({
             )}
             <MainNav links={[
               { href: "/tools", label: "Tools" },
-              { href: "/skills", label: "Skills" },
               { href: "/agents", label: "Agents" },
-              { href: "/schedules", label: "Schedules" },
-              { href: "/files", label: "Files" },
-              { href: "/vault", label: "Vault" },
+              { href: "/threads", label: "Threads" },
+              { href: "/workspace", label: "Workspace" },
               ...((showOrgSettings || role === "admin") ? [{ href: "/settings", label: "Settings" }] : []),
             ]} />
           </div>

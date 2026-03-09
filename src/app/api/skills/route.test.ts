@@ -40,7 +40,7 @@ import { GET, POST } from "./route";
 function chainMock(resolvedValue: unknown = { data: [], error: null }): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chain: Record<string, any> = {};
-  for (const m of ["select", "eq", "in", "order"]) {
+  for (const m of ["select", "insert", "eq", "in", "order"]) {
     chain[m] = vi.fn(() => chain);
   }
   chain.then = (resolve: (v: unknown) => void) =>

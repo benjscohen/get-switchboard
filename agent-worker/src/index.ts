@@ -8,6 +8,7 @@ import {
 } from "./agent.js";
 import { startReaper } from "./reaper.js";
 import { startScheduler } from "./scheduler.js";
+import { startCommandPoller } from "./command-poller.js";
 import * as slack from "./slack.js";
 import type { SlackAttachment } from "./slack.js";
 import * as db from "./db.js";
@@ -297,6 +298,9 @@ async function start() {
     });
     logger.info({ instanceId: getInstanceId() }, "[redis] scaling enabled");
   }
+
+  // Start command poller for web UI commands (always enabled)
+  startCommandPoller();
 
   await app.start();
   logger.info(

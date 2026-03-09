@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -173,18 +172,16 @@ export default function AgentsPage() {
   const visibleTemplates = showAllTemplates || !hasAgents ? templates : templates.slice(0, 4);
 
   return (
-    <Container className="py-10">
+    <>
       {/* Header */}
       <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Agents</h1>
+        <p className="text-sm text-text-secondary">
+          Reusable AI agent configurations available to your MCP clients.
+        </p>
         <Button size="sm" onClick={() => setCreating("user")}>
           + New Agent
         </Button>
       </div>
-      <p className="mb-8 text-sm text-text-secondary">
-        Agents are reusable AI agent configurations available to your MCP clients. Use /agent:name
-        to load one.
-      </p>
 
       {/* Loading skeletons */}
       {loading && (
@@ -361,6 +358,6 @@ export default function AgentsPage() {
           onClose={() => setViewingHistory(null)}
         />
       )}
-    </Container>
+    </>
   );
 }

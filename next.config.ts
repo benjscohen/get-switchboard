@@ -11,6 +11,14 @@ const nextConfig: NextConfig = {
     "@googleapis/slides",
     "@modelcontextprotocol/sdk",
   ],
+  async redirects() {
+    return [
+      { source: "/schedules", destination: "/agents/schedules", permanent: true },
+      { source: "/files", destination: "/workspace/files", permanent: true },
+      { source: "/vault", destination: "/workspace/vault", permanent: true },
+      { source: "/skills", destination: "/workspace/skills", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {

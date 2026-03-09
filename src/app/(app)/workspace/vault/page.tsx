@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
 import { VaultList } from "@/components/vault/vault-list";
 import { VaultForm } from "@/components/vault/vault-form";
@@ -97,19 +96,18 @@ export default function VaultPage() {
   }
 
   return (
-    <Container className="py-10">
+    <>
       <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Vault</h1>
+        <p className="text-sm text-text-secondary">
+          Securely store API keys, credentials, and sensitive data. Share with teammates, teams, or the org.
+        </p>
         <Button size="sm" onClick={() => setCreating(true)}>
           + New Secret
         </Button>
       </div>
-      <p className="mb-8 text-sm text-text-secondary">
-        Securely store API keys, credentials, and sensitive data. Share with teammates, teams, or the org.
-      </p>
 
       {loading && (
-        <div className="space-y-3">
+        <div className="mt-6 space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="rounded-xl border border-border bg-bg-card p-4 animate-pulse">
               <div className="flex items-center justify-between">
@@ -125,12 +123,14 @@ export default function VaultPage() {
       )}
 
       {!loading && (
-        <VaultList
-          secrets={secrets}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onShare={handleShare}
-        />
+        <div className="mt-6">
+          <VaultList
+            secrets={secrets}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onShare={handleShare}
+          />
+        </div>
       )}
 
       {(creating || editing) && (
@@ -154,6 +154,6 @@ export default function VaultPage() {
           }}
         />
       )}
-    </Container>
+    </>
   );
 }

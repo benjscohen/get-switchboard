@@ -1,0 +1,176 @@
+// ---------------------------------------------------------------------------
+// Command Poller
+//
+// Polls the `session_commands` table every 3 seconds for pending commands
+// from the web UI (stop, respond). Commands are claimed atomically via
+// UPDATE...RETURNING to prevent double-processing across instances.
+// ---------------------------------------------------------------------------
+
+import { supabase } from "./db.js";
+import { findRunningSessionBySessionId } from "./session-registry.js";
+import { logger } from "./logger.js";
+
+const POLL_INTERVAL_MS = 3_000; // 3 seconds
+let intervalHandle: ReturnType<typeof setInterval> | null = null;
+
+interface SessionCommand {
+  id: string;
+  session_id: string;
+  command: "stop" | "respond";
+  payload: Record<string, unknown> | null;
+  status: string;
+  created_by: string;
+  created_at: string;
+  processed_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Mark a command as completed or failed
+// ---------------------------------------------------------------------------
+
+async function markCommand(
+  id: string,
+  status: "completed" | "failed",
+): Promise<void> {
+  const { error } = await supabase
+    .from("session_commands")
+    .update({ status, processed_at: new Date().toISOString() })
+    .eq("id", id);
+
+  if (error) {
+    logger.error({ err: error, commandId: id, status }, "[command-poller] failed to mark command");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Process a single command
+// ---------------------------------------------------------------------------
+
+async function processCommand(command: SessionCommand): Promise<void> {
+  switch (command.command) {
+    case "stop": {
+      const running = findRunningSessionBySessionId(command.session_id);
+      if (!running) {
+        // Session not on this instance or already done
+        await markCommand(command.id, "failed");
+        return;
+      }
+
+      running.killedByUser = true;
+      if (running.abortController) {
+        running.abortController.abort();
+      }
+      running.close();
+      await markCommand(command.id, "completed");
+
+      logger.info(
+        { sessionId: command.session_id, commandId: command.id, createdBy: command.created_by },
+        "[command-poller] stopped session",
+      );
+      break;
+    }
+
+    case "respond": {
+      const running = findRunningSessionBySessionId(command.session_id);
+      if (!running) {
+        await markCommand(command.id, "failed");
+        return;
+      }
+
+      const message = command.payload?.message as string;
+      if (!message) {
+        logger.warn({ commandId: command.id }, "[command-poller] respond command missing message payload");
+        await markCommand(command.id, "failed");
+        return;
+      }
+
+      // Push message into the running session
+      const pushed = running.pushMessage({
+        text: message,
+        messageTs: `web-${Date.now()}`,
+        resolve: () => {},
+      });
+
+      if (pushed) {
+        await markCommand(command.id, "completed");
+        logger.info(
+          { sessionId: command.session_id, commandId: command.id },
+          "[command-poller] injected respond message",
+        );
+      } else {
+        await markCommand(command.id, "failed");
+        logger.warn(
+          { sessionId: command.session_id, commandId: command.id },
+          "[command-poller] pushMessage returned false",
+        );
+      }
+      break;
+    }
+
+    default:
+      logger.warn({ command: command.command, commandId: command.id }, "[command-poller] unknown command type");
+      await markCommand(command.id, "failed");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Poll loop: claim and process pending commands
+// ---------------------------------------------------------------------------
+
+async function pollCommands(): Promise<void> {
+  try {
+    // Atomically claim pending commands
+    const { data: commands, error } = await supabase
+      .from("session_commands")
+      .update({ status: "processing" })
+      .eq("status", "pending")
+      .order("created_at", { ascending: true })
+      .limit(10)
+      .select("*");
+
+    if (error) {
+      logger.error({ err: error }, "[command-poller] failed to claim commands");
+      return;
+    }
+
+    if (!commands || commands.length === 0) return;
+
+    logger.debug({ count: commands.length }, "[command-poller] claimed commands");
+
+    for (const command of commands as SessionCommand[]) {
+      await processCommand(command);
+    }
+  } catch (err) {
+    logger.error({ err }, "[command-poller] poll error");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Start / Stop
+// ---------------------------------------------------------------------------
+
+export function startCommandPoller(): void {
+  logger.info(
+    { intervalMs: POLL_INTERVAL_MS },
+    "[command-poller] started",
+  );
+
+  intervalHandle = setInterval(() => {
+    pollCommands().catch((err) =>
+      logger.error({ err }, "[command-poller] poll error"),
+    );
+  }, POLL_INTERVAL_MS);
+
+  // Run immediately on startup to pick up any queued commands
+  pollCommands().catch((err) =>
+    logger.error({ err }, "[command-poller] initial poll error"),
+  );
+}
+
+export function stopCommandPoller(): void {
+  if (intervalHandle) {
+    clearInterval(intervalHandle);
+    intervalHandle = null;
+    logger.info("[command-poller] stopped");
+  }
+}

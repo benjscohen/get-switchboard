@@ -1,14 +1,12 @@
-import { Container } from "@/components/ui/container";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function SkillsLoading() {
   return (
-    <Container className="py-10">
+    <>
       <div className="mb-2 flex items-center justify-between">
-        <Skeleton className="h-8 w-20" />
+        <Skeleton className="h-4 w-64" />
         <Skeleton className="h-9 w-28" />
       </div>
-      <Skeleton className="mb-8 h-4 w-96" />
 
       <Skeleton className="mb-3 h-4 w-24" />
       <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -42,6 +40,6 @@ export default function SkillsLoading() {
           </div>
         ))}
       </div>
-    </Container>
+    </>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -94,20 +93,17 @@ export default function SkillsPage() {
 
   const canEditTeamIds = teams.map((t) => t.id);
 
-  // Build team name lookup
   const teamNames = useMemo(() => {
     const map: Record<string, string> = {};
     for (const t of teams) map[t.id] = t.name;
     return map;
   }, [teams]);
 
-  // Flatten all skills into one list
   const allSkills = useMemo(
     () => [...skills.organization, ...skills.team, ...skills.user],
     [skills]
   );
 
-  // Track which template slugs are already added
   const existingSlugs = useMemo(() => {
     const set = new Set<string>();
     for (const s of allSkills) set.add(s.slug);
@@ -185,18 +181,16 @@ export default function SkillsPage() {
   const visibleTemplates = showAllTemplates || !hasSkills ? templates : templates.slice(0, 4);
 
   return (
-    <Container className="py-10">
+    <>
       {/* Header */}
       <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Skills</h1>
+        <p className="text-sm text-text-secondary">
+          Reusable prompt templates available to your MCP clients.
+        </p>
         <Button size="sm" onClick={() => setCreating("user")}>
           + New Skill
         </Button>
       </div>
-      <p className="mb-8 text-sm text-text-secondary">
-        Skills are reusable prompt templates available to your MCP clients. Use /skill-name or
-        select from prompts.
-      </p>
 
       {/* Loading skeletons */}
       {loading && (
@@ -373,6 +367,6 @@ export default function SkillsPage() {
           onClose={() => setViewingHistory(null)}
         />
       )}
-    </Container>
+    </>
   );
 }

@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mocks ──
 
+vi.mock("@/lib/audit-log", () => ({
+  logAuditEvent: vi.fn(),
+  AuditEventType: {},
+}));
+
 const mockRequireAuth = vi.fn();
 
 vi.mock("@/lib/api-auth", () => ({

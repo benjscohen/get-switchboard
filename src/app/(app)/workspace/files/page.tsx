@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
 import { Breadcrumbs } from "@/components/files/breadcrumbs";
 import { FolderTree, buildFolderTree } from "@/components/files/folder-tree";
@@ -152,10 +151,12 @@ export default function FilesPage() {
   const folderTree = buildFolderTree(allFolders);
 
   return (
-    <Container className="py-10">
-      {/* Header */}
+    <>
+      {/* Action bar */}
       <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Files</h1>
+        <p className="text-sm text-text-secondary">
+          Your agent&apos;s virtual file system. Organize context, preferences, and notes.
+        </p>
         <div className="flex gap-2">
           <Button size="sm" variant="ghost" onClick={() => handleCreateFolder(currentPath)}>
             + Folder
@@ -165,9 +166,6 @@ export default function FilesPage() {
           </Button>
         </div>
       </div>
-      <p className="mb-6 text-sm text-text-secondary">
-        Your agent&apos;s virtual file system. Organize context, preferences, and notes in files and folders.
-      </p>
 
       {/* Two-column layout */}
       <div className="flex gap-6">
@@ -252,6 +250,6 @@ export default function FilesPage() {
           onClose={() => setViewingHistory(null)}
         />
       )}
-    </Container>
+    </>
   );
 }

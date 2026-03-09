@@ -8,6 +8,16 @@ vi.mock("@/lib/supabase/admin", () => ({
   },
 }));
 
+const mockLoggerError = vi.fn();
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    error: (...args: unknown[]) => mockLoggerError(...args),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 import {
   normalizePath,
   getParentPath,
@@ -188,8 +198,6 @@ describe("writeFile — version error logging", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("logs but does not fail when version insert errors", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
     const fileRow = {
       id: "f1", path: "/test.txt", name: "test.txt", parent_path: "/",
       is_folder: false, content: "hello", mime_type: "text/plain",
@@ -226,12 +234,10 @@ describe("writeFile — version error logging", () => {
 
     // The write should still succeed
     expect(result.ok).toBe(true);
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "Failed to record file version:",
-      "version insert failed",
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      { errMessage: "version insert failed" },
+      "Failed to record file version",
     );
-
-    consoleSpy.mockRestore();
   });
 });
 
