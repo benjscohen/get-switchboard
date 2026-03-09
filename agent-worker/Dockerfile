@@ -23,9 +23,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     gnupg \
     software-properties-common \
+    # Chrome MCP dependencies: virtual display + browser
+    xvfb \
     chromium \
     fonts-liberation \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpango-1.0-0 \
+    libcairo2 \
   && rm -rf /var/lib/apt/lists/*
+
+# Chrome DevTools MCP server (used by Claude Code SDK as a stdio MCP)
+RUN npm install -g chrome-devtools-mcp@latest
 
 # Install Terraform
 RUN curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg \
@@ -36,7 +51,6 @@ RUN curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/sh
 
 COPY package*.json ./
 RUN npm ci
-RUN npm install -g chrome-devtools-mcp@latest
 COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npm run build
@@ -44,6 +58,10 @@ RUN npm prune --production
 
 ENV CHROME_PATH=/usr/bin/chromium
 ENV PUPPETEER_SKIP_DOWNLOAD=true
+
+# Entrypoint: starts Xvfb before the main process
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Worker user with sudo access (container is ephemeral)
 RUN useradd -m -s /bin/bash worker \
@@ -60,6 +78,11 @@ RUN pip install --user --break-system-packages fastapi uvicorn httpx requests pa
 # User-local bin on PATH
 ENV PATH="/home/worker/.local/bin:${PATH}"
 
+# Chrome MCP: Xvfb provides a virtual display so Chromium can run in the
+# container. CHROME_PATH tells chrome-devtools-mcp where to find the browser.
+ENV DISPLAY=:99
+
 ENV NODE_ENV=production
 EXPOSE 3000
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["node", "dist/index.js"]
