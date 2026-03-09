@@ -7,6 +7,7 @@ export interface UserLookup {
   email?: string;
   slackUserId?: string;
   showThinking?: boolean;
+  chromeMcpEnabled?: boolean;
 }
 
 export interface SlackFile {

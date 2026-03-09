@@ -92,7 +92,7 @@ export async function lookupUserBySlackId(
   // 2. Get profile for org ID and preferred model
   const { data: profile, error: profileErr } = await supabase
     .from("profiles")
-    .select("organization_id, preferred_agent_model, name, email, show_thinking")
+    .select("organization_id, preferred_agent_model, name, email, show_thinking, chrome_mcp_enabled")
     .eq("id", userId)
     .single();
 
@@ -105,6 +105,7 @@ export async function lookupUserBySlackId(
   const name = (profile.name as string) || undefined;
   const email = (profile.email as string) || undefined;
   const showThinking = (profile.show_thinking as boolean) ?? true;
+  const chromeMcpEnabled = (profile.chrome_mcp_enabled as boolean) ?? true;
 
   // 3. Get the user's active agent API key
   const { data: apiKey, error: keyErr } = await supabase
@@ -126,7 +127,7 @@ export async function lookupUserBySlackId(
 
   const agentKey = decrypt(apiKey.encrypted_raw_key as string);
 
-  return { ok: true, userId, organizationId, agentKey, model, name, email, slackUserId, showThinking };
+  return { ok: true, userId, organizationId, agentKey, model, name, email, slackUserId, showThinking, chromeMcpEnabled };
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +338,7 @@ export async function lookupUserById(
 ): Promise<UserLookup | null> {
   const { data: profile, error: profileErr } = await supabase
     .from("profiles")
-    .select("organization_id, preferred_agent_model, name, email, show_thinking")
+    .select("organization_id, preferred_agent_model, name, email, show_thinking, chrome_mcp_enabled")
     .eq("id", userId)
     .single();
 
@@ -351,6 +352,7 @@ export async function lookupUserById(
   const name = (profile.name as string) || undefined;
   const email = (profile.email as string) || undefined;
   const showThinking = (profile.show_thinking as boolean) ?? true;
+  const chromeMcpEnabled = (profile.chrome_mcp_enabled as boolean) ?? true;
 
   const { data: apiKey, error: keyErr } = await supabase
     .from("api_keys")
@@ -369,7 +371,7 @@ export async function lookupUserById(
   if (!apiKey) return null;
 
   const agentKey = decrypt(apiKey.encrypted_raw_key as string);
-  return { userId, organizationId, agentKey, model, name, email, showThinking };
+  return { userId, organizationId, agentKey, model, name, email, showThinking, chromeMcpEnabled };
 }
 
 // ---------------------------------------------------------------------------

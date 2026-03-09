@@ -95,6 +95,7 @@ export async function executeScheduledRun(
       systemPromptOverride,
       timeoutMs: 10 * 60 * 1000,
       userIdentity: { name: lookup.name, email: lookup.email },
+      chromeMcpEnabled: lookup.chromeMcpEnabled,
     });
 
     // 6. Create agent_sessions row for linking

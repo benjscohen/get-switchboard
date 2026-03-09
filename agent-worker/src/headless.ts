@@ -16,6 +16,7 @@ export interface HeadlessRunOptions {
   systemPromptOverride?: string;
   timeoutMs?: number;
   userIdentity?: UserIdentity;
+  chromeMcpEnabled?: boolean;
 }
 
 export interface HeadlessRunResult {
@@ -30,7 +31,7 @@ export interface HeadlessRunResult {
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<HeadlessRunResult> {
-  const { prompt, model, agentKey, userId, systemPromptOverride, timeoutMs = DEFAULT_TIMEOUT_MS, userIdentity } = opts;
+  const { prompt, model, agentKey, userId, systemPromptOverride, timeoutMs = DEFAULT_TIMEOUT_MS, userIdentity, chromeMcpEnabled: userChromeMcpEnabled } = opts;
 
   let tempDir: string | null = null;
 
@@ -54,7 +55,8 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
     }
 
     // 2b. Ensure headless Chrome is running for browser tools
-    if (process.env.ENABLE_CHROME_MCP !== "false") {
+    const chromeMcpEnabled = process.env.ENABLE_CHROME_MCP !== "false" && userChromeMcpEnabled !== false;
+    if (chromeMcpEnabled) {
       try {
         await ensureChromeRunning();
       } catch (err) {
@@ -89,7 +91,7 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
                 Authorization: `Bearer ${agentKey}`,
               },
             },
-            ...(process.env.ENABLE_CHROME_MCP !== "false" ? {
+            ...(chromeMcpEnabled ? {
               "chrome-devtools": {
                 type: "stdio" as const,
                 command: "chrome-devtools-mcp",
@@ -186,7 +188,7 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
     };
   } finally {
     // Clean up Chrome tabs opened during this session
-    if (process.env.ENABLE_CHROME_MCP !== "false") {
+    if (process.env.ENABLE_CHROME_MCP !== "false" && opts.chromeMcpEnabled !== false) {
       cleanupTabs().catch((err) => {
         logger.error({ err }, "[headless] Chrome tab cleanup failed");
       });

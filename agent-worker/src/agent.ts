@@ -468,6 +468,7 @@ export async function processMessage(
 
   let tempDir: string | null = null;
   let claudeMdContent: string | null = null;
+  let chromeMcpEnabled = false;
 
   try {
     // 9. Update session to running
@@ -649,7 +650,7 @@ export async function processMessage(
     logger.info({ sessionId, threadKey, activeCount }, "session registered");
 
     // 14b. Ensure headless Chrome is running for browser tools
-    const chromeMcpEnabled = process.env.ENABLE_CHROME_MCP !== "false" && lookup.chromeMcpEnabled !== false;
+    chromeMcpEnabled = process.env.ENABLE_CHROME_MCP !== "false" && lookup.chromeMcpEnabled !== false;
     if (chromeMcpEnabled) {
       try {
         await ensureChromeRunning();
