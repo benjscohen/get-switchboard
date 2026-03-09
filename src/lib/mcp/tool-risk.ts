@@ -207,6 +207,7 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   // ── Context7 ──
   "context7__resolve-library-id": "read",
   "context7__get-library-docs": "read",
+  "context7__query-docs": "read",
 
   // ── Exa Search ──
   web_search_exa: "read",
@@ -220,6 +221,19 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
   get_code_context_exa: "read",
   exa__deep_researcher_start: "write",
   exa__deep_researcher_check: "read",
+
+  // ── Firecrawl ──
+  firecrawl_scrape: "read",
+  firecrawl_map: "read",
+  firecrawl_search: "read",
+  firecrawl_crawl: "read",
+  firecrawl_check_crawl_status: "read",
+  firecrawl_extract: "read",
+  firecrawl_agent: "write",
+  firecrawl_agent_status: "read",
+  firecrawl_browser_create: "write",
+  firecrawl_browser_delete: "destructive",
+  firecrawl_browser_list: "read",
 
   // ── GitHub ──
   github__get_file_contents: "read",
@@ -305,6 +319,7 @@ const toolRiskMap: Record<string, ToolRiskLevel> = {
 
   // ── Admin tools ──
   mcp_health_check: "read",
+  admin_mcp_servers: "write",
 
   // ── Platform tools ──
   submit_feedback: "write",
