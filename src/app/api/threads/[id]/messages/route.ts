@@ -34,6 +34,12 @@ export async function GET(
       .select("id, session_id, role, content, metadata, created_at")
       .eq("session_id", id);
 
+    // Support incremental fetch via ?after=<ISO timestamp>
+    const after = request.nextUrl.searchParams.get("after");
+    if (after) {
+      query = query.gt("created_at", after);
+    }
+
     // Support pagination via ?before=<message_id>
     const beforeId = request.nextUrl.searchParams.get("before");
     if (beforeId) {

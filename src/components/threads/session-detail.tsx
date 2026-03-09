@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useEscapeKey } from "@/hooks/use-escape-key";
@@ -28,10 +28,19 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
   const isDone = ["completed", "failed", "timeout"].includes(session.status);
   const config = STATUS_CONFIG[session.status] ?? STATUS_CONFIG.pending;
 
-  const fetchMessages = useCallback(async () => {
+  const latestCreatedAt = useRef<string | null>(null);
+
+  // Full fetch — used on initial load and session change
+  const fetchAllMessages = useCallback(async () => {
     try {
       const res = await fetch(`/api/threads/${session.id}/messages`);
-      if (res.ok) setMessages(await res.json());
+      if (res.ok) {
+        const msgs: ThreadMessage[] = await res.json();
+        setMessages(msgs);
+        if (msgs.length > 0) {
+          latestCreatedAt.current = msgs[msgs.length - 1].createdAt;
+        }
+      }
     } catch {
       /* ignore */
     } finally {
@@ -39,13 +48,33 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
     }
   }, [session.id]);
 
+  // Incremental fetch — only new messages since last known timestamp
+  const fetchNewMessages = useCallback(async () => {
+    if (!latestCreatedAt.current) return;
+    try {
+      const res = await fetch(
+        `/api/threads/${session.id}/messages?after=${encodeURIComponent(latestCreatedAt.current)}`
+      );
+      if (res.ok) {
+        const newMsgs: ThreadMessage[] = await res.json();
+        if (newMsgs.length > 0) {
+          latestCreatedAt.current = newMsgs[newMsgs.length - 1].createdAt;
+          setMessages((prev) => [...prev, ...newMsgs]);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [session.id]);
+
   useEffect(() => {
-    fetchMessages();
+    latestCreatedAt.current = null;
+    fetchAllMessages();
     if (isActive) {
-      const interval = setInterval(fetchMessages, 3000);
+      const interval = setInterval(fetchNewMessages, 1000);
       return () => clearInterval(interval);
     }
-  }, [fetchMessages, isActive]);
+  }, [fetchAllMessages, fetchNewMessages, isActive]);
 
   const handleStop = async () => {
     setStopping(true);
