@@ -27,14 +27,25 @@ vi.mock("node:child_process", () => ({
       stderr: EventEmitter;
       stdout: EventEmitter;
       pid: number;
+      unref: () => void;
     };
     proc.stderr = new EventEmitter();
     proc.stdout = new EventEmitter();
     proc.kill = mockKill;
     proc.pid = 12345;
+    proc.unref = vi.fn();
     latestChildProc = proc;
     return proc;
   }),
+  execSync: vi.fn(),
+}));
+
+// Mock fs for Xvfb lock file checks
+let mockExistsSync = false;
+vi.mock("node:fs", () => ({
+  default: {
+    existsSync: vi.fn(() => mockExistsSync),
+  },
 }));
 
 vi.mock("node:http", () => ({
@@ -63,8 +74,9 @@ vi.mock("node:http", () => ({
   },
 }));
 
-import { ensureChromeRunning, cleanupTabs, killChrome } from "./chrome.js";
+import { ensureChromeRunning, cleanupTabs, killChrome, chromeMcpArgs, ensureXvfb, _resetForTesting } from "./chrome.js";
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -81,9 +93,10 @@ describe("chrome lifecycle manager", () => {
     latestChildProc = null;
     cdpAutoResponse = { Browser: "Chrome/test" };
     cdpCallUrls = [];
+    mockExistsSync = true; // Default: pretend Xvfb lock exists (skip Xvfb startup)
 
-    // Reset singleton state (killChrome calls mockKill, but we just reset it)
-    killChrome();
+    // Reset all singleton state (chrome process + xvfb flag)
+    _resetForTesting();
     mockKill.mockReset();
     cdpCallUrls = [];
   });
@@ -217,6 +230,69 @@ describe("chrome lifecycle manager", () => {
     it("handles CDP returning null (invalid JSON)", async () => {
       cdpAutoResponse = null; // Will cause error/null response
       await cleanupTabs(); // Should not throw
+    });
+  });
+
+  describe("chromeMcpArgs", () => {
+    it("returns args with executable-path pointing to CHROME_PATH", () => {
+      const args = chromeMcpArgs();
+
+      expect(args).toContain("--executable-path");
+      // The next element after --executable-path should be the Chrome path
+      const idx = args.indexOf("--executable-path");
+      expect(args[idx + 1]).toBe(process.env.CHROME_PATH || "/usr/bin/chromium");
+    });
+
+    it("includes --headless flag", () => {
+      const args = chromeMcpArgs();
+      expect(args).toContain("--headless");
+    });
+
+    it("includes --no-sandbox as a chrome-arg", () => {
+      const args = chromeMcpArgs();
+      expect(args).toContain("--chrome-arg=--no-sandbox");
+    });
+
+    it("disables usage statistics", () => {
+      const args = chromeMcpArgs();
+      expect(args).toContain("--no-usage-statistics");
+    });
+  });
+
+  describe("ensureXvfb", () => {
+    it("skips startup when lock file already exists", () => {
+      mockExistsSync = true;
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      ensureXvfb();
+
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining("already running"),
+      );
+      // spawn should NOT have been called for Xvfb
+      expect(spawn).not.toHaveBeenCalled();
+      logSpy.mockRestore();
+    });
+
+    it("starts Xvfb when lock file does not exist", () => {
+      // First call: lock doesn't exist; after execSync (sleep), it does
+      let callCount = 0;
+      vi.mocked(fs.existsSync).mockImplementation(() => {
+        callCount++;
+        return callCount > 1; // First call false, subsequent true
+      });
+
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      ensureXvfb();
+
+      // Should have called spawn for Xvfb
+      expect(spawn).toHaveBeenCalledWith(
+        "Xvfb",
+        expect.arrayContaining(["-screen", "0", "1280x800x24"]),
+        expect.objectContaining({ detached: true }),
+      );
+      logSpy.mockRestore();
     });
   });
 

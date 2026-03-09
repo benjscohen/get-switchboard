@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-code";
 import { fetchUserFiles, writeFilesToStableDir } from "./files.js";
 import { extractClaudeMd, buildSystemPrompt, type UserIdentity } from "./prompt.js";
-import { ensureChromeRunning, cleanupTabs } from "./chrome.js";
+import { ensureChromeRunning, cleanupTabs, chromeMcpArgs } from "./chrome.js";
 
 // ---------------------------------------------------------------------------
 // Headless agent execution (no Slack, no multi-turn — single prompt in/out)
@@ -92,7 +92,7 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
               "chrome-devtools": {
                 type: "stdio" as const,
                 command: "chrome-devtools-mcp",
-                args: [] as string[],
+                args: chromeMcpArgs(),
               },
             } : {}),
           },

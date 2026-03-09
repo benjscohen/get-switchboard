@@ -18,7 +18,7 @@ import {
 } from "./session-registry.js";
 import type { PlanDecision, PlanPhase } from "./session-registry.js";
 import type { SlackFile } from "./types.js";
-import { ensureChromeRunning, cleanupTabs } from "./chrome.js";
+import { ensureChromeRunning, cleanupTabs, chromeMcpArgs } from "./chrome.js";
 
 // ---------------------------------------------------------------------------
 // Image / PDF / text detection helpers
@@ -652,7 +652,7 @@ export async function processMessage(
               "chrome-devtools": {
                 type: "stdio" as const,
                 command: "chrome-devtools-mcp",
-                args: [] as string[],
+                args: chromeMcpArgs(),
               },
             } : {}),
           },
