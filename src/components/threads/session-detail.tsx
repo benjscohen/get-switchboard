@@ -169,7 +169,7 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
-        <MessageList messages={messages} loading={loadingMsgs} />
+        <MessageList messages={messages} loading={loadingMsgs} sessionId={session.id} />
       </div>
 
       {/* Input */}

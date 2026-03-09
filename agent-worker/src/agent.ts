@@ -955,7 +955,7 @@ export async function processMessage(
               const msg = message as {
                 message?: {
                   id?: string;
-                  content?: Array<{ type: string; text?: string }>;
+                  content?: Array<{ type: string; text?: string; name?: string; id?: string; input?: unknown }>;
                   stop_reason?: string;
                 };
               };
@@ -973,6 +973,19 @@ export async function processMessage(
                 .map((b) => b.text!)
                 .join("");
               if (textContent) lastAssistantText = textContent;
+
+              // Save tool_use blocks as "tool" messages for web UI visibility
+              const toolBlocks = blocks.filter((b) => b.type === "tool_use");
+              for (const block of toolBlocks) {
+                const tb = block as { type: string; name?: string; id?: string; input?: unknown };
+                await db.createMessage({
+                  sessionId,
+                  role: "tool",
+                  content: JSON.stringify(tb.input ?? {}),
+                  slackTs: null,
+                  metadata: { toolName: tb.name ?? "unknown", toolUseId: tb.id },
+                });
+              }
             }
 
             if (message.type === "result") {
@@ -1591,12 +1604,25 @@ export async function resumeSession(
 
         if (msg.type === "assistant") {
           statusUpdater.handleAssistantMessage();
-          const amsg = msg as { message?: { content?: Array<{ type: string; text?: string }> } };
-          const textContent = (amsg.message?.content || [])
+          const amsg = msg as { message?: { content?: Array<{ type: string; text?: string; name?: string; id?: string; input?: unknown }> } };
+          const blocks = amsg.message?.content || [];
+          const textContent = blocks
             .filter((b) => b.type === "text" && b.text)
             .map((b) => b.text!)
             .join("");
           if (textContent) lastAssistantText = textContent;
+
+          // Save tool_use blocks as "tool" messages for web UI visibility
+          const toolBlocks = blocks.filter((b) => b.type === "tool_use");
+          for (const block of toolBlocks) {
+            await db.createMessage({
+              sessionId,
+              role: "tool",
+              content: JSON.stringify(block.input ?? {}),
+              slackTs: null,
+              metadata: { toolName: block.name ?? "unknown", toolUseId: block.id },
+            });
+          }
         }
 
         if (msg.type === "result") {
@@ -1618,13 +1644,55 @@ export async function resumeSession(
             });
             lastAssistantText = "";
 
+            // Extract FILE_UPLOAD directives
+            const { cleanText, uploads } = extractFileUploads(text);
+
+            // Upload files to Supabase Storage for web access
+            const fileAttachments: Array<{ name: string; storagePath: string; mimeType: string }> = [];
+            if (uploads.length > 0) {
+              for (const upload of uploads) {
+                try {
+                  const fileContent = await fs.readFile(upload.path);
+                  if (fileContent.length === 0) continue;
+                  const filename = path.basename(upload.path);
+                  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+                  const mimeType = ext === "png" ? "image/png"
+                    : ext === "jpg" || ext === "jpeg" ? "image/jpeg"
+                    : ext === "gif" ? "image/gif"
+                    : ext === "webp" ? "image/webp"
+                    : ext === "svg" ? "image/svg+xml"
+                    : ext === "pdf" ? "application/pdf"
+                    : "application/octet-stream";
+                  const storagePath = `${session.user_id}/${sessionId}/${Date.now()}-${filename}`;
+                  const { error: uploadErr } = await db.supabase.storage
+                    .from("session-files")
+                    .upload(storagePath, fileContent, { contentType: mimeType, upsert: false });
+                  if (!uploadErr) {
+                    fileAttachments.push({ name: filename, storagePath, mimeType });
+                  } else {
+                    logger.error({ err: uploadErr, path: upload.path }, "[resume] file upload failed");
+                  }
+                } catch (err) {
+                  logger.error({ err, path: upload.path }, "[resume] file read/upload failed");
+                }
+              }
+            }
+
+            const messageContent = cleanText || (fileAttachments.length > 0
+              ? fileAttachments.map((f) => `[Uploaded ${f.name}]`).join("\n")
+              : text);
+
             // Store assistant message in DB
             await db.createMessage({
               sessionId,
               role: "assistant",
-              content: text,
+              content: messageContent,
               slackTs: null,
-              metadata: { source: "web-resume", turns: msg.num_turns },
+              metadata: {
+                source: "web-resume",
+                turns: msg.num_turns,
+                ...(fileAttachments.length > 0 ? { fileAttachments } : {}),
+              },
             });
 
             // Post to Slack thread if session has one
