@@ -28,6 +28,7 @@ import { filterToolsForUser, type ToolMeta } from "@/lib/mcp/tool-filtering";
 import { getFilterContext, getFullMcpAuth } from "@/lib/mcp/types";
 import { buildToolIndex, buildIntegrationSummaryLine, ensureToolEmbeddings, type ToolIndexEntry } from "@/lib/mcp/tool-search";
 import { loadIntegrationScopes } from "@/lib/integration-scopes";
+import { logger } from "@/lib/logger";
 
 // ── Module-level data loading ──
 
@@ -41,7 +42,7 @@ const customToolsPromise = supabaseAdmin
   .eq("enabled", true)
   .eq("custom_mcp_servers.status", "active")
   .then((res) => {
-    if (res.error) console.error("[MCP] custom_mcp_tools query error:", res.error);
+    if (res.error) logger.error({ err: res.error }, "[MCP] custom_mcp_tools query error");
     return res.data ?? [];
   });
 
@@ -49,7 +50,7 @@ let resolvedCustomTools: Awaited<typeof customToolsPromise> | null = null;
 customToolsPromise.then((tools) => { resolvedCustomTools = tools; });
 
 const proxyToolsPromise = loadProxyTools().catch((err) => {
-  console.error("[MCP] proxy tools load error:", err);
+  logger.error({ err }, "[MCP] proxy tools load error");
   return { tools: [] as ProxyTool[], fallbackIntegrationIds: new Set(allProxyIntegrations.map(p => p.id)) };
 });
 let resolvedProxyTools: { tools: ProxyTool[]; fallbackIntegrationIds: Set<string> } | null = null;
@@ -304,7 +305,7 @@ You have a durable memory system. Follow these conventions:
 
   return transport.handleRequest(req, { authInfo });
   } catch (err) {
-    console.error("[MCP] mcpHandler error:", err);
+    logger.error({ err }, "[MCP] mcpHandler error");
     return new Response(
       JSON.stringify({
         jsonrpc: "2.0",
@@ -392,7 +393,7 @@ const authedHandler = withMcpAuth(
           senderName: c.sender_name as string | null,
         });
       } catch (err) {
-        console.warn(`[MCP] Skipping corrupted connection ${c.id} (${c.integration_id}):`, err);
+        logger.warn({ err, connectionId: c.id, integrationId: c.integration_id }, "[MCP] Skipping corrupted connection");
       }
     }
 
@@ -414,7 +415,7 @@ const authedHandler = withMcpAuth(
           customMcpHeaders[k.server_id] = hdrs;
         }
       } catch (err) {
-        console.warn(`[MCP] Skipping corrupted custom MCP key for server ${k.server_id}:`, err);
+        logger.warn({ err, serverId: k.server_id }, "[MCP] Skipping corrupted custom MCP key");
       }
     }
 
@@ -437,7 +438,7 @@ const authedHandler = withMcpAuth(
           }
         }
       } catch (err) {
-        console.warn(`[MCP] Skipping corrupted org key for integration ${k.integration_id}:`, err);
+        logger.warn({ err, integrationId: k.integration_id }, "[MCP] Skipping corrupted org key");
       }
     }
 
@@ -460,7 +461,7 @@ const authedHandler = withMcpAuth(
           }
         }
       } catch (err) {
-        console.warn(`[MCP] Skipping corrupted proxy user key for integration ${k.integration_id}:`, err);
+        logger.warn({ err, integrationId: k.integration_id }, "[MCP] Skipping corrupted proxy user key");
       }
     }
 
@@ -503,7 +504,7 @@ async function handler(req: Request) {
   try {
     return await authedHandler(req);
   } catch (err) {
-    console.error("[MCP] Unhandled error:", err);
+    logger.error({ err }, "[MCP] Unhandled error");
     return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/api-auth";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET(
   _req: NextRequest,
@@ -58,6 +59,16 @@ export async function DELETE(
   if (error) {
     return NextResponse.json({ error: "Failed to revoke API key" }, { status: 500 });
   }
+
+  logAuditEvent({
+    organizationId: authResult.organizationId,
+    actorId: authResult.userId,
+    eventType: AuditEventType.API_KEY_REVOKED,
+    resourceType: "api_key",
+    resourceId: keyId,
+    description: `Admin revoked API key for user ${id}`,
+    metadata: { targetUserId: id },
+  });
 
   return NextResponse.json({ success: true });
 }

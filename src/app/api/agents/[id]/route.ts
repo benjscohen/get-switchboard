@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAgentById, updateAgent, deleteAgent, type AgentAuth } from "@/lib/agents/service";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET(
   _request: Request,
@@ -42,6 +43,17 @@ export async function PATCH(
   });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.AGENT_UPDATED,
+    resourceType: "agent",
+    resourceId: id,
+    description: `Updated agent "${id}"`,
+    metadata: { name: body.name, enabled: body.enabled },
+  });
+
   return NextResponse.json(result.data);
 }
 
@@ -57,5 +69,15 @@ export async function DELETE(
   const result = await deleteAgent(agentAuth, id);
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.AGENT_DELETED,
+    resourceType: "agent",
+    resourceId: id,
+    description: `Deleted agent "${id}"`,
+  });
+
   return NextResponse.json(result.data);
 }

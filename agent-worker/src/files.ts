@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { logger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,7 +36,7 @@ export async function fetchUserFiles(
   try {
     const mcpUrl = process.env.SWITCHBOARD_MCP_URL;
     if (!mcpUrl) {
-      console.error("[files] SWITCHBOARD_MCP_URL not set");
+      logger.error("[files] SWITCHBOARD_MCP_URL not set");
       return null;
     }
 
@@ -45,7 +46,7 @@ export async function fetchUserFiles(
     });
 
     if (!res.ok) {
-      console.error(`[files] GET /api/fs failed: ${res.status}`);
+      logger.error({ status: res.status }, "[files] GET /api/fs failed");
       return null;
     }
 
@@ -56,7 +57,7 @@ export async function fetchUserFiles(
       isFolder: f.isFolder,
     }));
   } catch (err) {
-    console.error("[files] Failed to fetch user files:", err);
+    logger.error({ err }, "[files] Failed to fetch user files");
     return null;
   }
 }
@@ -102,18 +103,18 @@ export async function findSessionFile(
 ): Promise<string | null> {
   // SDK may write .json or .jsonl — check both
   const candidates = [`${claudeSessionId}.jsonl`, `${claudeSessionId}.json`];
-  console.log(`[files] findSessionFile: id=${claudeSessionId} HOME=${os.homedir()} baseDir=${baseDir}`);
+  logger.info({ claudeSessionId, home: os.homedir(), baseDir }, "[files] findSessionFile: searching");
 
   // Primary scan: ~/.claude/projects/<project>/sessions/<id>.{json,jsonl}
   try {
     const projects = await fs.readdir(baseDir);
-    console.log(`[files] findSessionFile: found ${projects.length} project dirs: ${projects.join(", ")}`);
+    logger.info({ projectCount: projects.length, projects: projects.join(", ") }, "[files] findSessionFile: found project dirs");
     for (const project of projects) {
       for (const candidate of candidates) {
         const file = path.join(baseDir, project, "sessions", candidate);
         try {
           await fs.stat(file);
-          console.log(`[files] findSessionFile: found via primary scan: ${file}`);
+          logger.info({ file }, "[files] findSessionFile: found via primary scan");
           return file;
         } catch {
           /* not in this project */
@@ -121,27 +122,27 @@ export async function findSessionFile(
       }
     }
   } catch (err) {
-    console.log(`[files] findSessionFile: baseDir readdir failed:`, err);
+    logger.info({ err }, "[files] findSessionFile: baseDir readdir failed");
   }
 
   // Recursive fallback: search parent dir (~/.claude/) for the file
   const parentDir = path.dirname(baseDir);
   const candidateSet = new Set(candidates);
-  console.log(`[files] findSessionFile: primary scan found nothing, recursive search in ${parentDir}`);
+  logger.info({ parentDir }, "[files] findSessionFile: primary scan found nothing, recursive search");
   try {
     const entries = (await fs.readdir(parentDir, { recursive: true })) as string[];
     for (const name of entries) {
       if (candidateSet.has(path.basename(name))) {
         const fullPath = path.join(parentDir, name);
-        console.log(`[files] findSessionFile: found via recursive fallback: ${fullPath}`);
+        logger.info({ fullPath }, "[files] findSessionFile: found via recursive fallback");
         return fullPath;
       }
     }
   } catch (err) {
-    console.log(`[files] findSessionFile: recursive fallback failed:`, err);
+    logger.info({ err }, "[files] findSessionFile: recursive fallback failed");
   }
 
-  console.log(`[files] findSessionFile: not found anywhere`);
+  logger.info("[files] findSessionFile: not found anywhere");
   return null;
 }
 
@@ -153,6 +154,6 @@ export async function cleanupTempDir(dir: string): Promise<void> {
   try {
     await fs.rm(dir, { recursive: true, force: true });
   } catch (err) {
-    console.error("[files] Cleanup failed:", err);
+    logger.error({ err }, "[files] Cleanup failed");
   }
 }

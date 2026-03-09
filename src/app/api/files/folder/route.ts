@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { createFolder, deleteFolder, type FileAuth } from "@/lib/files/service";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function POST(request: Request) {
   const auth = await requireAuth();
@@ -15,6 +16,17 @@ export async function POST(request: Request) {
   const result = await createFolder(fileAuth, body.path);
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.FOLDER_CREATED,
+    resourceType: "folder",
+    resourceId: result.data.id,
+    description: `Created folder "${body.path}"`,
+    metadata: { path: body.path },
+  });
+
   return NextResponse.json(result.data, { status: 201 });
 }
 
@@ -34,5 +46,15 @@ export async function DELETE(request: Request) {
   const result = await deleteFolder(fileAuth, path, { recursive });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.FOLDER_DELETED,
+    resourceType: "folder",
+    description: `Deleted folder "${path}"`,
+    metadata: { path, recursive },
+  });
+
   return NextResponse.json(result.data);
 }

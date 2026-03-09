@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { listSecrets, createSecret } from "@/lib/vault/service";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET(req: Request) {
   const auth = await requireAuth();
@@ -29,5 +30,16 @@ export async function POST(req: Request) {
   }
   const result = await createSecret({ userId: auth.userId }, body);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.SECRET_CREATED,
+    resourceType: "secret",
+    resourceId: result.data.id,
+    description: `Created secret "${body.name}"`,
+    metadata: { name: body.name },
+  });
+
   return NextResponse.json(result.data, { status: 201 });
 }

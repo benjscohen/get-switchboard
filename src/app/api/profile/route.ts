@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { createClient } from "@/lib/supabase/server";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET() {
   const auth = await requireAuth();
@@ -38,6 +39,16 @@ export async function PATCH(request: Request) {
   if (error) {
     return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
   }
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.PROFILE_UPDATED,
+    resourceType: "profile",
+    resourceId: auth.userId,
+    description: "Updated profile settings",
+    metadata: { discoveryMode: body.discoveryMode },
+  });
 
   return NextResponse.json({ discoveryMode: body.discoveryMode });
 }

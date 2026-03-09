@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ message: "Added to waitlist" });
   } catch (error) {
-    console.error("Waitlist error:", error instanceof Error ? error.message : "Unknown error");
+    logger.error({ err: error }, "Waitlist error");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

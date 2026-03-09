@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { logger } from "@/lib/logger";
 
 // ── Constants ──
 
@@ -158,7 +159,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
     });
 
     if (!res.ok) {
-      console.warn(`[embeddings] OpenAI error: ${res.status}`);
+      logger.warn({ status: res.status }, "[embeddings] OpenAI error");
       return [];
     }
 
@@ -237,10 +238,10 @@ export async function upsertEmbeddings(
       .upsert(rows, { onConflict: idColumn });
 
     if (error) {
-      console.warn(`[embeddings] Upsert error (${table}):`, error.message);
+      logger.warn({ table, errMessage: error.message }, "[embeddings] Upsert error");
     }
   } catch (err) {
-    console.warn(`[embeddings] upsertEmbeddings failed (${table}):`, err);
+    logger.warn({ err, table }, "[embeddings] upsertEmbeddings failed");
   } finally {
     for (const item of toProcess) guard.delete(item.id);
   }
@@ -265,7 +266,7 @@ export async function searchByEmbedding(
     });
 
     if (error) {
-      console.warn(`[embeddings] ${rpcName} error:`, error.message);
+      logger.warn({ rpcName, errMessage: error.message }, "[embeddings] RPC search error");
       return [];
     }
 
@@ -274,7 +275,7 @@ export async function searchByEmbedding(
       similarity: row.similarity as number,
     }));
   } catch (err) {
-    console.warn(`[embeddings] ${rpcName} failed:`, err);
+    logger.warn({ err, rpcName }, "[embeddings] RPC search failed");
     return [];
   }
 }

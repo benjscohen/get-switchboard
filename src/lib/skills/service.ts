@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { upsertEmbeddings, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore, EMBEDDING_TABLES } from "@/lib/embeddings";
+import { logger } from "@/lib/logger";
 export { type ScopedAuth } from "@/lib/shared/scoped-entity";
 
 // ── Types ──
@@ -163,7 +164,7 @@ function queueSkillEmbedding(s: SkillRow): void {
     id: s.id,
     searchText: buildSkillSearchText(s),
     extraColumns: { name: s.name, description: s.description },
-  }]).catch((err) => console.warn("[skills] embedding failed:", err));
+  }]).catch((err) => logger.warn({ err }, "[skills] embedding failed"));
 }
 
 // ── CRUD Functions ──
@@ -317,7 +318,7 @@ export async function createSkill(auth: SkillAuth, input: CreateSkillInput): Pro
     change_type: "created",
     changed_by: auth.userId,
   });
-  if (versionError) console.error("Failed to record skill version:", versionError.message);
+  if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record skill version");
 
   queueSkillEmbedding(s);
 
@@ -385,7 +386,7 @@ export async function updateSkill(auth: SkillAuth, id: string, input: UpdateSkil
     change_type: "updated",
     changed_by: auth.userId,
   });
-  if (versionError) console.error("Failed to record skill version:", versionError.message);
+  if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record skill version");
 
   queueSkillEmbedding(u);
 
@@ -519,7 +520,7 @@ export async function rollbackSkill(
     changed_by: auth.userId,
     change_summary: `Rolled back to version ${targetVersion}`,
   });
-  if (versionError) console.error("Failed to record skill version:", versionError.message);
+  if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record skill version");
 
   queueSkillEmbedding(updated as SkillRow);
 

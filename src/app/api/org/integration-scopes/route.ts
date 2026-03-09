@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireOrgAdmin } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getFullCatalog } from "@/lib/integrations/catalog";
+import { logger } from "@/lib/logger";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET() {
   const auth = await requireOrgAdmin();
@@ -74,7 +76,7 @@ export async function PUT(request: Request) {
       .single();
 
     if (error || !inserted) {
-      console.error("[integration-scopes] insert error:", error);
+      logger.error({ err: error }, "[integration-scopes] insert error");
       return NextResponse.json({ error: "Failed to save scopes" }, { status: 500 });
     }
 
@@ -89,11 +91,20 @@ export async function PUT(request: Request) {
         );
 
       if (userError) {
-        console.error("[integration-scopes] user insert error:", userError);
+        logger.error({ err: userError }, "[integration-scopes] user insert error");
         return NextResponse.json({ error: "Failed to save scope users" }, { status: 500 });
       }
     }
   }
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.ORGANIZATION_UPDATED,
+    resourceType: "integration_access_scopes",
+    description: "Updated integration access scopes",
+    metadata: { scopeCount: scopes.length },
+  });
 
   return NextResponse.json({ ok: true });
 }
@@ -114,6 +125,15 @@ export async function DELETE(request: Request) {
     .delete()
     .eq("organization_id", auth.organizationId)
     .eq("integration_id", integrationId);
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.ORGANIZATION_UPDATED,
+    resourceType: "integration_access_scopes",
+    resourceId: integrationId,
+    description: `Removed integration access scope for ${integrationId}`,
+  });
 
   return NextResponse.json({ ok: true });
 }

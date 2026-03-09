@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { readFileById, moveFile, type FileAuth } from "@/lib/files/service";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function POST(
   request: Request,
@@ -23,5 +24,16 @@ export async function POST(
 
   const result = await moveFile(fileAuth, file.data.path, body.to);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.FILE_MOVED,
+    resourceType: "file",
+    resourceId: id,
+    description: `Moved file from "${file.data.path}" to "${body.to}"`,
+    metadata: { from: file.data.path, to: body.to },
+  });
+
   return NextResponse.json(result.data);
 }

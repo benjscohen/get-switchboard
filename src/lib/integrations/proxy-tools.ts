@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { discoverTools, type ProxyAuth } from "@/lib/mcp/proxy-client";
 import { allProxyIntegrations } from "./proxy-registry";
+import { logger } from "@/lib/logger";
 
 export type ProxyTool = {
   integrationId: string;
@@ -116,10 +117,7 @@ export async function discoverAndCacheProxyTools(
     }));
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error(
-      `[proxy-tools] Discovery failed for ${integrationId}:`,
-      message
-    );
+    logger.error({ integrationId, errMessage: message }, "[proxy-tools] Discovery failed");
 
     // Record the error
     await supabaseAdmin

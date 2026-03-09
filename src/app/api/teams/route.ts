@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAuth, requireOrgAdmin } from "@/lib/api-auth";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET() {
   const auth = await requireAuth();
@@ -77,6 +78,16 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.TEAM_CREATED,
+    resourceType: "team",
+    resourceId: team.id,
+    description: `Created team "${team.name}"`,
+    metadata: { name: team.name, slug: team.slug },
+  });
 
   return NextResponse.json({
     id: team.id,

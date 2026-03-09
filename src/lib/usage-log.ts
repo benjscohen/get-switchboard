@@ -24,5 +24,5 @@ export function logUsage(data: {
       organization_id: data.organizationId ?? null,
       risk_level: data.riskLevel ?? null,
     })
-    .then();
+    .then(undefined, () => {});
 }

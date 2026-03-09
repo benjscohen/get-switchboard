@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { unshareSecret } from "@/lib/vault/service";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function DELETE(
   _req: Request,
@@ -16,5 +17,16 @@ export async function DELETE(
     shareId
   );
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.SECRET_SHARE_DELETED,
+    resourceType: "secret_share",
+    resourceId: shareId,
+    description: `Removed share "${shareId}" from secret "${id}"`,
+    metadata: { secretId: id, shareId },
+  });
+
   return NextResponse.json(result.data);
 }

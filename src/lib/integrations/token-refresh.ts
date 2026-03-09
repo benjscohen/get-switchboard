@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { encrypt } from "@/lib/encryption";
 import { integrationRegistry } from "./registry";
 import { proxyIntegrationRegistry } from "./proxy-registry";
+import { logger } from "@/lib/logger";
 
 type Connection = {
   id: string;
@@ -106,7 +107,7 @@ export async function getValidTokens(
 
   if (!res.ok) {
     const text = await res.text();
-    console.error(`Token refresh failed for ${connection.integrationId}:`, text);
+    logger.error({ integrationId: connection.integrationId, responseBody: text }, "Token refresh failed");
     throw new Error("Token refresh failed. Please reconnect the integration.");
   }
 

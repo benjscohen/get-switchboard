@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { readFileById, updateFileById, deleteFileById, type FileAuth } from "@/lib/files/service";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET(
   _request: Request,
@@ -33,6 +34,16 @@ export async function PATCH(
   });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.FILE_UPDATED,
+    resourceType: "file",
+    resourceId: id,
+    description: `Updated file "${id}"`,
+  });
+
   return NextResponse.json(result.data);
 }
 
@@ -48,5 +59,15 @@ export async function DELETE(
   const result = await deleteFileById(fileAuth, id);
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.FILE_DELETED,
+    resourceType: "file",
+    resourceId: id,
+    description: `Deleted file "${id}"`,
+  });
+
   return NextResponse.json(result.data);
 }

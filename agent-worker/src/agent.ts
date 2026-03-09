@@ -19,6 +19,7 @@ import {
 import type { PlanDecision, PlanPhase } from "./session-registry.js";
 import type { SlackFile } from "./types.js";
 import { ensureChromeRunning, cleanupTabs, chromeMcpArgs } from "./chrome.js";
+import { logger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Image / PDF / text detection helpers
@@ -156,7 +157,7 @@ export async function formatFiles(files: SlackFile[], tempDir?: string | null): 
           );
         }
       } catch (err) {
-        console.error(`Failed to download file ${file.name}:`, err);
+        logger.error({ err, filename: file.name }, "Failed to download file");
         parts.push(`\n[Attached file: ${file.name} (${file.mimetype}, download failed)]`);
       }
       continue;
@@ -182,9 +183,9 @@ export async function formatFiles(files: SlackFile[], tempDir?: string | null): 
             `\n[Attached file: ${file.name} (${file.mimetype}) — saved to ${relPath}. Use the Read tool to access this file.]`,
           );
         }
-        console.log(`[files] Saved attachment ${file.name} → ${destPath}`);
+        logger.info({ filename: file.name, destPath }, "[files] Saved attachment");
       } catch (err) {
-        console.error(`Failed to save file ${file.name}:`, err);
+        logger.error({ err, filename: file.name }, "Failed to save file");
         parts.push(`\n[Attached file: ${file.name} (${file.mimetype}, save failed)]`);
       }
       continue;
@@ -226,13 +227,13 @@ async function saveTranscriptIfExists(
     if (sessionFile) {
       const transcript = await fs.readFile(sessionFile, "utf-8");
       await db.saveSessionTranscript(sessionId, transcript, sessionFile);
-      console.log(`[session ${sessionId}] Saved transcript ${label} (${transcript.length} bytes)`);
+      logger.info({ sessionId, label, bytes: transcript.length }, "Saved transcript");
     } else {
-      console.log(`[session ${sessionId}] No session file found for transcript save (${label})`);
+      logger.info({ sessionId, label }, "No session file found for transcript save");
     }
     return sessionFile;
   } catch (err) {
-    console.error(`[session ${sessionId}] Failed to save transcript ${label}:`, err);
+    logger.error({ err, sessionId, label }, "Failed to save transcript");
     return cachedSessionFile ?? null;
   }
 }
@@ -253,7 +254,7 @@ async function saveWorkspaceArchive(
       await db.updateSession(sessionId, { workspace_archive_path: archivePath });
     }
   } catch (err) {
-    console.error(`[session ${sessionId}] workspace archive failed:`, err);
+    logger.error({ err, sessionId }, "workspace archive failed");
   }
 }
 
@@ -337,7 +338,7 @@ export async function injectFollowUp(
   });
 
   // Push into the running session's async generator
-  console.log(`[session ${running.sessionId}] follow-up injected — text_len=${fullText.length}`);
+  logger.info({ sessionId: running.sessionId, textLen: fullText.length }, "follow-up injected");
 
   return new Promise<boolean>((outerResolve) => {
     const pushed = running.pushMessage({
@@ -373,7 +374,7 @@ export async function processMessage(
   try {
     lookup = await db.lookupUserBySlackId(slackUserId);
   } catch (err) {
-    console.error("User lookup failed:", err);
+    logger.error({ err }, "User lookup failed");
     await postErrorWithRetry({
       channelId,
       messageTs,
@@ -415,10 +416,10 @@ export async function processMessage(
     try {
       resumeSessionId = await db.getThreadSession(channelId, threadTs);
       if (resumeSessionId) {
-        console.log(`[thread] Resuming Claude session ${resumeSessionId}`);
+        logger.info({ resumeSessionId }, "[thread] Resuming Claude session");
       }
     } catch (err) {
-      console.error("Failed to look up thread session:", err);
+      logger.error({ err }, "Failed to look up thread session");
     }
   }
 
@@ -449,7 +450,7 @@ export async function processMessage(
       ...(retryOf ? { retryOf } : {}),
     });
   } catch (err) {
-    console.error("Failed to create session:", err);
+    logger.error({ err }, "Failed to create session");
     await postErrorWithRetry({
       channelId,
       messageTs,
@@ -487,7 +488,7 @@ export async function processMessage(
     // 11. Pre-flight MCP connectivity check (retry once on failure — cold start may not be ready)
     try {
       const mcpUrl = process.env.SWITCHBOARD_MCP_URL!.trim();
-      console.log(`[mcp-preflight] Testing ${mcpUrl} ...`);
+      logger.info({ mcpUrl }, "[mcp-preflight] Testing");
 
       const doPreflight = async () => {
         const resp = await fetch(mcpUrl, {
@@ -517,19 +518,19 @@ export async function processMessage(
 
       try {
         const resp = await doPreflight();
-        console.log(`[mcp-preflight] OK: ${(await resp.text()).slice(0, 500)}`);
+        logger.info({ response: (await resp.text()).slice(0, 500) }, "[mcp-preflight] OK");
       } catch (firstErr) {
-        console.warn(`[mcp-preflight] First attempt failed: ${firstErr instanceof Error ? firstErr.message : firstErr}`);
+        logger.warn({ err: firstErr }, "[mcp-preflight] First attempt failed");
         await new Promise((r) => setTimeout(r, 2000));
         try {
           const resp = await doPreflight();
-          console.log(`[mcp-preflight] OK (retry): ${(await resp.text()).slice(0, 500)}`);
+          logger.info({ response: (await resp.text()).slice(0, 500) }, "[mcp-preflight] OK (retry)");
         } catch (retryErr) {
-          console.error(`[mcp-preflight] FAILED after retry: ${retryErr instanceof Error ? retryErr.message : retryErr}`);
+          logger.error({ err: retryErr }, "[mcp-preflight] FAILED after retry");
         }
       }
     } catch (err) {
-      console.error("[mcp-preflight] Network error:", err);
+      logger.error({ err }, "[mcp-preflight] Network error");
     }
 
     // 12. Pull user files for local read context
@@ -538,10 +539,10 @@ export async function processMessage(
       if (userFiles) {
         tempDir = await writeFilesToStableDir(userFiles, lookup.userId);
         claudeMdContent = extractClaudeMd(userFiles);
-        console.log(`[files] Wrote ${userFiles.length} file(s) to ${tempDir}`);
+        logger.info({ fileCount: userFiles.length, tempDir }, "[files] Wrote files");
       }
     } catch (err) {
-      console.error("[files] Failed to pull user files:", err);
+      logger.error({ err }, "[files] Failed to pull user files");
     }
 
     // 12a. Now that tempDir exists, format file attachments (skip on retry)
@@ -559,10 +560,10 @@ export async function processMessage(
         if (saved) {
           await fs.mkdir(path.dirname(saved.filePath), { recursive: true });
           await fs.writeFile(saved.filePath, saved.transcript, "utf-8");
-          console.log(`[thread] Restored transcript for ${resumeSessionId} → ${saved.filePath}`);
+          logger.info({ resumeSessionId, filePath: saved.filePath }, "[thread] Restored transcript");
         }
       } catch (err) {
-        console.error(`[thread] Failed to restore transcript:`, err);
+        logger.error({ err }, "[thread] Failed to restore transcript");
       }
 
       // 12c. Restore workspace files from storage if available
@@ -572,11 +573,11 @@ export async function processMessage(
           if (archivePath) {
             const ok = await restoreWorkspace({ archivePath, targetDir: tempDir });
             if (ok) {
-              console.log(`[thread] Restored workspace for ${resumeSessionId}`);
+              logger.info({ resumeSessionId }, "[thread] Restored workspace");
             }
           }
         } catch (err) {
-          console.error(`[thread] Failed to restore workspace:`, err);
+          logger.error({ err }, "[thread] Failed to restore workspace");
         }
       }
     }
@@ -606,14 +607,14 @@ export async function processMessage(
       killedByUser: false,
     };
     registerSession(threadKey, runningSession);
-    console.log(`[session ${sessionId}] registered — thread=${threadKey} active=${activeCount}`);
+    logger.info({ sessionId, threadKey, activeCount }, "session registered");
 
     // 14b. Ensure headless Chrome is running for browser tools
     if (process.env.ENABLE_CHROME_MCP !== "false") {
       try {
         await ensureChromeRunning();
       } catch (err) {
-        console.error(`[session ${sessionId}] Chrome startup failed (non-fatal):`, err);
+        logger.error({ err, sessionId }, "Chrome startup failed (non-fatal)");
       }
     }
 
@@ -662,7 +663,7 @@ export async function processMessage(
             const redacted = data
               .replace(/Bearer [^\s"']+/g, "Bearer [REDACTED]")
               .replace(/sk_live_[^\s"']+/g, "sk_live_[REDACTED]");
-            console.error("[claude-code stderr]", redacted);
+            logger.error({ stderr: redacted }, "[claude-code stderr]");
           },
         };
 
@@ -679,7 +680,7 @@ export async function processMessage(
                       const toolInput = (input as import("@anthropic-ai/claude-code").PreToolUseHookInput).tool_input as { plan?: string };
                       const plan = toolInput?.plan || "(No plan provided)";
 
-                      console.log(`[session ${sessionId}] Plan submitted (len=${plan.length})`);
+                      logger.info({ sessionId, planLen: plan.length }, "Plan submitted");
 
                       // Post plan to Slack with approval button
                       const planBlocks = buildPlanApprovalBlocks(slack.markdownToSlack(plan), sessionId);
@@ -724,7 +725,7 @@ export async function processMessage(
                           await runningSession.setPermissionMode("bypassPermissions");
                         }
 
-                        console.log(`[session ${sessionId}] Plan approved — switching to bypassPermissions`);
+                        logger.info({ sessionId }, "Plan approved — switching to bypassPermissions");
                         planApproved = true;
                         approvedPlanText = plan;
                         return {
@@ -741,7 +742,7 @@ export async function processMessage(
                         const revisingBlocks = buildPlanRevisingBlocks(slack.markdownToSlack(plan));
                         await slack.updateMessage(channelId, planTs, slack.markdownToSlack(plan), revisingBlocks).catch(() => {});
 
-                        console.log(`[session ${sessionId}] Plan revision requested: ${decision.feedback.slice(0, 100)}`);
+                        logger.info({ sessionId, feedback: decision.feedback.slice(0, 100) }, "Plan revision requested");
 
                         // Go back to exploring for the next iteration
                         runningSession.planPhase = "exploring";
@@ -800,8 +801,9 @@ export async function processMessage(
           const elapsed = Math.round((Date.now() - startTime) / 1000);
           const sinceLast = Math.round((Date.now() - lastMessageAt) / 1000);
           const streamState = stream.getState();
-          console.log(
-            `[session ${sessionId}] heartbeat ${elapsed}s — last_msg=${sinceLast}s ago — waiting=${waitingForFollowUp} — gate=${streamState.gateOpen} — queued=${streamState.queueLength} — counts=${JSON.stringify(Object.fromEntries(msgCounts))}`,
+          logger.info(
+            { sessionId, elapsed, sinceLast, waiting: waitingForFollowUp, gateOpen: streamState.gateOpen, queued: streamState.queueLength, counts: Object.fromEntries(msgCounts) },
+            "session heartbeat",
           );
         }, 30_000);
 
@@ -814,9 +816,9 @@ export async function processMessage(
                 setTimeout(() => reject(new Error("mcpServerStatus timeout")), 10_000),
               ),
             ]);
-            console.log("[mcp-status]", JSON.stringify(mcpStatus));
+            logger.info({ mcpStatus }, "[mcp-status]");
           } catch (err) {
-            console.log("[mcp-status] not available:", err instanceof Error ? err.message : err);
+            logger.info({ err }, "[mcp-status] not available");
           }
 
           // Iterate — handle multiple result messages (one per user turn)
@@ -852,7 +854,7 @@ export async function processMessage(
             }
 
             if (message.type === "system") {
-              console.log("[claude-code system]", JSON.stringify(message));
+              logger.info({ message }, "[claude-code system]");
             }
 
             // Log assistant message metadata and capture text content
@@ -867,8 +869,9 @@ export async function processMessage(
               };
               const blocks = msg.message?.content || [];
               const blockTypes = blocks.map((b) => b.type).join(",") || "?";
-              console.log(
-                `[session ${sessionId}] assistant msg id=${msg.message?.id} blocks=[${blockTypes}] stop=${msg.message?.stop_reason || "?"}`,
+              logger.info(
+                { sessionId, msgId: msg.message?.id, blockTypes, stopReason: msg.message?.stop_reason || "?" },
+                "assistant message received",
               );
 
               // Accumulate text from assistant messages — SDK result.result may be
@@ -884,12 +887,14 @@ export async function processMessage(
               if (message.subtype === "success") {
                 const text = message.result || lastAssistantText || "(No response generated)";
                 if (!message.result) {
-                  console.warn(
-                    `[session ${sessionId}] result.result empty — using ${lastAssistantText ? `lastAssistantText (len=${lastAssistantText.length})` : "fallback"}`,
+                  logger.warn(
+                    { sessionId, fallback: lastAssistantText ? `lastAssistantText (len=${lastAssistantText.length})` : "fallback" },
+                    "result.result empty — using fallback",
                   );
                 }
-                console.log(
-                  `[session ${sessionId}] result:success — len=${text.length} preview=${JSON.stringify(text.slice(0, 200))}`,
+                logger.info(
+                  { sessionId, len: text.length, preview: text.slice(0, 200) },
+                  "result:success",
                 );
 
                 // Finalize streaming status line
@@ -906,7 +911,7 @@ export async function processMessage(
                 // Plan mode → suppress ALL result:success messages during plan phase.
                 // The plan itself is shown via approval blocks. Only the execution phase posts results.
                 if (planModeRequested && !planExecutionStarted) {
-                  console.log(`[session ${sessionId}] plan phase result:success suppressed (phase=${runningSession.planPhase}) — will not post to Slack`);
+                  logger.info({ sessionId, planPhase: runningSession.planPhase }, "plan phase result:success suppressed — will not post to Slack");
 
                   await db.createMessage({
                     sessionId,
@@ -939,7 +944,7 @@ export async function processMessage(
                       slackText,
                       replyThread,
                     );
-                    console.log(`[session ${sessionId}] posted to Slack ts=${resultTs}`);
+                    logger.info({ sessionId, resultTs }, "posted to Slack");
 
                     await db.createMessage({
                       sessionId,
@@ -959,13 +964,13 @@ export async function processMessage(
                           content: cleanText,
                           title: "Full response",
                         });
-                        console.log(`[session ${sessionId}] uploaded full response as response.md`);
+                        logger.info({ sessionId }, "uploaded full response as response.md");
                       } catch (uploadErr) {
-                        console.error(`[session ${sessionId}] failed to upload response.md:`, uploadErr);
+                        logger.error({ err: uploadErr, sessionId }, "failed to upload response.md");
                       }
                     }
                   } else {
-                    console.log(`[session ${sessionId}] no text to post (file-only response)`);
+                    logger.info({ sessionId }, "no text to post (file-only response)");
                     await db.createMessage({
                       sessionId,
                       role: "assistant",
@@ -992,13 +997,13 @@ export async function processMessage(
                     ]);
                   }
                 } catch (slackErr) {
-                  console.error(`[session ${sessionId}] failed to post result to Slack:`, slackErr);
+                  logger.error({ err: slackErr, sessionId }, "failed to post result to Slack");
                   // Retry with plain text (no markdown conversion, truncated)
                   if (slackText) {
                     try {
                       await slack.postMessage(channelId, cleanText.slice(0, 3900), replyThread);
                     } catch (retryErr) {
-                      console.error(`[session ${sessionId}] retry also failed:`, retryErr);
+                      logger.error({ err: retryErr, sessionId }, "retry also failed");
                     }
                   }
                 }
@@ -1020,7 +1025,7 @@ export async function processMessage(
                 stream.openGate();
               } else {
                 // Error result — surface to user via retry flow
-                console.error("[claude-code] error result:", JSON.stringify(message));
+                logger.error({ message }, "[claude-code] error result");
                 throw new Error(
                   `Agent encountered an error (${message.subtype}): ${
                     "error" in message && message.error
@@ -1034,12 +1039,14 @@ export async function processMessage(
 
           // Summary log after loop completes
           const elapsed = Math.round((Date.now() - startTime) / 1000);
-          console.log(
-            `[session ${sessionId}] conversation done — elapsed=${elapsed}s counts=${JSON.stringify(Object.fromEntries(msgCounts))} hasResult=${!!lastResultText} resultLen=${lastResultText?.length ?? 0}`,
+          logger.info(
+            { sessionId, elapsed, counts: Object.fromEntries(msgCounts), hasResult: !!lastResultText, resultLen: lastResultText?.length ?? 0 },
+            "conversation done",
           );
           if (!lastResultText) {
-            console.warn(
-              `[session ${sessionId}] no result text captured — recent messages: [${recentMessages.join(", ")}]`,
+            logger.warn(
+              { sessionId, recentMessages },
+              "no result text captured",
             );
           }
 
@@ -1063,9 +1070,9 @@ export async function processMessage(
         // If we were trying to resume and it failed for ANY reason, retry fresh.
         // Resume failures are expected — sessions expire on the API side after idle timeout.
         if (resumeSessionId) {
-          console.warn(
-            `[thread] Resume failed for session ${resumeSessionId}, starting fresh:`,
-            err instanceof Error ? err.message : err,
+          logger.warn(
+            { err, resumeSessionId },
+            "[thread] Resume failed, starting fresh",
           );
           resumeSessionId = null;
           // Recreate stream — the previous one's async generator is consumed/done
@@ -1082,7 +1089,7 @@ export async function processMessage(
 
       // Plan approved — start fresh execution conversation with clean context.
       if (planModeRequested && planApproved && !planExecutionStarted) {
-        console.log(`[session ${sessionId}] plan approved — starting execution with clean context`);
+        logger.info({ sessionId }, "plan approved — starting execution with clean context");
 
         // Post execution-started message + remove plan-phase reaction in parallel
         await Promise.all([
@@ -1131,7 +1138,7 @@ export async function processMessage(
       clearTimeout(timeoutId);
 
       if (!lastResultText) {
-        console.warn(`[session ${sessionId}] fallback — no result text after conversation completed`);
+        logger.warn({ sessionId }, "fallback — no result text after conversation completed");
         lastResultText = "(No response generated — the agent completed without producing output. Please try again.)";
         await slack.postMessage(
           channelId,
@@ -1151,7 +1158,7 @@ export async function processMessage(
       // If the session was idle (agent already responded, waiting for user follow-up)
       // and got killed by timeout/reaper, silently complete — don't post a scary error.
       if (isAbort && sessionIsIdle) {
-        console.log(`[session ${sessionId}] idle session aborted by timeout — completing silently (no error posted)`);
+        logger.info({ sessionId }, "idle session aborted by timeout — completing silently");
         await statusUpdater.finalize().catch(() => {});
         await db.updateSession(sessionId, {
           status: "completed",
@@ -1162,7 +1169,7 @@ export async function processMessage(
         return;
       }
 
-      console.error(`[session ${sessionId}] error caught: type=${err instanceof Error ? err.constructor?.name : typeof err} message=${err instanceof Error ? err.message : String(err)}`);
+      logger.error({ sessionId, errType: err instanceof Error ? err.constructor?.name : typeof err, err }, "session error caught");
 
       const isUserKill = isAbort && runningSession.killedByUser;
 
@@ -1182,7 +1189,7 @@ export async function processMessage(
           completed_at: new Date().toISOString(),
         }).catch(() => {});
 
-        console.log(`[session ${sessionId}] cleanly stopped by user`);
+        logger.info({ sessionId }, "cleanly stopped by user");
       } else {
         // Finalize streaming status with error state
         await statusUpdater.finalizeError(err instanceof Error ? err.message : "Unknown error").catch(() => {});
@@ -1221,7 +1228,7 @@ export async function processMessage(
       completed_at: new Date().toISOString(),
     });
   } catch (err) {
-    console.error(`Unexpected error in session ${sessionId}:`, err);
+    logger.error({ err, sessionId }, "Unexpected error in session");
     const errorMessage =
       err instanceof Error ? err.message : "An unexpected error occurred";
 
@@ -1236,13 +1243,13 @@ export async function processMessage(
     activeCount--;
     const threadKey = buildThreadKey(channelId, threadTs || messageTs);
     unregisterSession(threadKey);
-    console.log(`[session ${sessionId}] unregistered — thread=${threadKey} active=${activeCount}`);
+    logger.info({ sessionId, threadKey, activeCount }, "session unregistered");
     // tempDir is stable (keyed by userId) and reused across sessions — no cleanup
 
     // Clean up Chrome tabs opened during this session
     if (process.env.ENABLE_CHROME_MCP !== "false") {
       cleanupTabs().catch((err) => {
-        console.error(`[session ${sessionId}] Chrome tab cleanup failed:`, err);
+        logger.error({ err, sessionId }, "Chrome tab cleanup failed");
       });
     }
   }
@@ -1255,13 +1262,13 @@ export async function processMessage(
 export async function recoverStaleSessions(): Promise<void> {
   const staleSessions = await db.getStaleRunningSessions();
   if (staleSessions.length === 0) {
-    console.log("No stale sessions to recover.");
+    logger.info("No stale sessions to recover.");
     return;
   }
 
   const idleSessions = staleSessions.filter((s) => s.status === "idle");
   const runningSessions = staleSessions.filter((s) => s.status === "running");
-  console.log(`Recovering ${runningSessions.length} running + ${idleSessions.length} idle stale session(s)...`);
+  logger.info({ runningCount: runningSessions.length, idleCount: idleSessions.length }, "Recovering stale sessions");
 
   // Idle sessions: silently complete — agent was waiting for user input, not mid-reply
   await Promise.all(idleSessions.map(async (session) => {
@@ -1304,15 +1311,15 @@ export async function recoverStaleSessions(): Promise<void> {
           blocks,
         )
         .catch((err) =>
-          console.error(
-            `Failed to notify Slack for stale session ${session.id}:`,
-            err,
+          logger.error(
+            { err, sessionId: session.id },
+            "Failed to notify Slack for stale session",
           ),
         );
     }
   }));
 
-  console.log("Stale session recovery complete.");
+  logger.info("Stale session recovery complete.");
 }
 
 // ---------------------------------------------------------------------------
@@ -1326,25 +1333,25 @@ export async function retrySession(
   // 1. Look up the failed session
   const session = await db.getSessionById(sessionId);
   if (!session) {
-    console.error(`Retry: session ${sessionId} not found`);
+    logger.error({ sessionId }, "Retry: session not found");
     return;
   }
 
   if (session.status !== "failed" && session.status !== "timeout") {
-    console.warn(`Retry: session ${sessionId} has status ${session.status}, skipping`);
+    logger.warn({ sessionId, status: session.status }, "Retry: session has non-retryable status, skipping");
     return;
   }
 
   // 2. Look up Slack user (fresh credentials)
   const lookup = await db.lookupUserBySlackId(triggerSlackUserId);
   if (!lookup.ok) {
-    console.error(`Retry: Slack user ${triggerSlackUserId} not found (${lookup.reason})`);
+    logger.error({ slackUserId: triggerSlackUserId, reason: lookup.reason }, "Retry: Slack user not found");
     return;
   }
 
   // 3. Verify the clicking user owns the session
   if (lookup.userId !== session.user_id) {
-    console.warn(`Retry: user mismatch — session owner ${session.user_id}, clicker ${lookup.userId}`);
+    logger.warn({ sessionOwner: session.user_id, clicker: lookup.userId }, "Retry: user mismatch");
     return;
   }
 

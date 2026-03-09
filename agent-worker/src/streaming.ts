@@ -13,6 +13,7 @@
 
 import * as slack from "./slack.js";
 import { buildStatusWithStopBlocks, buildStatusStoppedBlocks } from "./slack-blocks.js";
+import { logger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -405,7 +406,7 @@ export class StreamingStatusUpdater {
       try {
         await slack.updateMessage(this.channelId, this.statusTs, fallbackText, blocks);
       } catch (err) {
-        console.error("[streaming] Failed to update killed status:", err instanceof Error ? err.message : err);
+        logger.error({ err }, "[streaming] Failed to update killed status");
       }
     }
   }
@@ -537,7 +538,7 @@ export class StreamingStatusUpdater {
       }
     } catch (err) {
       // Graceful degradation — don't break the agent if Slack update fails
-      console.error("[streaming] Failed to update status:", err instanceof Error ? err.message : err);
+      logger.error({ err }, "[streaming] Failed to update status");
     }
   }
 

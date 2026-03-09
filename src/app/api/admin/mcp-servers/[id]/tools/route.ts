@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/api-auth";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function PUT(
   req: NextRequest,
@@ -40,6 +41,16 @@ export async function PUT(
       .eq("server_id", id)
       .eq("tool_name", tool.toolName);
   }
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.MCP_SERVER_UPDATED,
+    resourceType: "mcp_server_tools",
+    resourceId: id,
+    description: `Updated ${tools.length} tool(s) on MCP server`,
+    metadata: { tools: tools.map((t) => ({ toolName: t.toolName, enabled: t.enabled })) },
+  });
 
   return NextResponse.json({ ok: true, updated: tools.length });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { integrationRegistry } from "@/lib/integrations/registry";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 // GET /api/integrations/tool-groups?integrationId=hubspot-crm
 export async function GET(req: NextRequest) {
@@ -64,6 +65,16 @@ export async function PATCH(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.ORGANIZATION_UPDATED,
+    resourceType: "connection_tool_groups",
+    resourceId: integrationId,
+    description: `Updated tool groups for ${integrationId}`,
+    metadata: { integrationId, enabledGroups },
+  });
 
   return NextResponse.json({ success: true, enabledGroups });
 }

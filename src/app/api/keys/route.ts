@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { generateApiKey } from "@/lib/crypto";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { requireAuth } from "@/lib/api-auth";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET() {
   const authResult = await requireAuth();
@@ -100,6 +101,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Failed to create API key" }, { status: 500 });
   }
 
+  logAuditEvent({
+    organizationId: authResult.organizationId,
+    actorId: authResult.userId,
+    eventType: AuditEventType.API_KEY_CREATED,
+    resourceType: "api_key",
+    resourceId: prefix,
+    description: `Created API key "${name}"`,
+    metadata: { name, scope, keyPrefix: prefix },
+  });
+
   return NextResponse.json({ key: raw, prefix, name, scope, permissions });
 }
 
@@ -133,6 +144,15 @@ export async function DELETE(request: Request) {
       .eq("user_id", authResult.userId)
       .is("revoked_at", null);
   }
+
+  logAuditEvent({
+    organizationId: authResult.organizationId,
+    actorId: authResult.userId,
+    eventType: AuditEventType.API_KEY_REVOKED,
+    resourceType: "api_key",
+    resourceId: id,
+    description: "Revoked API key",
+  });
 
   return NextResponse.json({ success: true });
 }

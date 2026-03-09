@@ -5,6 +5,8 @@ import { encrypt } from "@/lib/encryption";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { ALLOWED_MODEL_IDS } from "@/lib/agent-models";
+import { logger } from "@/lib/logger";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function POST(request: Request) {
   const authResult = await requireAuth();
@@ -51,7 +53,7 @@ export async function POST(request: Request) {
   }).select("id").single();
 
   if (error) {
-    console.error("Failed to create agent key:", error);
+    logger.error({ err: error }, "Failed to create agent key");
     return NextResponse.json({ error: "Failed to create agent key" }, { status: 500 });
   }
 
@@ -60,6 +62,16 @@ export async function POST(request: Request) {
     const supabase = await createClient();
     await supabase.from("profiles").update({ preferred_agent_model: model }).eq("id", userId);
   }
+
+  logAuditEvent({
+    organizationId,
+    actorId: userId,
+    eventType: AuditEventType.AGENT_KEY_CREATED,
+    resourceType: "agent_key",
+    resourceId: inserted.id,
+    description: "Created agent key",
+    metadata: { keyPrefix: prefix },
+  });
 
   return NextResponse.json({ id: inserted.id, prefix, name: "Agent Key", expiresAt });
 }
@@ -82,9 +94,18 @@ export async function PATCH(request: Request) {
     .is("revoked_at", null);
 
   if (error) {
-    console.error("Failed to update agent key permissions:", error);
+    logger.error({ err: error }, "Failed to update agent key permissions");
     return NextResponse.json({ error: "Failed to update permissions" }, { status: 500 });
   }
+
+  logAuditEvent({
+    organizationId: authResult.organizationId,
+    actorId: userId,
+    eventType: AuditEventType.AGENT_KEY_UPDATED,
+    resourceType: "agent_key",
+    resourceId: userId,
+    description: "Updated agent key permissions",
+  });
 
   return NextResponse.json({ ok: true });
 }
@@ -103,9 +124,18 @@ export async function DELETE() {
     .is("revoked_at", null);
 
   if (error) {
-    console.error("Failed to revoke agent key:", error);
+    logger.error({ err: error }, "Failed to revoke agent key");
     return NextResponse.json({ error: "Failed to disable agent" }, { status: 500 });
   }
+
+  logAuditEvent({
+    organizationId: authResult.organizationId,
+    actorId: userId,
+    eventType: AuditEventType.AGENT_KEY_REVOKED,
+    resourceType: "agent_key",
+    resourceId: userId,
+    description: "Revoked agent key",
+  });
 
   return NextResponse.json({ ok: true });
 }

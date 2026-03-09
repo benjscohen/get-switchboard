@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { rollbackSkill, type SkillAuth } from "@/lib/skills/service";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function POST(
   request: Request,
@@ -20,5 +21,16 @@ export async function POST(
   const result = await rollbackSkill(skillAuth, id, version);
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.SKILL_ROLLED_BACK,
+    resourceType: "skill",
+    resourceId: id,
+    description: `Rolled back skill "${id}" to version ${version}`,
+    metadata: { version },
+  });
+
   return NextResponse.json(result.data);
 }

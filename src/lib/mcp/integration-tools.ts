@@ -16,6 +16,7 @@ import { jsonSchemaToZodToolSchema } from "@/lib/mcp/json-schema-to-zod";
 import { withToolLogging } from "@/lib/mcp/tool-logging";
 import { decrypt } from "@/lib/encryption";
 import type { ToolMeta } from "@/lib/mcp/tool-filtering";
+import { logger } from "@/lib/logger";
 
 // ── Types ──
 
@@ -546,7 +547,7 @@ export function registerIntegrationTools(
           ctx.discoveredIntegrations.add(proxy.id);
           discoverAndCacheProxyTools(proxy.id, proxy.serverUrl, proxyAuth)
             .then(() => loadProxyTools().then((r) => { ctx.onProxyToolsReload(r); }))
-            .catch((err) => console.warn(`[proxy] On-demand discovery failed for ${proxy.id}:`, err.message));
+            .catch((err) => logger.warn({ integrationId: proxy.id, err }, "[proxy] On-demand discovery failed"));
         }
 
         return executeWithLogging(
@@ -555,7 +556,7 @@ export function registerIntegrationTools(
           {
             formatError: (err) => {
               const message = err instanceof Error ? err.message : "Unknown error";
-              console.error(`[proxy-tool] ${namespacedName} failed for user=${pre.userId} integration=${integrationId}:`, message);
+              logger.error({ toolName: namespacedName, userId: pre.userId, integrationId, errMessage: message }, "[proxy-tool] Tool execution failed");
               const isAuthError = /missing_token|invalid_auth|token_revoked|not_authed|account_inactive/i.test(message);
               return isAuthError
                 ? `Integration "${proxy.name}" returned an auth error. Please reconnect it in your dashboard.`

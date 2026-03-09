@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAuth, requireOrgAdmin } from "@/lib/api-auth";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET() {
   const auth = await requireAuth();
@@ -56,6 +57,15 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
 
+  // Fetch current name before mutating for audit previousAttributes
+  const { data: currentOrg } = await supabaseAdmin
+    .from("organizations")
+    .select("name")
+    .eq("id", auth.organizationId)
+    .single();
+
+  const previousName = currentOrg?.name ?? null;
+
   const { error } = await supabaseAdmin
     .from("organizations")
     .update({ name: name.trim() })
@@ -64,6 +74,17 @@ export async function PATCH(request: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.ORGANIZATION_UPDATED,
+    resourceType: "organization",
+    resourceId: auth.organizationId,
+    description: "Updated organization name",
+    metadata: { name: name.trim() },
+    previousAttributes: { name: previousName },
+  });
 
   return NextResponse.json({ ok: true });
 }

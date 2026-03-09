@@ -2,6 +2,7 @@ import { query } from "@anthropic-ai/claude-code";
 import { fetchUserFiles, writeFilesToStableDir } from "./files.js";
 import { extractClaudeMd, buildSystemPrompt, type UserIdentity } from "./prompt.js";
 import { ensureChromeRunning, cleanupTabs, chromeMcpArgs } from "./chrome.js";
+import { logger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Headless agent execution (no Slack, no multi-turn — single prompt in/out)
@@ -43,7 +44,7 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
         claudeMdContent = extractClaudeMd(userFiles);
       }
     } catch (err) {
-      console.error("[headless] Failed to pull user files:", err);
+      logger.error({ err }, "[headless] Failed to pull user files");
     }
 
     // 2. Build system prompt
@@ -57,7 +58,7 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
       try {
         await ensureChromeRunning();
       } catch (err) {
-        console.error("[headless] Chrome startup failed (non-fatal):", err);
+        logger.error({ err }, "[headless] Chrome startup failed (non-fatal)");
       }
     }
 
@@ -101,7 +102,7 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
             const redacted = data
               .replace(/Bearer [^\s"']+/g, "Bearer [REDACTED]")
               .replace(/sk_live_[^\s"']+/g, "sk_live_[REDACTED]");
-            console.error("[headless stderr]", redacted);
+            logger.error({ stderr: redacted }, "[headless stderr]");
           },
         },
       });
@@ -187,7 +188,7 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
     // Clean up Chrome tabs opened during this session
     if (process.env.ENABLE_CHROME_MCP !== "false") {
       cleanupTabs().catch((err) => {
-        console.error("[headless] Chrome tab cleanup failed:", err);
+        logger.error({ err }, "[headless] Chrome tab cleanup failed");
       });
     }
   }

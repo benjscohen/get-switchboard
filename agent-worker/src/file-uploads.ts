@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as slack from "./slack.js";
+import { logger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // FILE_UPLOAD directive parsing
@@ -56,12 +57,9 @@ export async function uploadExtractedFiles(
       try {
         const content = await fs.readFile(upload.path);
         await slack.uploadFile({ channelId, threadTs, filename, content, title: filename });
-        console.log(`[session ${tag}] uploaded FILE_UPLOAD: ${filename}`);
+        logger.info({ sessionId: tag, filename }, "uploaded FILE_UPLOAD");
       } catch (err) {
-        console.error(
-          `[session ${tag}] FILE_UPLOAD failed for ${upload.path}:`,
-          err instanceof Error ? err.message : err,
-        );
+        logger.error({ sessionId: tag, path: upload.path, err }, "FILE_UPLOAD failed");
       }
     }),
   );

@@ -9,6 +9,7 @@
 
 import type { SDKUserMessage } from "@anthropic-ai/claude-code";
 import type { PendingFollowUp } from "./session-registry.js";
+import { logger } from "./logger.js";
 
 export interface MessageStreamState {
   queueLength: number;
@@ -67,7 +68,7 @@ export function createMessageStream(initialPrompt: string): MessageStream {
 
   function openGate(): void {
     gateOpen = true;
-    console.log(`[message-stream] gate opened — queued=${queue.length}`);
+    logger.info({ queued: queue.length }, "[message-stream] gate opened");
     if (gateNotify) {
       gateNotify();
       gateNotify = null;
@@ -113,7 +114,7 @@ export function createMessageStream(initialPrompt: string): MessageStream {
       gateOpen = false;
       const msg = queue.shift()!;
       msg.resolve();
-      console.log(`[message-stream] yielding gated follow-up — remaining=${queue.length}`);
+      logger.info({ remaining: queue.length }, "[message-stream] yielding gated follow-up");
       yield buildSDKMessage(msg.text);
     }
 

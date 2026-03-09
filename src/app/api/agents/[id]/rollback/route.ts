@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { rollbackAgent, type AgentAuth } from "@/lib/agents/service";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function POST(
   request: Request,
@@ -25,5 +26,16 @@ export async function POST(
   const result = await rollbackAgent(agentAuth, id, version);
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.AGENT_ROLLED_BACK,
+    resourceType: "agent",
+    resourceId: id,
+    description: `Rolled back agent "${id}" to version ${version}`,
+    metadata: { version },
+  });
+
   return NextResponse.json(result.data);
 }

@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import { supabase } from "./db.js";
+import { logger } from "./logger.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -45,7 +46,7 @@ export async function archiveWorkspace(opts: {
     // Check size
     const stat = await fs.stat(tmpTar);
     if (stat.size > MAX_ARCHIVE_SIZE) {
-      console.warn(`[workspace] Archive too large (${Math.round(stat.size / 1024 / 1024)}MB), skipping`);
+      logger.warn({ sizeMB: Math.round(stat.size / 1024 / 1024) }, "[workspace] Archive too large, skipping");
       return null;
     }
 
@@ -59,14 +60,14 @@ export async function archiveWorkspace(opts: {
       });
 
     if (error) {
-      console.error("[workspace] Upload failed:", error.message);
+      logger.error({ storageError: error.message }, "[workspace] Upload failed");
       return null;
     }
 
-    console.log(`[workspace] Archived ${storagePath} (${Math.round(stat.size / 1024)}KB)`);
+    logger.info({ storagePath, sizeKB: Math.round(stat.size / 1024) }, "[workspace] Archived");
     return storagePath;
   } catch (err) {
-    console.error("[workspace] Archive failed:", err instanceof Error ? err.message : err);
+    logger.error({ err }, "[workspace] Archive failed");
     return null;
   } finally {
     await fs.rm(tmpTar, { force: true }).catch(() => {});
@@ -90,7 +91,7 @@ export async function restoreWorkspace(opts: {
       .download(archivePath);
 
     if (error || !data) {
-      console.error("[workspace] Download failed:", error?.message);
+      logger.error({ storageError: error?.message }, "[workspace] Download failed");
       return false;
     }
 
@@ -102,10 +103,10 @@ export async function restoreWorkspace(opts: {
       timeout: 120_000,
     });
 
-    console.log(`[workspace] Restored ${archivePath} → ${targetDir}`);
+    logger.info({ archivePath, targetDir }, "[workspace] Restored");
     return true;
   } catch (err) {
-    console.error("[workspace] Restore failed:", err instanceof Error ? err.message : err);
+    logger.error({ err }, "[workspace] Restore failed");
     return false;
   } finally {
     await fs.rm(tmpTar, { force: true }).catch(() => {});
@@ -118,7 +119,7 @@ export async function restoreWorkspace(opts: {
 export async function deleteWorkspaceArchive(archivePath: string): Promise<void> {
   const { error } = await supabase.storage.from(BUCKET).remove([archivePath]);
   if (error) {
-    console.error("[workspace] Delete failed:", error.message);
+    logger.error({ storageError: error.message }, "[workspace] Delete failed");
   }
 }
 
@@ -151,7 +152,7 @@ export async function cleanupOldArchives(olderThanDays = 30): Promise<number> {
       supabase.from("agent_sessions").update({ workspace_archive_path: null }).in("id", ids),
     ]);
     if (removeResult.error) {
-      console.error("[workspace] Bulk delete failed:", removeResult.error.message);
+      logger.error({ storageError: removeResult.error.message }, "[workspace] Bulk delete failed");
     }
 
     totalCleaned += ids.length;
@@ -159,7 +160,7 @@ export async function cleanupOldArchives(olderThanDays = 30): Promise<number> {
   }
 
   if (totalCleaned > 0) {
-    console.log(`[workspace] Cleaned up ${totalCleaned} old archives`);
+    logger.info({ totalCleaned }, "[workspace] Cleaned up old archives");
   }
   return totalCleaned;
 }

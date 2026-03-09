@@ -8,6 +8,7 @@ import { encrypt } from "@/lib/encryption";
 import { getAppOrigin } from "@/lib/app-url";
 import { loadIntegrationScopes } from "@/lib/integration-scopes";
 import { isUserInScope } from "@/lib/permissions";
+import { logger } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -163,7 +164,7 @@ export async function GET(req: NextRequest) {
 
   if (!tokenRes.ok) {
     const errorBody = await tokenRes.text();
-    console.error("Token exchange failed:", tokenRes.status, errorBody);
+    logger.error({ status: tokenRes.status, errorBody }, "Token exchange failed");
     return NextResponse.redirect(
       `${getAppOrigin(req)}/tools?error=token_exchange_failed`
     );
@@ -189,7 +190,7 @@ export async function GET(req: NextRequest) {
     tokens.authed_user?.id ?? tokens.user_id;
 
   if (!accessToken) {
-    console.error("No access token in response:", JSON.stringify(tokens));
+    logger.error({ tokens }, "No access token in response");
     return NextResponse.redirect(
       `${getAppOrigin(req)}/tools?error=token_exchange_failed`
     );
@@ -221,7 +222,7 @@ export async function GET(req: NextRequest) {
     );
 
   if (upsertError) {
-    console.error("Connection upsert failed:", upsertError);
+    logger.error({ err: upsertError }, "Connection upsert failed");
     return NextResponse.redirect(
       `${getAppOrigin(req)}/tools?error=save_failed`
     );

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { listShares, shareSecret } from "@/lib/vault/service";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET(
   _req: Request,
@@ -58,5 +59,16 @@ export async function POST(
     target
   );
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.SECRET_SHARE_CREATED,
+    resourceType: "secret_share",
+    resourceId: result.data.id,
+    description: `Shared secret "${id}"`,
+    metadata: { secretId: id, ...target },
+  });
+
   return NextResponse.json(result.data, { status: 201 });
 }

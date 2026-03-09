@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/api-auth";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function POST(req: NextRequest) {
   const authResult = await requireAuth();
@@ -22,6 +23,15 @@ export async function POST(req: NextRequest) {
     .delete()
     .eq("user_id", authResult.userId)
     .eq("integration_id", integrationId);
+
+  logAuditEvent({
+    organizationId: authResult.organizationId,
+    actorId: authResult.userId,
+    eventType: AuditEventType.CONNECTION_DELETED,
+    resourceType: "connection",
+    resourceId: integrationId,
+    description: `Disconnected integration ${integrationId}`,
+  });
 
   return NextResponse.json({ success: true });
 }

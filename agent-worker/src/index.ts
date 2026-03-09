@@ -15,6 +15,7 @@ import { buildRetryDisabledBlocks, buildPlanExpiredBlocks } from "./slack-blocks
 import { buildThreadKey, getRunningSession, findRunningSessionBySessionId } from "./session-registry.js";
 import { cleanupOldArchives } from "./workspace-storage.js";
 import type { SlackFile } from "./types.js";
+import { logger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Deduplication: track event IDs for 5 minutes to prevent double-processing
@@ -97,7 +98,7 @@ app.message(async ({ message, body }) => {
           content: text,
           slackTs: messageTs,
           metadata: { slackUserId, isPlanFeedback: true },
-        }).catch((err) => console.error("Failed to store plan feedback:", err));
+        }).catch((err) => logger.error({ err }, "Failed to store plan feedback"));
         return;
       }
 
@@ -115,7 +116,7 @@ app.message(async ({ message, body }) => {
         return;
       }
       // If injection failed (session just closed), fall through to normal flow
-      console.log(`[follow-up] injection failed for thread=${threadKey}, falling through to new session`);
+      logger.info({ threadKey }, "[follow-up] injection failed, falling through to new session");
       await slack.removeReaction(channelId, messageTs, "eyes").catch(() => {});
     }
   }
@@ -123,7 +124,7 @@ app.message(async ({ message, body }) => {
   // Process asynchronously — Bolt already acknowledged the event
   processMessage(slackUserId, channelId, text, files, messageTs, threadTs).catch(
     (err) => {
-      console.error("Unhandled error in processMessage:", err);
+      logger.error({ err }, "Unhandled error in processMessage");
     },
   );
 });
@@ -147,12 +148,12 @@ app.action("retry_session", async ({ action, ack, body }) => {
         `Sorry, something went wrong: ${errorText}`,
         disabledBlocks,
       )
-      .catch((err) => console.error("Failed to update retry button:", err));
+      .catch((err) => logger.error({ err }, "Failed to update retry button"));
   }
 
   // Fire and forget
   retrySession(sessionId, body.user.id).catch((err) =>
-    console.error("Retry session failed:", err),
+    logger.error({ err }, "Retry session failed"),
   );
 });
 
@@ -164,7 +165,7 @@ app.action("kill_session", async ({ action, ack, body }) => {
 
   const running = findRunningSessionBySessionId(sessionId);
   if (!running) {
-    console.warn(`kill_session: no running session for ${sessionId}`);
+    logger.warn({ sessionId }, "kill_session: no running session");
     return;
   }
 
@@ -174,7 +175,7 @@ app.action("kill_session", async ({ action, ack, body }) => {
   try {
     lookup = await db.lookupUserBySlackId(slackUserId);
   } catch {
-    console.error(`kill_session: failed to look up user ${slackUserId}`);
+    logger.error({ slackUserId }, "kill_session: failed to look up user");
     return;
   }
   if (!lookup.ok) return;
@@ -186,7 +187,7 @@ app.action("kill_session", async ({ action, ack, body }) => {
   }
   running.close();
 
-  console.log(`[kill_session] User ${slackUserId} killed session ${sessionId}`);
+  logger.info({ slackUserId, sessionId }, "[kill_session] User killed session");
 });
 
 // Handle "Approve" button clicks on plan approval messages
@@ -197,7 +198,7 @@ app.action("approve_plan", async ({ action, ack, body }) => {
 
   const running = findRunningSessionBySessionId(sessionId);
   if (!running?.pendingPlanApproval) {
-    console.warn(`approve_plan: no pending approval for session ${sessionId}`);
+    logger.warn({ sessionId }, "approve_plan: no pending approval");
 
     // Session expired or already processed — update the Slack message to show expired state
     const channelId = body.channel?.id;
@@ -206,7 +207,7 @@ app.action("approve_plan", async ({ action, ack, body }) => {
       const expiredBlocks = buildPlanExpiredBlocks(msg.text || "(plan text unavailable)");
       await slack
         .updateMessage(channelId, msg.ts, msg.text || "Plan expired", expiredBlocks)
-        .catch((err) => console.error("Failed to update expired plan:", err));
+        .catch((err) => logger.error({ err }, "Failed to update expired plan"));
     }
     return;
   }
@@ -224,36 +225,37 @@ async function start() {
   const required = ["SLACK_BOT_TOKEN", "SLACK_SOCKET_TOKEN", "ANTHROPIC_API_KEY", "SWITCHBOARD_MCP_URL", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "TOKEN_ENCRYPTION_KEY"];
   for (const key of required) {
     if (!process.env[key]) {
-      console.error(`Missing required env var: ${key}`);
+      logger.error({ key }, "Missing required env var");
       process.exit(1);
     }
   }
-  console.log(`MCP URL: ${process.env.SWITCHBOARD_MCP_URL?.trim()}`);
-  console.log(`Anthropic key: ${process.env.ANTHROPIC_API_KEY?.slice(0, 12)}...`);
+  logger.info({ mcpUrl: process.env.SWITCHBOARD_MCP_URL?.trim() }, "MCP URL");
+  logger.info({ keyPrefix: process.env.ANTHROPIC_API_KEY?.slice(0, 12) }, "Anthropic key");
 
-  console.log("Recovering stale sessions from previous run...");
+  logger.info("Recovering stale sessions from previous run...");
   await recoverStaleSessions();
 
   // Clean up old workspace archives in the background
   cleanupOldArchives().then((n) => {
-    if (n > 0) console.log(`Cleaned up ${n} old workspace archives`);
-  }).catch((err) => console.error("Workspace cleanup failed:", err));
+    if (n > 0) logger.info({ count: n }, "Cleaned up old workspace archives");
+  }).catch((err) => logger.error({ err }, "Workspace cleanup failed"));
 
   const jobsEnabled = process.env.ENABLE_SCHEDULED_JOBS === "true";
   if (jobsEnabled) {
     startScheduler();
     startReaper();
   } else {
-    console.log("[jobs] Scheduled jobs disabled (set ENABLE_SCHEDULED_JOBS=true to enable)");
+    logger.info("[jobs] Scheduled jobs disabled (set ENABLE_SCHEDULED_JOBS=true to enable)");
   }
 
   await app.start();
-  console.log(
-    `Switchboard Agent Worker running (socket mode, jobs=${jobsEnabled ? "on" : "off"}, ${getActiveSessionCount()} active sessions)`,
+  logger.info(
+    { jobs: jobsEnabled ? "on" : "off", activeSessions: getActiveSessionCount() },
+    "Switchboard Agent Worker running (socket mode)",
   );
 }
 
 start().catch((err) => {
-  console.error("Fatal startup error:", err);
+  logger.error({ err }, "Fatal startup error");
   process.exit(1);
 });

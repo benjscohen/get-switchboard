@@ -1,6 +1,7 @@
 import { getToolRisk, type ToolRiskLevel } from "./tool-risk";
 import { stripNamespace } from "./proxy-namespace";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { logger } from "@/lib/logger";
 import {
   EMBEDDING_MODEL,
   EMBEDDING_DIMENSIONS,
@@ -1018,13 +1019,13 @@ export async function searchToolsByEmbedding(
     });
 
     if (error) {
-      console.warn("[tool-search] pgvector search error:", error.message);
+      logger.warn({ errMessage: error.message }, "[tool-search] pgvector search error");
       return [];
     }
 
     return (data ?? []) as EmbeddingSearchResult[];
   } catch (err) {
-    console.warn("[tool-search] pgvector search failed:", err);
+    logger.warn({ err }, "[tool-search] pgvector search failed");
     return [];
   }
 }
@@ -1065,7 +1066,7 @@ export async function ensureToolEmbeddings(tools: ToolInput[]): Promise<void> {
 
     if (toEmbed.length === 0) return;
 
-    console.log(`[tool-search] Embedding ${toEmbed.length} new/changed tools...`);
+    logger.info({ count: toEmbed.length }, "[tool-search] Embedding new/changed tools");
 
     // 3. Generate embeddings in batches
     const BATCH_SIZE = 50;
@@ -1086,7 +1087,7 @@ export async function ensureToolEmbeddings(tools: ToolInput[]): Promise<void> {
       });
 
       if (!res.ok) {
-        console.warn(`[tool-search] OpenAI embedding error: ${res.status}`);
+        logger.warn({ status: res.status }, "[tool-search] OpenAI embedding error");
         break;
       }
 
@@ -1114,13 +1115,13 @@ export async function ensureToolEmbeddings(tools: ToolInput[]): Promise<void> {
         .upsert(rows, { onConflict: "tool_name" });
 
       if (error) {
-        console.warn("[tool-search] Upsert error:", error.message);
+        logger.warn({ errMessage: error.message }, "[tool-search] Upsert error");
       }
     }
 
-    console.log(`[tool-search] Done embedding ${toEmbed.length} tools`);
+    logger.info({ count: toEmbed.length }, "[tool-search] Done embedding tools");
   } catch (err) {
-    console.warn("[tool-search] ensureToolEmbeddings failed:", err);
+    logger.warn({ err }, "[tool-search] ensureToolEmbeddings failed");
   } finally {
     _ensureInProgress = false;
   }

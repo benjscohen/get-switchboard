@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/api-auth";
 import { validatePermissionsPayload } from "@/lib/permissions";
 import { getFullCatalog } from "@/lib/integrations/catalog";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET(
   _req: NextRequest,
@@ -97,6 +98,16 @@ export async function PUT(
       .update({ permissions_mode: permissionsMode })
       .eq("id", id);
 
+    logAuditEvent({
+      organizationId: authResult.organizationId,
+      actorId: authResult.userId,
+      eventType: AuditEventType.PROFILE_UPDATED,
+      resourceType: "user_permissions",
+      resourceId: id,
+      description: `Set user permissions mode to ${permissionsMode}`,
+      metadata: { permissionsMode },
+    });
+
     return NextResponse.json({
       permissionsMode,
       integrations: [],
@@ -141,6 +152,16 @@ export async function PUT(
     .from("profiles")
     .update({ permissions_mode: "custom" })
     .eq("id", id);
+
+  logAuditEvent({
+    organizationId: authResult.organizationId,
+    actorId: authResult.userId,
+    eventType: AuditEventType.PROFILE_UPDATED,
+    resourceType: "user_permissions",
+    resourceId: id,
+    description: `Set user permissions mode to custom`,
+    metadata: { permissionsMode: "custom", integrationCount: integrations.length },
+  });
 
   return NextResponse.json({
     permissionsMode: "custom",

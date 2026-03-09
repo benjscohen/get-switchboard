@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { listSkills, createSkill, type SkillAuth } from "@/lib/skills/service";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 async function getSkillAuth(auth: { userId: string; organizationId: string; orgRole: string }): Promise<SkillAuth> {
   const { data: teamMemberships } = await supabaseAdmin
@@ -40,5 +41,16 @@ export async function POST(request: Request) {
   });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.SKILL_CREATED,
+    resourceType: "skill",
+    resourceId: result.data.id,
+    description: `Created skill "${body.name}"`,
+    metadata: { name: body.name, slug: body.slug },
+  });
+
   return NextResponse.json(result.data, { status: result.status ?? 201 });
 }

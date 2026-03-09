@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireOrgAdmin } from "@/lib/api-auth";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET() {
   const auth = await requireOrgAdmin();
@@ -88,6 +89,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.ORGANIZATION_DOMAIN_CREATED,
+    resourceType: "organization_domain",
+    resourceId: newDomain.id,
+    description: `Added domain ${normalizedDomain}`,
+    metadata: { domain: normalizedDomain, isPrimary: newDomain.is_primary },
+  });
+
   return NextResponse.json(
     {
       id: newDomain.id,
@@ -117,6 +128,15 @@ export async function DELETE(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.ORGANIZATION_DOMAIN_DELETED,
+    resourceType: "organization_domain",
+    resourceId: domainId,
+    description: "Removed domain",
+  });
 
   return NextResponse.json({ success: true });
 }

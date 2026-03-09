@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { createDecipheriv } from "crypto";
 import type { UserLookup, MessageRow } from "./types.js";
+import { logger } from "./logger.js";
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -187,7 +188,7 @@ export async function getSessionById(id: string): Promise<SessionDbRow | null> {
     .maybeSingle();
 
   if (error) {
-    console.error("Error fetching session:", error);
+    logger.error({ err: error }, "Error fetching session");
     return null;
   }
 
@@ -215,7 +216,7 @@ export async function updateSession(
     .eq("id", id);
 
   if (error) {
-    console.error(`Failed to update session ${id}:`, error);
+    logger.error({ err: error, sessionId: id }, "Failed to update session");
   }
 }
 
@@ -229,7 +230,7 @@ export async function createMessage(data: MessageRow): Promise<void> {
   });
 
   if (error) {
-    console.error("Failed to create message:", error);
+    logger.error({ err: error }, "Failed to create message");
   }
 }
 
@@ -253,7 +254,7 @@ export async function getThreadSession(
     .maybeSingle();
 
   if (error) {
-    console.error("Error looking up thread session:", error);
+    logger.error({ err: error }, "Error looking up thread session");
     return null;
   }
 
@@ -275,7 +276,7 @@ export async function saveSessionTranscript(
     .eq("id", sessionId);
 
   if (error) {
-    console.error(`Failed to save transcript for session ${sessionId}:`, error);
+    logger.error({ err: error, sessionId }, "Failed to save transcript");
   }
 }
 
@@ -292,7 +293,7 @@ export async function getSessionTranscript(
     .maybeSingle();
 
   if (error) {
-    console.error("Error fetching session transcript:", error);
+    logger.error({ err: error }, "Error fetching session transcript");
     return null;
   }
 
@@ -320,7 +321,7 @@ export async function getWorkspaceArchivePath(
     .maybeSingle();
 
   if (error) {
-    console.error("Error fetching workspace archive path:", error);
+    logger.error({ err: error }, "Error fetching workspace archive path");
     return null;
   }
 
@@ -341,7 +342,7 @@ export async function lookupUserById(
     .single();
 
   if (profileErr || !profile) {
-    console.error("Error looking up profile by ID:", profileErr);
+    logger.error({ err: profileErr }, "Error looking up profile by ID");
     return null;
   }
 
@@ -362,7 +363,7 @@ export async function lookupUserById(
     .maybeSingle();
 
   if (keyErr) {
-    console.error("Error looking up agent key:", keyErr);
+    logger.error({ err: keyErr }, "Error looking up agent key");
     return null;
   }
   if (!apiKey) return null;
@@ -396,7 +397,7 @@ export async function lookupSlackDmChannel(
     const result = await client.conversations.open({ users: slackUserId });
     return (result.channel?.id as string) ?? null;
   } catch (err) {
-    console.error("[db] Failed to open Slack DM:", err);
+    logger.error({ err }, "[db] Failed to open Slack DM");
     return null;
   }
 }
@@ -425,7 +426,7 @@ export async function claimDueSchedules(): Promise<
 > {
   const { data, error } = await supabase.rpc("claim_due_schedules", { max_count: 10 });
   if (error) {
-    console.error("[db] claim_due_schedules error:", error);
+    logger.error({ err: error }, "[db] claim_due_schedules error");
     return [];
   }
   return (data ?? []) as Array<{
@@ -468,7 +469,7 @@ export interface ClaimedPendingRun {
 export async function claimPendingRuns(): Promise<ClaimedPendingRun[]> {
   const { data, error } = await supabase.rpc("claim_pending_runs", { max_count: 10 });
   if (error) {
-    console.error("[db] claim_pending_runs error:", error);
+    logger.error({ err: error }, "[db] claim_pending_runs error");
     return [];
   }
   return (data ?? []) as ClaimedPendingRun[];
@@ -513,7 +514,7 @@ export async function updateScheduleRun(
   }>,
 ): Promise<void> {
   const { error } = await supabase.from("schedule_runs").update(patch).eq("id", id);
-  if (error) console.error(`Failed to update schedule run ${id}:`, error);
+  if (error) logger.error({ err: error, runId: id }, "Failed to update schedule run");
 }
 
 export async function updateScheduleAfterRun(
@@ -534,7 +535,7 @@ export async function updateScheduleAfterRun(
       const interval = CronExpressionParser.parse(cron.expression, { tz: cron.timezone });
       nextRunAt = interval.next().toDate().toISOString();
     } catch (err) {
-      console.error(`[db] Failed to compute next_run_at for schedule ${id}:`, err);
+      logger.error({ err, scheduleId: id }, "[db] Failed to compute next_run_at");
     }
   }
 
@@ -546,7 +547,7 @@ export async function updateScheduleAfterRun(
   if (patch.paused === undefined) delete updates.paused;
 
   const { error } = await supabase.from("schedules").update(updates).eq("id", id);
-  if (error) console.error(`Failed to update schedule ${id} after run:`, error);
+  if (error) logger.error({ err: error, scheduleId: id }, "Failed to update schedule after run");
 }
 
 export async function recomputeNextRunAt(
@@ -560,7 +561,7 @@ export async function recomputeNextRunAt(
     const nextRunAt = interval.next().toDate().toISOString();
     await supabase.from("schedules").update({ next_run_at: nextRunAt }).eq("id", id);
   } catch (err) {
-    console.error(`[db] Failed to recompute next_run_at for schedule ${id}:`, err);
+    logger.error({ err, scheduleId: id }, "[db] Failed to recompute next_run_at");
   }
 }
 
@@ -648,7 +649,7 @@ export async function recoverStaleScheduleRuns(): Promise<number> {
     .select("id");
 
   if (error) {
-    console.error("[db] Failed to recover stale schedule runs:", error);
+    logger.error({ err: error }, "[db] Failed to recover stale schedule runs");
     return 0;
   }
   return data?.length ?? 0;
@@ -674,7 +675,7 @@ export async function getStaleRunningSessions(): Promise<
     .in("status", ["running", "idle"]);
 
   if (error) {
-    console.error("Error fetching stale sessions:", error);
+    logger.error({ err: error }, "Error fetching stale sessions");
     return [];
   }
 

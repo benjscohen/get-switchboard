@@ -1,5 +1,6 @@
 import * as db from "./db.js";
 import { executeScheduledRun } from "./scheduled-execution.js";
+import { logger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Schedule polling loop
@@ -9,29 +10,29 @@ const POLL_INTERVAL_MS = 30_000; // 30 seconds
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
 export function startScheduler(): void {
-  console.log("[scheduler] Starting schedule poll loop (every 30s)");
+  logger.info("[scheduler] Starting schedule poll loop (every 30s)");
 
   // Recover stale runs on startup
   recoverStaleScheduleRuns().catch((err) =>
-    console.error("[scheduler] Recovery failed:", err),
+    logger.error({ err }, "[scheduler] Recovery failed"),
   );
 
   // Start polling
   intervalHandle = setInterval(() => {
     pollDueSchedules().catch((err) =>
-      console.error("[scheduler] Poll error:", err),
+      logger.error({ err }, "[scheduler] Poll error"),
     );
     pollPendingRuns().catch((err) =>
-      console.error("[scheduler] Pending-run poll error:", err),
+      logger.error({ err }, "[scheduler] Pending-run poll error"),
     );
   }, POLL_INTERVAL_MS);
 
   // Run immediately on startup too (picks up runs queued while worker was down)
   pollDueSchedules().catch((err) =>
-    console.error("[scheduler] Initial poll error:", err),
+    logger.error({ err }, "[scheduler] Initial poll error"),
   );
   pollPendingRuns().catch((err) =>
-    console.error("[scheduler] Initial pending-run poll error:", err),
+    logger.error({ err }, "[scheduler] Initial pending-run poll error"),
   );
 }
 
@@ -50,7 +51,7 @@ async function pollDueSchedules(): Promise<void> {
   const schedules = await db.claimDueSchedules();
   if (schedules.length === 0) return;
 
-  console.log(`[scheduler] Claimed ${schedules.length} due schedule(s)`);
+  logger.info({ count: schedules.length }, "[scheduler] Claimed due schedule(s)");
 
   for (const schedule of schedules) {
     // Create a run row as 'running' (not 'pending') so pollPendingRuns won't claim it
@@ -78,7 +79,7 @@ async function pollDueSchedules(): Promise<void> {
       // Fire and forget — executeScheduledRun handles its own errors,
       // but catch any truly unexpected failures as a safety net
       executeScheduledRun(typedSchedule, run).catch(async (err) => {
-        console.error(`[scheduler] Unhandled error in schedule ${schedule.id}:`, err);
+        logger.error({ err, scheduleId: schedule.id }, "[scheduler] Unhandled error in schedule");
         try {
           await db.updateScheduleRun(runId, {
             status: "failed",
@@ -87,11 +88,11 @@ async function pollDueSchedules(): Promise<void> {
           });
           await db.recomputeNextRunAt(schedule.id, schedule.cron_expression, schedule.timezone);
         } catch (innerErr) {
-          console.error(`[scheduler] Failed to mark run ${runId} as failed:`, innerErr);
+          logger.error({ err: innerErr, runId }, "[scheduler] Failed to mark run as failed");
         }
       });
     } catch (err) {
-      console.error(`[scheduler] Failed to create run for schedule ${schedule.id}:`, err);
+      logger.error({ err, scheduleId: schedule.id }, "[scheduler] Failed to create run for schedule");
       // Recompute next_run_at even if run creation failed
       await db.recomputeNextRunAt(schedule.id, schedule.cron_expression, schedule.timezone);
     }
@@ -106,7 +107,7 @@ async function pollPendingRuns(): Promise<void> {
   const claimed = await db.claimPendingRuns();
   if (claimed.length === 0) return;
 
-  console.log(`[scheduler] Claimed ${claimed.length} pending run(s)`);
+  logger.info({ count: claimed.length }, "[scheduler] Claimed pending run(s)");
 
   for (const row of claimed) {
     const schedule = {
@@ -138,7 +139,7 @@ async function pollPendingRuns(): Promise<void> {
 
     // Fire and forget — executeScheduledRun handles its own errors
     executeScheduledRun(typedSchedule, run).catch(async (err) => {
-      console.error(`[scheduler] Unhandled error in pending run ${row.run_id}:`, err);
+      logger.error({ err, runId: row.run_id }, "[scheduler] Unhandled error in pending run");
       try {
         await db.updateScheduleRun(row.run_id, {
           status: "failed",
@@ -146,7 +147,7 @@ async function pollPendingRuns(): Promise<void> {
           error: err instanceof Error ? err.message : "Unhandled scheduler error",
         });
       } catch (innerErr) {
-        console.error(`[scheduler] Failed to mark pending run ${row.run_id} as failed:`, innerErr);
+        logger.error({ err: innerErr, runId: row.run_id }, "[scheduler] Failed to mark pending run as failed");
       }
     });
   }
@@ -159,6 +160,6 @@ async function pollPendingRuns(): Promise<void> {
 async function recoverStaleScheduleRuns(): Promise<void> {
   const count = await db.recoverStaleScheduleRuns();
   if (count > 0) {
-    console.log(`[scheduler] Recovered ${count} stale schedule run(s)`);
+    logger.info({ count }, "[scheduler] Recovered stale schedule run(s)");
   }
 }

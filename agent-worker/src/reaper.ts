@@ -7,6 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { exec } from "node:child_process";
+import { logger } from "./logger.js";
 
 const REAPER_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const REAPER_MAX_AGE_MS = 4.5 * 60 * 60 * 1000; // 4.5 hours (claude)
@@ -119,24 +120,26 @@ async function reap(): Promise<void> {
       const limit = proc.command.includes("chromium") ? chromeMaxAgeSec : maxAgeSec;
       if (proc.etime > limit) {
         const ageMin = Math.round(proc.etime / 60);
-        console.log(
-          `[reaper] killing orphan PID=${proc.pid} age=${ageMin}min cmd=${proc.command.slice(0, 80)}`,
+        logger.info(
+          { pid: proc.pid, ageMin, cmd: proc.command.slice(0, 80) },
+          "[reaper] killing orphan process",
         );
         try {
           process.kill(proc.pid, "SIGTERM");
         } catch (killErr) {
-          console.error(`[reaper] failed to kill PID=${proc.pid}:`, killErr);
+          logger.error({ err: killErr, pid: proc.pid }, "[reaper] failed to kill process");
         }
       }
     }
   } catch (err) {
-    console.error("[reaper] error:", err);
+    logger.error({ err }, "[reaper] error");
   }
 }
 
 export function startReaper(): void {
-  console.log(
-    `[reaper] started — checking every ${REAPER_INTERVAL_MS / 60000}min for processes older than ${REAPER_MAX_AGE_MS / 3600000}h`,
+  logger.info(
+    { intervalMin: REAPER_INTERVAL_MS / 60000, maxAgeH: REAPER_MAX_AGE_MS / 3600000 },
+    "[reaper] started",
   );
-  setInterval(() => { reap().catch((err) => console.error("[reaper] error:", err)); }, REAPER_INTERVAL_MS);
+  setInterval(() => { reap().catch((err) => logger.error({ err }, "[reaper] error")); }, REAPER_INTERVAL_MS);
 }

@@ -3,6 +3,7 @@ import { upsertEmbeddings, getQueryEmbedding, extractKeywords, searchByEmbedding
 import { type ServiceResult, type ScopedAuth, slugify, canEditScopedEntity, canViewScopedEntity } from "@/lib/shared/scoped-entity";
 import { normalizeToolAccess } from "@/lib/agents/tool-access-utils";
 import { DEFAULT_AGENT_TEMPLATES, type AgentTemplate } from "@/lib/agents/templates";
+import { logger } from "@/lib/logger";
 
 // Re-export shared types for convenience
 export { type ServiceResult, slugify } from "@/lib/shared/scoped-entity";
@@ -135,7 +136,7 @@ function queueAgentEmbedding(a: AgentRow): void {
     id: a.id,
     searchText: buildAgentSearchText(a),
     extraColumns: { name: a.name, description: a.description },
-  }]).catch((err) => console.warn("[agents] embedding failed:", err));
+  }]).catch((err) => logger.warn({ err }, "[agents] embedding failed"));
 }
 
 // ── CRUD Functions ──
@@ -291,7 +292,7 @@ export async function createAgent(auth: AgentAuth, input: CreateAgentInput): Pro
     change_type: "created",
     changed_by: auth.userId,
   });
-  if (versionError) console.error("Failed to record agent version:", versionError.message);
+  if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record agent version");
 
   queueAgentEmbedding(a);
 
@@ -362,7 +363,7 @@ export async function updateAgent(auth: AgentAuth, id: string, input: UpdateAgen
     change_type: "updated",
     changed_by: auth.userId,
   });
-  if (versionError) console.error("Failed to record agent version:", versionError.message);
+  if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record agent version");
 
   queueAgentEmbedding(u);
 
@@ -498,7 +499,7 @@ export async function rollbackAgent(
     changed_by: auth.userId,
     change_summary: `Rolled back to version ${targetVersion}`,
   });
-  if (versionError) console.error("Failed to record agent version:", versionError.message);
+  if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record agent version");
 
   queueAgentEmbedding(updated as AgentRow);
 

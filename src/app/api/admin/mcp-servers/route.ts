@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/api-auth";
 import { encrypt } from "@/lib/encryption";
 import { discoverTools, type ProxyAuth } from "@/lib/mcp/proxy-client";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -181,6 +182,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.MCP_SERVER_CREATED,
+    resourceType: "mcp_server",
+    resourceId: server.id,
+    description: `Created MCP server "${name}"`,
+    metadata: { name, slug, serverUrl, authType: resolvedAuthType, keyMode: resolvedKeyMode },
+  });
+
   return NextResponse.json({
     id: server.id,
     name: server.name,
@@ -272,6 +283,16 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.MCP_SERVER_UPDATED,
+    resourceType: "mcp_server",
+    resourceId: id,
+    description: "Updated MCP server",
+    metadata: { updatedFields: Object.keys(updates) },
+  });
+
   return NextResponse.json({ ok: true });
 }
 
@@ -294,6 +315,15 @@ export async function DELETE(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.MCP_SERVER_DELETED,
+    resourceType: "mcp_server",
+    resourceId: id,
+    description: "Deleted MCP server",
+  });
 
   return NextResponse.json({ ok: true });
 }

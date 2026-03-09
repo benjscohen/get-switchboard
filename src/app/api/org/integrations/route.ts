@@ -5,6 +5,8 @@ import { encrypt } from "@/lib/encryption";
 import { allProxyIntegrations } from "@/lib/integrations/proxy-registry";
 import { getOrgKeyIntegrations } from "@/lib/integrations/registry";
 import { validateIntegrationKey } from "@/lib/integrations/validate-key";
+import { logger } from "@/lib/logger";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET() {
   const auth = await requireOrgAdmin();
@@ -100,6 +102,17 @@ export async function PUT(request: Request) {
         { status: 400 }
       );
     }
+
+    logAuditEvent({
+      organizationId: auth.organizationId,
+      actorId: auth.userId,
+      eventType: AuditEventType.ORGANIZATION_UPDATED,
+      resourceType: "integration_org_key",
+      resourceId: integrationId,
+      description: `Toggled integration ${integrationId} to ${enabled ? "enabled" : "disabled"}`,
+      metadata: { integrationId, enabled },
+    });
+
     return NextResponse.json({ ok: true });
   }
 
@@ -133,9 +146,19 @@ export async function PUT(request: Request) {
       );
 
     if (error) {
-      console.error("[org/integrations] upsert error:", error);
+      logger.error({ err: error }, "[org/integrations] upsert error");
       return NextResponse.json({ error: "Failed to save key" }, { status: 500 });
     }
+
+    logAuditEvent({
+      organizationId: auth.organizationId,
+      actorId: auth.userId,
+      eventType: AuditEventType.ORGANIZATION_UPDATED,
+      resourceType: "integration_org_key",
+      resourceId: integrationId,
+      description: `Configured integration ${integrationId} with custom headers`,
+      metadata: { integrationId, headerKeys: Object.keys(customHeaders) },
+    });
 
     return NextResponse.json({ ok: true });
   }
@@ -174,12 +197,22 @@ export async function PUT(request: Request) {
     );
 
   if (error) {
-    console.error("[org/integrations] upsert error:", error);
+    logger.error({ err: error }, "[org/integrations] upsert error");
     return NextResponse.json(
       { error: "Failed to save key" },
       { status: 500 }
     );
   }
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.ORGANIZATION_UPDATED,
+    resourceType: "integration_org_key",
+    resourceId: integrationId,
+    description: `Configured integration ${integrationId} with API key`,
+    metadata: { integrationId },
+  });
 
   return NextResponse.json({ ok: true });
 }
@@ -203,6 +236,15 @@ export async function DELETE(request: Request) {
     .delete()
     .eq("organization_id", auth.organizationId)
     .eq("integration_id", integrationId);
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.CONNECTION_DELETED,
+    resourceType: "integration_org_key",
+    resourceId: integrationId,
+    description: `Removed org integration key for ${integrationId}`,
+  });
 
   return NextResponse.json({ ok: true });
 }

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { auth as googleAuth, gmail } from "@googleapis/gmail";
 import { decrypt } from "@/lib/encryption";
 import { getValidTokens } from "@/lib/integrations/token-refresh";
+import { logger } from "@/lib/logger";
 
 export async function GET() {
   const auth = await requireAuth();
@@ -100,7 +101,7 @@ export async function PATCH(req: NextRequest) {
     .single();
 
   if (error) {
-    console.error("Gmail settings PATCH error:", error);
+    logger.error({ err: error }, "Gmail settings PATCH error");
     return NextResponse.json(
       { error: "Failed to update sender name" },
       { status: 500 }

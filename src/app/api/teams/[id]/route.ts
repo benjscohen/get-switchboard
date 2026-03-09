@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAuth, requireOrgAdmin } from "@/lib/api-auth";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET(
   _request: Request,
@@ -86,6 +87,16 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.TEAM_UPDATED,
+    resourceType: "team",
+    resourceId: id,
+    description: `Updated team "${id}"`,
+    metadata: { name: name.trim() },
+  });
+
   return NextResponse.json({ ok: true });
 }
 
@@ -106,6 +117,15 @@ export async function DELETE(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.TEAM_DELETED,
+    resourceType: "team",
+    resourceId: id,
+    description: `Deleted team "${id}"`,
+  });
 
   return NextResponse.json({ ok: true });
 }

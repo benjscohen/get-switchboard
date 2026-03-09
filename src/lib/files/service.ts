@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { ServiceResult } from "@/lib/vault/service";
 import { upsertEmbeddings, getQueryEmbedding, extractKeywords, searchByEmbedding, keywordScore, hybridScore, EMBEDDING_TABLES } from "@/lib/embeddings";
+import { logger } from "@/lib/logger";
 
 // ── Types ──
 
@@ -195,7 +196,7 @@ function queueFileEmbedding(row: Record<string, unknown>): void {
     id: row.id as string,
     searchText: buildFileSearchText(row),
     extraColumns: { path: row.path as string, name: row.name as string },
-  }]).catch((err) => console.warn("[files] embedding failed:", err));
+  }]).catch((err) => logger.warn({ err }, "[files] embedding failed"));
 }
 
 // ── Internal: ensure parent folders exist ──
@@ -345,7 +346,7 @@ export async function writeFile(
     change_type: isCreate ? "created" : "updated",
     changed_by: auth.userId,
   });
-  if (versionError) console.error("Failed to record file version:", versionError.message);
+  if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record file version");
 
   queueFileEmbedding(data);
 
@@ -436,7 +437,7 @@ export async function updateFileById(
     change_type: input.path ? "moved" : "updated",
     changed_by: auth.userId,
   });
-  if (versionError) console.error("Failed to record file version:", versionError.message);
+  if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record file version");
 
   queueFileEmbedding(data);
 
@@ -521,7 +522,7 @@ export async function moveFile(
       changed_by: auth.userId,
       change_summary: `Moved from ${normalizedFrom} to ${normalizedTo}`,
     });
-    if (versionError) console.error("Failed to record file version:", versionError.message);
+    if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record file version");
 
     queueFileEmbedding(updated);
 
@@ -555,7 +556,7 @@ export async function moveFile(
     changed_by: auth.userId,
     change_summary: `Moved from ${normalizedFrom} to ${normalizedTo}`,
   });
-  if (moveVersionError) console.error("Failed to record file version:", moveVersionError.message);
+  if (moveVersionError) logger.error({ errMessage: moveVersionError.message }, "Failed to record file version");
 
   queueFileEmbedding(updated);
 
@@ -834,7 +835,7 @@ export async function rollbackFile(
     changed_by: auth.userId,
     change_summary: `Rolled back to version ${targetVersion}`,
   });
-  if (versionError) console.error("Failed to record file version:", versionError.message);
+  if (versionError) logger.error({ errMessage: versionError.message }, "Failed to record file version");
 
   queueFileEmbedding(updated);
 
@@ -961,7 +962,7 @@ export async function bulkWriteFiles(
       changed_by: auth.userId,
     }));
     const { error: batchVersionError } = await supabaseAdmin.from("file_versions").insert(versionRows);
-    if (batchVersionError) console.error("Failed to record file versions:", batchVersionError.message);
+    if (batchVersionError) logger.error({ errMessage: batchVersionError.message }, "Failed to record file versions");
   }
 
   // Batch embed non-folder files
@@ -975,7 +976,7 @@ export async function bulkWriteFiles(
         searchText: buildFileSearchText(f),
         extraColumns: { path: f.path as string, name: f.name as string },
       })),
-    ).catch((err) => console.warn("[files] bulk embedding failed:", err));
+    ).catch((err) => logger.warn({ err }, "[files] bulk embedding failed"));
   }
 
   return { ok: true, data: { upserted: upserted.length, paths: upserted.map((r) => r.path as string) } };

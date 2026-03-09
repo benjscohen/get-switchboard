@@ -1,6 +1,7 @@
 import * as db from "./db.js";
 import { runAgentHeadless } from "./headless.js";
 import { deliverResults, type DeliveryTarget } from "./delivery.js";
+import { logger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Schedule run orchestrator
@@ -84,7 +85,7 @@ export async function executeScheduledRun(
     const model = schedule.model || lookup.model;
 
     // 5. Run the agent
-    console.log(`[schedule ${schedule.id}] Running: ${schedule.name} (run=${run.id})`);
+    logger.info({ scheduleId: schedule.id, name: schedule.name, runId: run.id }, "[schedule] Running");
 
     const result = await runAgentHeadless({
       prompt: effectivePrompt,
@@ -111,7 +112,7 @@ export async function executeScheduledRun(
         totalTurns: result.turns,
       });
     } catch (err) {
-      console.error(`[schedule ${schedule.id}] Failed to create agent session:`, err);
+      logger.error({ err, scheduleId: schedule.id }, "[schedule] Failed to create agent session");
     }
 
     // 7. Deliver results
@@ -152,13 +153,13 @@ export async function executeScheduledRun(
     }, cronParams);
 
     if (shouldAutoPause) {
-      console.warn(`[schedule ${schedule.id}] Auto-paused after ${MAX_CONSECUTIVE_FAILURES} consecutive failures`);
+      logger.warn({ scheduleId: schedule.id, maxFailures: MAX_CONSECUTIVE_FAILURES }, "[schedule] Auto-paused after consecutive failures");
     }
 
-    console.log(`[schedule ${schedule.id}] Completed: status=${result.status} turns=${result.turns} cost=$${result.cost.toFixed(4)}`);
+    logger.info({ scheduleId: schedule.id, status: result.status, turns: result.turns, cost: result.cost.toFixed(4) }, "[schedule] Completed");
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
-    console.error(`[schedule ${schedule.id}] Execution failed:`, errorMsg);
+    logger.error({ scheduleId: schedule.id, err: errorMsg }, "[schedule] Execution failed");
 
     const completedAt = new Date().toISOString();
     const durationMs = new Date(completedAt).getTime() - new Date(startedAt).getTime();
@@ -183,7 +184,7 @@ export async function executeScheduledRun(
     }, cronParams);
 
     if (shouldAutoPause) {
-      console.warn(`[schedule ${schedule.id}] Auto-paused after ${MAX_CONSECUTIVE_FAILURES} consecutive failures`);
+      logger.warn({ scheduleId: schedule.id, maxFailures: MAX_CONSECUTIVE_FAILURES }, "[schedule] Auto-paused after consecutive failures");
     }
   }
 }

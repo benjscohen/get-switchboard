@@ -8,6 +8,7 @@
 import { spawn, execSync, type ChildProcess } from "node:child_process";
 import http from "node:http";
 import fs from "node:fs";
+import { logger } from "./logger.js";
 
 const CDP_PORT = 9222;
 const CDP_HOST = "127.0.0.1";
@@ -117,7 +118,7 @@ export async function ensureChromeRunning(): Promise<boolean> {
   }
 
   try {
-    console.log("[chrome] starting headless Chromium…");
+    logger.info("[chrome] starting headless Chromium…");
 
     chromeProcess = spawn(CHROME_PATH, [
       "--headless=new",
@@ -134,11 +135,11 @@ export async function ensureChromeRunning(): Promise<boolean> {
 
     chromeProcess.stderr?.on("data", (data: Buffer) => {
       const msg = data.toString().trim();
-      if (msg) console.error("[chrome stderr]", msg);
+      if (msg) logger.error({ msg }, "[chrome stderr]");
     });
 
     chromeProcess.on("exit", (code, signal) => {
-      console.log(`[chrome] exited code=${code} signal=${signal}`);
+      logger.info({ code, signal }, "[chrome] exited");
       chromeProcess = null;
       chromeReady = false;
     });
@@ -146,10 +147,10 @@ export async function ensureChromeRunning(): Promise<boolean> {
     // Wait for CDP to be reachable
     await waitForCdp();
     chromeReady = true;
-    console.log("[chrome] ready on port", CDP_PORT);
+    logger.info({ port: CDP_PORT }, "[chrome] ready");
     return true;
   } catch (err) {
-    console.error("[chrome] failed to start:", err);
+    logger.error({ err }, "[chrome] failed to start");
     killChrome();
     return false;
   }
@@ -171,9 +172,9 @@ export async function cleanupTabs(): Promise<void> {
         // Tab may have already closed
       }
     }
-    console.log(`[chrome] cleaned up ${tabs.length} tab(s)`);
+    logger.info({ tabCount: tabs.length }, "[chrome] cleaned up tabs");
   } catch (err) {
-    console.error("[chrome] tab cleanup failed:", err);
+    logger.error({ err }, "[chrome] tab cleanup failed");
   }
 }
 
@@ -189,7 +190,7 @@ export function killChrome(): void {
     }
     chromeProcess = null;
     chromeReady = false;
-    console.log("[chrome] killed");
+    logger.info("[chrome] killed");
   }
 }
 

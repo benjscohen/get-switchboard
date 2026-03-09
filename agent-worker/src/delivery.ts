@@ -1,6 +1,7 @@
 import * as slack from "./slack.js";
 import * as db from "./db.js";
 import { extractFileUploads, uploadExtractedFiles } from "./file-uploads.js";
+import { logger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Delivery targets + result delivery
@@ -55,7 +56,7 @@ export async function deliverResults(
       return { target, success: false, error: `Unknown delivery type: ${(target as { type: string }).type}` };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown delivery error";
-      console.error(`[delivery] Failed to deliver to ${target.type}:`, message);
+      logger.error({ targetType: target.type, err: message }, "[delivery] Failed to deliver");
       return { target, success: false, error: message };
     }
   }));

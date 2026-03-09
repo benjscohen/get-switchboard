@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAuth } from "@/lib/api-auth";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 async function canManageTeam(auth: { userId: string; orgRole: string; organizationId: string }, teamId: string) {
   if (auth.orgRole === "owner" || auth.orgRole === "admin") return true;
@@ -101,6 +102,16 @@ export async function POST(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.TEAM_MEMBER_ADDED,
+    resourceType: "team_member",
+    resourceId: member.id,
+    description: `Added member "${userId}" to team "${id}"`,
+    metadata: { teamId: id, userId, role },
+  });
+
   return NextResponse.json(member, { status: 201 });
 }
 
@@ -137,6 +148,15 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.TEAM_MEMBER_ROLE_CHANGED,
+    resourceType: "team_member",
+    description: `Changed role of member "${userId}" in team "${id}" to "${role}"`,
+    metadata: { teamId: id, userId, role },
+  });
+
   return NextResponse.json({ ok: true });
 }
 
@@ -168,6 +188,15 @@ export async function DELETE(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  logAuditEvent({
+    organizationId: auth.organizationId,
+    actorId: auth.userId,
+    eventType: AuditEventType.TEAM_MEMBER_REMOVED,
+    resourceType: "team_member",
+    description: `Removed member "${userId}" from team "${id}"`,
+    metadata: { teamId: id, userId },
+  });
 
   return NextResponse.json({ ok: true });
 }

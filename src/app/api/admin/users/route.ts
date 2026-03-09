@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/api-auth";
+import { logAuditEvent, AuditEventType } from "@/lib/audit-log";
 
 export async function GET() {
   const authResult = await requireAdmin();
@@ -228,6 +229,13 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }
 
+  // Fetch previous state for audit trail
+  const { data: previousProfile } = await supabaseAdmin
+    .from("profiles")
+    .select("role, permissions_mode, org_role")
+    .eq("id", id)
+    .single();
+
   const { data: updated, error } = await supabaseAdmin
     .from("profiles")
     .update(data)
@@ -238,6 +246,21 @@ export async function PATCH(req: NextRequest) {
   if (error || !updated) {
     return NextResponse.json({ error: "Update failed" }, { status: 500 });
   }
+
+  logAuditEvent({
+    organizationId: authResult.organizationId,
+    actorId: authResult.userId,
+    eventType: AuditEventType.PROFILE_UPDATED,
+    resourceType: "user",
+    resourceId: id,
+    description: `Admin updated user profile`,
+    metadata: data,
+    previousAttributes: previousProfile ? {
+      role: previousProfile.role,
+      permissionsMode: previousProfile.permissions_mode,
+      orgRole: previousProfile.org_role,
+    } : undefined,
+  });
 
   // When switching from custom → full, clean up access rows
   if (permissionsMode === "full") {
