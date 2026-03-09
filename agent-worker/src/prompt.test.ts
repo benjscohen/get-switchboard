@@ -366,10 +366,11 @@ describe("vault credential lookup instructions", () => {
     expect(prompt).toContain("vault_search_secrets");
   });
 
-  it("directs heavy git work to vault PAT instead of GitHub MCP", () => {
+  it("directs all GitHub operations to git CLI when PAT is available", () => {
     const prompt = buildSystemPrompt(null);
-    expect(prompt).toContain("heavy git work");
     expect(prompt).toContain("GitHub PAT");
+    expect(prompt).toContain("prefer using git CLI commands");
+    expect(prompt).toContain("ALL GitHub operations");
   });
 
   it("instructs to never expose secret values in responses", () => {

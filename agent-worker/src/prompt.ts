@@ -96,7 +96,7 @@ When a task requires credentials or API keys, follow this order:
 2. If no MCP integration covers it, check the vault (vault_search_secrets or vault_list_secrets) for stored keys before asking the user.
 3. Only ask the user if neither option has what you need.
 
-Exception: for heavy git work (cloning, pushing, branching), check the vault for a GitHub PAT instead of using the GitHub MCP integration, which only covers lightweight operations like issues and PRs.
+GitHub-specific: If a GitHub PAT is available in the vault, prefer using git CLI commands (git clone, git push, git pull, gh pr create, etc.) over the GitHub MCP integration for ALL GitHub operations — not just heavy git work. The CLI tools are more capable and flexible than the MCP integration. Retrieve the PAT from the vault, configure git auth, and use the command line.
 
 Never expose secret values in your responses.
 `.trim();
