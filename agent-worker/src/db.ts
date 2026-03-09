@@ -175,6 +175,7 @@ export interface SessionDbRow {
   slack_channel_id: string;
   slack_thread_ts: string | null;
   slack_message_ts: string | null;
+  claude_session_id: string | null;
   status: string;
   prompt: string;
   model: string | null;
@@ -184,7 +185,7 @@ export interface SessionDbRow {
 export async function getSessionById(id: string): Promise<SessionDbRow | null> {
   const { data, error } = await supabase
     .from("agent_sessions")
-    .select("id, user_id, organization_id, slack_channel_id, slack_thread_ts, slack_message_ts, status, prompt, model, error")
+    .select("id, user_id, organization_id, slack_channel_id, slack_thread_ts, slack_message_ts, claude_session_id, status, prompt, model, error")
     .eq("id", id)
     .maybeSingle();
 

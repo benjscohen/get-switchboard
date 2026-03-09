@@ -7,7 +7,9 @@
 // ---------------------------------------------------------------------------
 
 import { supabase } from "./db.js";
+import * as db from "./db.js";
 import { findRunningSessionBySessionId } from "./session-registry.js";
+import { resumeSession } from "./agent.js";
 import { logger } from "./logger.js";
 
 const POLL_INTERVAL_MS = 3_000; // 3 seconds
@@ -16,7 +18,7 @@ let intervalHandle: ReturnType<typeof setInterval> | null = null;
 interface SessionCommand {
   id: string;
   session_id: string;
-  command: "stop" | "respond";
+  command: "stop" | "respond" | "resume";
   payload: Record<string, unknown> | null;
   status: string;
   created_by: string;
@@ -104,6 +106,44 @@ async function processCommand(command: SessionCommand): Promise<void> {
           "[command-poller] pushMessage returned false",
         );
       }
+      break;
+    }
+
+    case "resume": {
+      const session = await db.getSessionById(command.session_id);
+      if (!session || session.status !== "pending") {
+        logger.warn(
+          { sessionId: command.session_id, status: session?.status, commandId: command.id },
+          "[command-poller] resume: session not found or not pending",
+        );
+        await markCommand(command.id, "failed");
+        return;
+      }
+
+      const message = command.payload?.message as string;
+      if (!message) {
+        logger.warn({ commandId: command.id }, "[command-poller] resume command missing message payload");
+        await markCommand(command.id, "failed");
+        return;
+      }
+
+      const lookup = await db.lookupUserById(session.user_id);
+      if (!lookup) {
+        logger.warn({ userId: session.user_id, commandId: command.id }, "[command-poller] resume: user lookup failed");
+        await markCommand(command.id, "failed");
+        return;
+      }
+
+      // Fire-and-forget: mark command completed and kick off resume
+      await markCommand(command.id, "completed");
+      resumeSession(command.session_id, lookup, message).catch((err) => {
+        logger.error({ err, sessionId: command.session_id }, "[command-poller] resumeSession threw");
+      });
+
+      logger.info(
+        { sessionId: command.session_id, commandId: command.id, createdBy: command.created_by },
+        "[command-poller] resume initiated",
+      );
       break;
     }
 

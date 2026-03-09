@@ -10,8 +10,32 @@ interface MessageListProps {
   loading: boolean;
 }
 
+function getToolName(message: ThreadMessage): string {
+  const meta = message.metadata;
+  if (meta?.toolName) return String(meta.toolName);
+  if (meta?.tool_name) return String(meta.tool_name);
+  // Try to extract from content — tool results often start with the tool name
+  const firstLine = message.content.split("\n")[0]?.trim() ?? "";
+  if (firstLine.length > 0 && firstLine.length < 60 && !firstLine.startsWith("{")) {
+    return firstLine;
+  }
+  return "Tool call";
+}
+
+function formatToolContent(content: string): { formatted: string; isJson: boolean } {
+  try {
+    const parsed = JSON.parse(content);
+    return { formatted: JSON.stringify(parsed, null, 2), isJson: true };
+  } catch {
+    return { formatted: content, isJson: false };
+  }
+}
+
 function ToolMessage({ message }: { message: ThreadMessage }) {
   const [expanded, setExpanded] = useState(false);
+  const toolName = getToolName(message);
+  const { formatted } = formatToolContent(message.content);
+
   return (
     <div className="mx-6 my-2">
       <button
@@ -29,11 +53,11 @@ function ToolMessage({ message }: { message: ThreadMessage }) {
         >
           <path d="M9 18l6-6-6-6" />
         </svg>
-        Tool call
+        {toolName === "Tool call" ? toolName : `Tool: ${toolName}`}
       </button>
       {expanded && (
         <pre className="mt-1 max-h-48 overflow-auto rounded-md bg-bg-hover p-3 text-xs font-mono text-text-secondary">
-          {message.content}
+          {formatted}
         </pre>
       )}
     </div>

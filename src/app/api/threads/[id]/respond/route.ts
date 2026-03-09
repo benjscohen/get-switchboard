@@ -31,16 +31,18 @@ export async function POST(
       return NextResponse.json({ error: "message is required" }, { status: 400 });
     }
 
-    // If session is in a done state, reactivate it to idle
+    // Done sessions need a 'resume' command (no running in-memory process);
+    // idle sessions use 'respond' (session is alive in the registry).
     const isDone = ["completed", "failed", "timeout"].includes(status);
+    const command = isDone ? "resume" : "respond";
 
-    // Insert respond command, user message, and optionally reactivate session
+    // Insert command, user message, and optionally reactivate session
     const [commandResult, messageResult, ...rest] = await Promise.all([
       supabaseAdmin
         .from("session_commands")
         .insert({
           session_id: id,
-          command: "respond",
+          command,
           payload: { message },
           status: "pending",
           created_by: auth.userId,
@@ -57,7 +59,7 @@ export async function POST(
         ? [
             supabaseAdmin
               .from("agent_sessions")
-              .update({ status: "idle", completed_at: null })
+              .update({ status: "pending", completed_at: null })
               .eq("id", id),
           ]
         : []),

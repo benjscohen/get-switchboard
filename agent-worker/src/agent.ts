@@ -17,7 +17,7 @@ import {
   unregisterSession,
 } from "./session-registry.js";
 import type { PlanDecision, PlanPhase } from "./session-registry.js";
-import type { SlackFile } from "./types.js";
+import type { SlackFile, UserLookup } from "./types.js";
 import { ensureChromeRunning, cleanupTabs, chromeMcpArgs } from "./chrome.js";
 import { logger } from "./logger.js";
 import { prepareWorkspaceForPlan } from "./plan-workspace.js";
@@ -1390,6 +1390,344 @@ export async function processMessage(
         logger.error({ err, sessionId }, "Chrome tab cleanup failed");
       });
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Resume a completed/failed/timeout session from the web UI
+// ---------------------------------------------------------------------------
+
+export async function resumeSession(
+  sessionId: string,
+  lookup: UserLookup,
+  message: string,
+): Promise<void> {
+  const session = await db.getSessionById(sessionId);
+  if (!session) {
+    logger.error({ sessionId }, "[resume] Session not found");
+    return;
+  }
+
+  const previousClaudeSessionId = session.claude_session_id;
+  logger.info({ sessionId, previousClaudeSessionId }, "[resume] Starting");
+
+  activeCount++;
+  if (isRedisEnabled()) {
+    await incrementActiveCount();
+  }
+
+  let tempDir: string | null = null;
+  let claudeMdContent: string | null = null;
+
+  // Build a synthetic thread key so Slack follow-ups and web respond commands work
+  const threadKey = session.slack_channel_id && session.slack_thread_ts
+    ? buildThreadKey(session.slack_channel_id, session.slack_thread_ts)
+    : `web:${sessionId}`;
+
+  let stream = createMessageStream(message);
+  const abortController = new AbortController();
+  let timeoutId = setTimeout(() => abortController.abort(), TIMEOUT_MS);
+  let sessionIsIdle = false;
+
+  const runningSession = {
+    sessionId,
+    claudeSessionId: previousClaudeSessionId,
+    tempDir: null as string | null,
+    pendingFollowUpTs: [] as string[],
+    pushMessage: stream.pushMessage,
+    close: stream.close,
+    openGate: stream.openGate,
+    isPlanMode: false,
+    planPhase: "off" as PlanPhase,
+    pendingPlanApproval: null as import("./session-registry.js").PendingPlanApproval | null,
+    setPermissionMode: null as ((mode: import("@anthropic-ai/claude-code").PermissionMode) => Promise<void>) | null,
+    abortController,
+    killedByUser: false,
+  };
+
+  registerSession(threadKey, runningSession);
+  if (isRedisEnabled()) {
+    await registerSessionRedis(threadKey, sessionId);
+  }
+
+  try {
+    // Set status to running
+    await db.updateSession(sessionId, { status: "running" });
+
+    // Pull user files
+    try {
+      const userFiles = await fetchUserFiles(lookup.agentKey);
+      if (userFiles) {
+        tempDir = await writeFilesToStableDir(userFiles, lookup.userId);
+        claudeMdContent = extractClaudeMd(userFiles);
+        runningSession.tempDir = tempDir;
+      }
+    } catch (err) {
+      logger.error({ err }, "[resume] Failed to pull user files");
+    }
+
+    // Restore transcript from previous session
+    if (previousClaudeSessionId) {
+      try {
+        const saved = await db.getSessionTranscript(previousClaudeSessionId);
+        if (saved) {
+          await fs.mkdir(path.dirname(saved.filePath), { recursive: true });
+          await fs.writeFile(saved.filePath, saved.transcript, "utf-8");
+          logger.info({ sessionId, filePath: saved.filePath }, "[resume] Restored transcript");
+        }
+      } catch (err) {
+        logger.error({ err }, "[resume] Failed to restore transcript");
+      }
+
+      // Restore workspace
+      if (tempDir) {
+        try {
+          const archivePath = await db.getWorkspaceArchivePath(previousClaudeSessionId);
+          if (archivePath) {
+            const ok = await restoreWorkspace({ archivePath, targetDir: tempDir });
+            if (ok) logger.info({ sessionId }, "[resume] Restored workspace");
+          }
+        } catch (err) {
+          logger.error({ err }, "[resume] Failed to restore workspace");
+        }
+      }
+    }
+
+    // Build system prompt + query options
+    const systemPrompt = buildSystemPrompt(claudeMdContent, undefined, {
+      name: lookup.name,
+      email: lookup.email,
+    });
+
+    let chromeMcpEnabled = process.env.ENABLE_CHROME_MCP !== "false" && lookup.chromeMcpEnabled !== false;
+    if (chromeMcpEnabled) {
+      try {
+        await ensureChromeRunning();
+      } catch (err) {
+        logger.error({ err, sessionId }, "[resume] Chrome startup failed (non-fatal)");
+      }
+    }
+
+    let lastResultText: string | null = null;
+    let totalTurns = 0;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let cachedSessionFilePath: string | null | undefined;
+    let statusUpdater = new StreamingStatusUpdater({
+      channelId: session.slack_channel_id || "",
+      threadTs: session.slack_thread_ts || "",
+      enabled: lookup.showThinking !== false,
+      sessionId,
+    });
+
+    const runConversation = async () => {
+      const conversation = query({
+        prompt: stream.iterable,
+        options: {
+          model: lookup.model,
+          customSystemPrompt: systemPrompt,
+          ...(tempDir ? { cwd: tempDir } : {}),
+          mcpServers: {
+            switchboard: {
+              type: "http" as const,
+              url: process.env.SWITCHBOARD_MCP_URL!.trim(),
+              headers: {
+                Authorization: `Bearer ${lookup.agentKey}`,
+              },
+            },
+            ...(chromeMcpEnabled ? {
+              "chrome-devtools": {
+                type: "stdio" as const,
+                command: "chrome-devtools-mcp",
+                args: chromeMcpArgs(),
+              },
+            } : {}),
+          },
+          permissionMode: "bypassPermissions" as const,
+          abortController,
+          ...(previousClaudeSessionId ? { resume: previousClaudeSessionId } : {}),
+          includePartialMessages: true,
+          stderr: (data: string) => {
+            const redacted = data
+              .replace(/Bearer [^\s"']+/g, "Bearer [REDACTED]")
+              .replace(/sk_live_[^\s"']+/g, "sk_live_[REDACTED]");
+            logger.error({ stderr: redacted }, "[resume][claude-code stderr]");
+          },
+        },
+      });
+
+      const syncIdleState = (idle: boolean) => { sessionIsIdle = idle; };
+
+      let claudeSessionId: string | null = null;
+      let lastAssistantText = "";
+      for await (const msg of conversation) {
+        if (sessionIsIdle) {
+          syncIdleState(false);
+          await db.updateSession(sessionId, { status: "running" });
+          clearTimeout(timeoutId);
+          timeoutId = setTimeout(() => abortController.abort(), TIMEOUT_MS);
+        }
+
+        if (msg.type === "stream_event") {
+          statusUpdater.handleStreamEvent((msg as { event: StreamEventLike }).event);
+          continue;
+        }
+
+        if ("session_id" in msg && msg.session_id && !claudeSessionId) {
+          claudeSessionId = msg.session_id;
+          stream.setSessionId(claudeSessionId);
+          runningSession.claudeSessionId = claudeSessionId;
+          await db.updateSession(sessionId, { claude_session_id: claudeSessionId });
+        }
+
+        if (msg.type === "assistant") {
+          statusUpdater.handleAssistantMessage();
+          const amsg = msg as { message?: { content?: Array<{ type: string; text?: string }> } };
+          const textContent = (amsg.message?.content || [])
+            .filter((b) => b.type === "text" && b.text)
+            .map((b) => b.text!)
+            .join("");
+          if (textContent) lastAssistantText = textContent;
+        }
+
+        if (msg.type === "result") {
+          if (msg.subtype === "success") {
+            const text = msg.result || lastAssistantText || "(No response generated)";
+            lastResultText = text;
+            totalTurns += msg.num_turns;
+            if (msg.usage) {
+              totalInputTokens += msg.usage.input_tokens ?? 0;
+              totalOutputTokens += msg.usage.output_tokens ?? 0;
+            }
+
+            await statusUpdater.finalize();
+            statusUpdater = new StreamingStatusUpdater({
+              channelId: session.slack_channel_id || "",
+              threadTs: session.slack_thread_ts || "",
+              enabled: lookup.showThinking !== false,
+              sessionId,
+            });
+            lastAssistantText = "";
+
+            // Store assistant message in DB
+            await db.createMessage({
+              sessionId,
+              role: "assistant",
+              content: text,
+              slackTs: null,
+              metadata: { source: "web-resume", turns: msg.num_turns },
+            });
+
+            // Post to Slack thread if session has one
+            if (session.slack_channel_id && session.slack_thread_ts) {
+              try {
+                const slackText = text.length > 39000
+                  ? text.slice(0, 39000) + "\n\n... (response truncated)"
+                  : slack.markdownToSlack(text);
+                await slack.postMessage(
+                  session.slack_channel_id,
+                  slackText,
+                  session.slack_thread_ts,
+                );
+              } catch {
+                // Slack failure is non-fatal for web-initiated resumes
+              }
+            }
+
+            // Save transcript + workspace eagerly
+            cachedSessionFilePath = await saveTranscriptIfExists(
+              sessionId, claudeSessionId, cachedSessionFilePath, "resume-eager",
+            );
+            if (tempDir && claudeSessionId) {
+              saveWorkspaceArchive(tempDir, lookup.userId, claudeSessionId, sessionId);
+            }
+
+            // Mark idle, open gate for follow-ups
+            syncIdleState(true);
+            await db.updateSession(sessionId, { status: "idle" });
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => abortController.abort(), IDLE_TIMEOUT_MS);
+            stream.openGate();
+          } else {
+            throw new Error(
+              `Agent error (${msg.subtype}): ${"error" in msg && msg.error ? String(msg.error) : "no details"}`,
+            );
+          }
+        }
+      }
+
+      // Final save
+      await Promise.all([
+        saveTranscriptIfExists(sessionId, claudeSessionId, cachedSessionFilePath, "resume-final"),
+        tempDir && claudeSessionId
+          ? saveWorkspaceArchive(tempDir, lookup.userId, claudeSessionId, sessionId)
+          : Promise.resolve(),
+      ]);
+    };
+
+    try {
+      await runConversation();
+    } catch (err: unknown) {
+      // If resume failed, retry fresh (session may have expired)
+      if (previousClaudeSessionId) {
+        logger.warn({ err, previousClaudeSessionId }, "[resume] Resume failed, starting fresh");
+        stream.close();
+        stream = createMessageStream(message);
+        runningSession.pushMessage = stream.pushMessage;
+        runningSession.close = stream.close;
+        runningSession.openGate = stream.openGate;
+        await runConversation();
+      } else {
+        throw err;
+      }
+    }
+
+    clearTimeout(timeoutId);
+    await statusUpdater.finalize();
+
+    await db.updateSession(sessionId, buildCompletionUpdate({
+      result: lastResultText,
+      totalTurns,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+    }));
+  } catch (err) {
+    clearTimeout(timeoutId);
+    stream.close();
+
+    const isAbort =
+      err instanceof Error &&
+      (err.message.includes("aborted by user") || err.message === "Operation aborted");
+
+    if (isAbort && sessionIsIdle) {
+      logger.info({ sessionId }, "[resume] idle session timed out — completing silently");
+      await db.updateSession(sessionId, buildCompletionUpdate({
+        result: null,
+        totalTurns: 0,
+      })).catch(() => {});
+      return;
+    }
+
+    const errorMessage = isAbort
+      ? "The agent stopped responding and was automatically terminated."
+      : err instanceof Error ? err.message : "An unknown error occurred";
+
+    logger.error({ err, sessionId }, "[resume] Session error");
+    await db.updateSession(sessionId, {
+      status: "failed",
+      error: errorMessage,
+      completed_at: new Date().toISOString(),
+    }).catch(() => {});
+  } finally {
+    activeCount--;
+    if (isRedisEnabled()) {
+      await decrementActiveCount();
+    }
+    unregisterSession(threadKey);
+    if (isRedisEnabled()) {
+      await unregisterSessionRedis(threadKey);
+    }
+    logger.info({ sessionId, threadKey, activeCount }, "[resume] session unregistered");
   }
 }
 

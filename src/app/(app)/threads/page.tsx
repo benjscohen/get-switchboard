@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { KanbanBoard } from "@/components/threads/kanban-board";
 import { SessionList } from "@/components/threads/session-list";
 import { SessionDetail } from "@/components/threads/session-detail";
 import type { KanbanData } from "@/lib/threads/types";
@@ -28,17 +27,24 @@ export default function ThreadsPage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const selectedSession =
-    selectedId && data
-      ? (data.active.find((s) => s.id === selectedId) ??
-        data.waiting.find((s) => s.id === selectedId) ??
-        data.done.find((s) => s.id === selectedId) ??
-        null)
-      : null;
+  // Auto-select first session if none selected
+  useEffect(() => {
+    if (!selectedId && data) {
+      const first =
+        data.active[0] ?? data.waiting[0] ?? data.done[0] ?? null;
+      if (first) setSelectedId(first.id);
+    }
+  }, [data, selectedId]);
 
-  const totalCount = data
-    ? data.active.length + data.waiting.length + data.done.length
-    : 0;
+  const allSessions = data
+    ? [...data.active, ...data.waiting, ...data.done]
+    : [];
+
+  const selectedSession = selectedId
+    ? allSessions.find((s) => s.id === selectedId) ?? null
+    : null;
+
+  const totalCount = allSessions.length;
 
   return (
     <div className="flex h-[calc(100vh-57px)] flex-col">
@@ -58,14 +64,18 @@ export default function ThreadsPage() {
       <div className="flex flex-1 overflow-hidden">
         {loading ? (
           <div className="flex-1 p-6">
-            <div className="grid grid-cols-3 gap-6">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="space-y-3">
-                  <Skeleton className="h-6 w-24" />
-                  <Skeleton className="h-20 w-full" />
-                  <Skeleton className="h-20 w-full" />
-                </div>
-              ))}
+            <div className="flex gap-6">
+              <div className="w-80 space-y-3">
+                <Skeleton className="h-6 w-24" />
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+              </div>
+              <div className="flex-1 space-y-4">
+                <Skeleton className="h-16 w-3/4" />
+                <Skeleton className="ml-auto h-10 w-1/2" />
+                <Skeleton className="h-20 w-3/4" />
+              </div>
             </div>
           </div>
         ) : !data || totalCount === 0 ? (
@@ -77,33 +87,34 @@ export default function ThreadsPage() {
               </p>
             </div>
           </div>
-        ) : selectedSession ? (
+        ) : (
           <>
-            {/* Sidebar — compact session list */}
+            {/* Sidebar — session list */}
             <div className="w-80 shrink-0 border-r border-border">
               <SessionList
                 data={data}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
+                onAction={fetchData}
               />
             </div>
             {/* Detail panel */}
             <div className="flex-1 min-w-0">
-              <SessionDetail
-                session={selectedSession}
-                onClose={() => setSelectedId(null)}
-                onAction={fetchData}
-              />
+              {selectedSession ? (
+                <SessionDetail
+                  session={selectedSession}
+                  onClose={() => setSelectedId(null)}
+                  onAction={fetchData}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <p className="text-sm text-text-tertiary">
+                    Select a thread to view messages
+                  </p>
+                </div>
+              )}
             </div>
           </>
-        ) : (
-          /* Full kanban view */
-          <div className="flex-1 overflow-y-auto p-6">
-            <KanbanBoard
-              data={data}
-              onSelectSession={setSelectedId}
-            />
-          </div>
         )}
       </div>
     </div>
