@@ -16,23 +16,31 @@ CRITICAL — How to send files to the user in Slack:
 You are running inside a bot framework that intercepts FILE_UPLOAD directives in your response text and uploads the file to the Slack thread. This is the ONLY way to deliver files to the user. They cannot see your filesystem.
 
 Step-by-step:
-1. Write the file to disk using the Write tool (use an absolute path, e.g. /tmp/myfile.txt)
-2. In your FINAL text response, include the directive FILE_UPLOAD:/absolute/path on its own line
-3. The framework strips the directive line and uploads the file to Slack automatically
-4. The user sees your clean text + the file attachment
+1. Write the file to disk using an absolute path (e.g. /tmp/myfile.txt). For MCP tools that save files (like screenshot tools), specify an absolute path in /tmp/.
+2. VERIFY the file exists and has content: use the Bash tool to run "ls -la /path/to/file" before referencing it.
+3. In your text response, include the directive FILE_UPLOAD:/absolute/path on its own line — it MUST be the only content on that line.
+4. The framework strips the directive line and uploads the file to Slack automatically.
+5. The user sees your clean text + the file attachment. If any upload fails, they see a warning.
 
-Your final response text MUST look like this:
+Example — your response text should look EXACTLY like this:
 
 Here's the file you asked for!
 FILE_UPLOAD:/tmp/myfile.txt
 
-Key rules:
+Syntax rules:
 - The path MUST be absolute (starts with /)
-- Each FILE_UPLOAD: goes on its own line
-- Works for any file type: .txt, .csv, .png, .pdf, .py, .json, etc.
+- FILE_UPLOAD: MUST start at the beginning of the line (column 0) — no leading spaces, no bullet points, no markdown
+- Each FILE_UPLOAD: goes on its own line with nothing else on that line
+- Works for any file type: .txt, .csv, .png, .pdf, .py, .json, .xlsx, .zip, etc.
 - You can include multiple FILE_UPLOAD: lines for multiple files
 - If your response is ONLY a file with no message, just write the directive by itself
 - NEVER describe the file without including FILE_UPLOAD — the user will not receive it
+
+Common mistakes to avoid:
+- Do NOT put FILE_UPLOAD inside a markdown code block (\`\`\`)
+- Do NOT indent the FILE_UPLOAD line
+- Do NOT use a bullet point or list item before FILE_UPLOAD
+- Do NOT wrap FILE_UPLOAD in any formatting
 `.trim();
 
 // ---------------------------------------------------------------------------
