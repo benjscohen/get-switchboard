@@ -14,7 +14,7 @@ import { startCommandPoller } from "./command-poller.js";
 import * as slack from "./slack.js";
 import type { SlackAttachment } from "./slack.js";
 import * as db from "./db.js";
-import { buildRetryDisabledBlocks, buildPlanExpiredBlocks } from "./slack-blocks.js";
+import { buildRetryDisabledBlocks, buildPlanExpiredBlocks, buildThreadClosedBlocks } from "./slack-blocks.js";
 import { buildThreadKey, getRunningSession, findRunningSessionBySessionId } from "./session-registry.js";
 import { cleanupOldArchives } from "./workspace-storage.js";
 import type { SlackFile } from "./types.js";
@@ -284,6 +284,36 @@ app.action("approve_plan", async ({ action, ack, body }) => {
 
   // Resolve the promise — the hook in agent.ts will handle the rest
   running.pendingPlanApproval.resolve({ action: "approve" });
+});
+
+// Handle "Close Thread" button clicks — mark session as done from Slack
+app.action("close_thread", async ({ action, ack, body }) => {
+  await ack();
+  const sessionId = (action as { value?: string }).value;
+  if (!sessionId) return;
+
+  const channelId = body.channel?.id;
+  const msg = "message" in body
+    ? (body as unknown as Record<string, unknown>).message as { ts?: string }
+    : null;
+
+  try {
+    // Mark session as completed in the DB (works for idle, completed, failed, timeout)
+    await db.updateSession(sessionId, {
+      status: "completed",
+      completed_at: new Date().toISOString(),
+    });
+
+    // Replace the button message with a "Thread closed" confirmation
+    if (channelId && msg?.ts) {
+      const closedBlocks = buildThreadClosedBlocks();
+      await slack.updateMessage(channelId, msg.ts, "Thread closed", closedBlocks);
+    }
+
+    logger.info({ sessionId, slackUserId: body.user.id }, "[close_thread] Thread closed from Slack");
+  } catch (err) {
+    logger.error({ err, sessionId }, "[close_thread] Failed to close thread");
+  }
 });
 
 // ---------------------------------------------------------------------------
