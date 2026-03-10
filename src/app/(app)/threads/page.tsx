@@ -180,26 +180,6 @@ export default function ThreadsPage() {
     fetchData();
   };
 
-  // Auto-advance: select next item in the same section after action
-  const autoAdvance = useCallback(
-    (sessionId: string, section: "active" | "waiting" | "done") => {
-      if (!data) return;
-      const list = data[section];
-      const idx = list.findIndex((s) => s.id === sessionId);
-      if (idx === -1) return;
-      // Pick next in section, or prev if last, or null
-      const next = list[idx + 1] ?? list[idx - 1] ?? null;
-      if (next) {
-        setSelectedId(next.id);
-        requestAnimationFrame(() => {
-          const el = document.querySelector(`[data-session-id="${next.id}"]`);
-          el?.scrollIntoView({ block: "nearest" });
-        });
-      }
-    },
-    [data],
-  );
-
   const applyOptimisticAction = useCallback(
     (sessionId: string, action: OptimisticAction) => {
       if (!data) return;
@@ -220,9 +200,6 @@ export default function ThreadsPage() {
       const found = findAndRemove();
       if (!found) return;
       const { session, section } = found;
-
-      // Auto-advance before moving
-      autoAdvance(sessionId, section);
 
       // Build new data with session moved
       const newData: KanbanData = {
@@ -301,7 +278,7 @@ export default function ThreadsPage() {
           setTimeout(fetchData, 500);
         });
     },
-    [data, autoAdvance, fetchData, addToast],
+    [data, fetchData, addToast],
   );
 
   const navigateBy = useCallback(
