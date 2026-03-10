@@ -75,7 +75,7 @@ export function KeyboardShortcutsHelp({ onClose }: KeyboardShortcutsHelpProps) {
             <ShortcutRow keys="c" label="Compose new thread" />
             <ShortcutRow keys="r" label="Reply" />
             <ShortcutRow keys="e" label="Mark done" />
-            <ShortcutRow keys="u" label="Undo done / Reopen" />
+            <ShortcutRow keys="u" label="Reopen / Retry" />
             <ShortcutRow keys="s" label="Stop thread" />
           </div>
 

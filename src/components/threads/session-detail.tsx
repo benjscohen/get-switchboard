@@ -15,6 +15,7 @@ interface SessionDetailProps {
   onComplete: () => void;
   onStop: () => void;
   onReopen: () => void;
+  onRetry: () => void;
   onRefresh: () => void;
   isStopping?: boolean;
   messageInputRef?: React.Ref<HTMLTextAreaElement>;
@@ -26,6 +27,7 @@ export function SessionDetail({
   onComplete,
   onStop,
   onReopen,
+  onRetry,
   onRefresh,
   isStopping,
   messageInputRef,
@@ -35,6 +37,7 @@ export function SessionDetail({
 
   const isActive = ["pending", "running", "idle"].includes(session.status);
   const isIdle = session.status === "idle";
+  const isFailed = session.status === "failed" || session.status === "timeout";
   const isDone = ["completed", "failed", "timeout"].includes(session.status);
   const config = STATUS_CONFIG[session.status] ?? STATUS_CONFIG.pending;
 
@@ -189,6 +192,15 @@ export function SessionDetail({
               onClick={onReopen}
             >
               Reopen <kbd className="ml-1.5 rounded border border-border bg-bg-hover px-1 text-[10px] font-medium text-text-tertiary">U</kbd>
+            </Button>
+          )}
+          {isFailed && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onRetry}
+            >
+              Retry <kbd className="ml-1.5 rounded border border-border bg-bg-hover px-1 text-[10px] font-medium text-text-tertiary">U</kbd>
             </Button>
           )}
         </div>

@@ -81,13 +81,13 @@ export async function GET(request: NextRequest) {
         .select(THREAD_SELECT_COLUMNS, { count: "exact" })
         .eq("organization_id", auth.organizationId)
         .eq("user_id", auth.userId)
-        .eq("status", "idle")
+        .in("status", ["idle", "failed", "timeout"])
         .order("updated_at", { ascending: false }),
       baseQuery()
         .select(THREAD_SELECT_COLUMNS, { count: "exact" })
         .eq("organization_id", auth.organizationId)
         .eq("user_id", auth.userId)
-        .in("status", ["completed", "failed", "timeout"])
+        .eq("status", "completed")
         .order("completed_at", { ascending: false, nullsFirst: false })
         .range(doneOffset, doneOffset + doneLimit - 1),
     ]);

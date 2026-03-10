@@ -61,21 +61,19 @@ describe("MainNav", () => {
     expect(screen.queryByText("Schedules")).not.toBeInTheDocument();
   });
 
-  it("shows dropdown on hover and hides on mouse leave", async () => {
+  it("opens dropdown on click and closes on second click", async () => {
     const user = userEvent.setup();
     render(<MainNav links={links} />);
 
-    const agentsTrigger = screen.getByText("Agents");
+    const agentsTrigger = screen.getByRole("button", { name: "Agents" });
 
-    // Hover over trigger's parent wrapper div
-    await user.hover(agentsTrigger.closest("div")!);
-
+    // Click to open
+    await user.click(agentsTrigger);
     expect(screen.getByRole("menu")).toBeInTheDocument();
     expect(screen.getByText("Schedules")).toBeInTheDocument();
 
-    // Mouse away
-    await user.unhover(agentsTrigger.closest("div")!);
-
+    // Click again to close
+    await user.click(agentsTrigger);
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(screen.queryByText("Schedules")).not.toBeInTheDocument();
   });
@@ -84,13 +82,13 @@ describe("MainNav", () => {
     const user = userEvent.setup();
     render(<MainNav links={links} />);
 
-    const agentsTrigger = screen.getByText("Agents");
+    const agentsTrigger = screen.getByRole("button", { name: "Agents" });
     expect(agentsTrigger).toHaveAttribute("aria-expanded", "false");
 
-    await user.hover(agentsTrigger.closest("div")!);
+    await user.click(agentsTrigger);
     expect(agentsTrigger).toHaveAttribute("aria-expanded", "true");
 
-    await user.unhover(agentsTrigger.closest("div")!);
+    await user.click(agentsTrigger);
     expect(agentsTrigger).toHaveAttribute("aria-expanded", "false");
   });
 
@@ -98,7 +96,7 @@ describe("MainNav", () => {
     const user = userEvent.setup();
     render(<MainNav links={links} />);
 
-    await user.hover(screen.getByText("Workspace").closest("div")!);
+    await user.click(screen.getByRole("button", { name: "Workspace" }));
 
     const menuItems = screen.getAllByRole("menuitem");
     expect(menuItems).toHaveLength(3);
@@ -113,31 +111,39 @@ describe("MainNav", () => {
     const user = userEvent.setup();
     render(<MainNav links={links} />);
 
-    // Before hover: no menu element in DOM at all
+    // Before click: no menu element in DOM at all
     expect(screen.queryByRole("menu")).toBeNull();
 
-    await user.hover(screen.getByText("Agents").closest("div")!);
+    await user.click(screen.getByRole("button", { name: "Agents" }));
 
-    // After hover: menu element exists and is visible
+    // After click: menu element exists and is visible
     const menu = screen.getByRole("menu");
     expect(menu).toBeInTheDocument();
-    // Verify no CSS visibility/opacity hiding — element should not have
-    // invisible or opacity-0 classes (the old CSS hover approach)
     expect(menu.closest("[class*='invisible']")).toBeNull();
     expect(menu.closest("[class*='opacity-0']")).toBeNull();
   });
 
-  it("does not use group-hover CSS classes", async () => {
+  it("closes dropdown on click outside", async () => {
     const user = userEvent.setup();
     render(<MainNav links={links} />);
 
-    await user.hover(screen.getByText("Agents").closest("div")!);
+    await user.click(screen.getByRole("button", { name: "Agents" }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
 
-    // The wrapper div should not have group/nav class
-    const trigger = screen.getByRole("button", { name: "Agents", expanded: true });
-    const wrapper = trigger.closest("div");
-    expect(wrapper?.className).not.toContain("group/nav");
-    expect(wrapper?.className).not.toContain("group-hover");
+    // Click outside
+    await user.click(document.body);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("closes dropdown on Escape key", async () => {
+    const user = userEvent.setup();
+    render(<MainNav links={links} />);
+
+    await user.click(screen.getByRole("button", { name: "Agents" }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("renders plain links without dropdown for items without children", () => {
@@ -145,7 +151,6 @@ describe("MainNav", () => {
 
     const connectionsLink = screen.getByText("Connections");
     expect(connectionsLink).toHaveAttribute("href", "/connections");
-    // No aria-haspopup on plain links
     expect(connectionsLink).not.toHaveAttribute("aria-haspopup");
   });
 });

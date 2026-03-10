@@ -14,6 +14,7 @@ interface SessionListProps {
   onSelect: (id: string) => void;
   onComplete: (id: string) => void;
   onReopen: (id: string) => void;
+  onRetry: (id: string) => void;
   stoppingIds: Set<string>;
   searchInputRef?: React.Ref<HTMLInputElement>;
   onSearchChange: (query: string) => void;
@@ -42,6 +43,7 @@ function SessionRow({
   onClick,
   onMarkDone,
   onReopen,
+  onRetry,
   isStopping,
 }: {
   session: ThreadSession;
@@ -49,6 +51,7 @@ function SessionRow({
   onClick: () => void;
   onMarkDone?: () => void;
   onReopen?: () => void;
+  onRetry?: () => void;
   isStopping?: boolean;
 }) {
   const isActive = session.status === "pending" || session.status === "running";
@@ -124,6 +127,21 @@ function SessionRow({
                 </svg>
               </button>
             )}
+            {onRetry && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRetry();
+                }}
+                className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-text-tertiary hover:text-orange-600 hover:bg-orange-50 transition-all"
+                title="Retry"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12a9 9 0 1 1-9-9" />
+                  <polyline points="21 3 21 9 15 9" />
+                </svg>
+              </button>
+            )}
             <span className="text-[11px] text-text-tertiary whitespace-nowrap">
               {timeStr}
             </span>
@@ -158,6 +176,7 @@ export function SessionList({
   onSelect,
   onComplete,
   onReopen,
+  onRetry,
   stoppingIds,
   searchInputRef,
   onSearchChange,
@@ -232,6 +251,7 @@ export function SessionList({
                       onClick={() => onSelect(s.id)}
                       onMarkDone={s.status === "idle" ? () => onComplete(s.id) : undefined}
                       onReopen={s.status === "completed" ? () => onReopen(s.id) : undefined}
+                      onRetry={["failed", "timeout"].includes(s.status) ? () => onRetry(s.id) : undefined}
                       isStopping={stoppingIds.has(s.id)}
                     />
                   ))}
@@ -292,6 +312,7 @@ export function SessionList({
                           onClick={() => onSelect(s.id)}
                           onMarkDone={s.status === "idle" ? () => onComplete(s.id) : undefined}
                           onReopen={s.status === "completed" ? () => onReopen(s.id) : undefined}
+                          onRetry={["failed", "timeout"].includes(s.status) ? () => onRetry(s.id) : undefined}
                           isStopping={stoppingIds.has(s.id)}
                         />
                       ))}

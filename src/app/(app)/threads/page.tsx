@@ -10,7 +10,7 @@ import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useToast } from "@/components/ui/toast";
 import type { KanbanData, ThreadSession, SearchResponse } from "@/lib/threads/types";
 
-type OptimisticAction = "complete" | "stop" | "reopen";
+type OptimisticAction = "complete" | "stop" | "reopen" | "retry";
 
 const DONE_PAGE_SIZE = 20;
 
@@ -228,19 +228,35 @@ export default function ThreadsPage() {
           newData.counts[section]--;
           newData.counts.waiting++;
         }
+      } else if (action === "retry") {
+        const updated = { ...session, status: "pending" as const, completedAt: null };
+        newData.active = [updated, ...newData.active];
+        if (section !== "active") {
+          newData.counts[section]--;
+          newData.counts.active++;
+        }
       }
 
       setData(newData);
 
-      // API endpoint map
-      const endpointMap: Record<OptimisticAction, string> = {
-        complete: `/api/threads/${sessionId}/complete`,
-        stop: `/api/threads/${sessionId}/stop`,
-        reopen: `/api/threads/${sessionId}/reopen`,
-      };
-
       // Fire API call
-      fetch(endpointMap[action], { method: "POST" })
+      const isRetry = action === "retry";
+      const apiCall = isRetry
+        ? fetch(`/api/threads/${sessionId}/respond`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: "Please retry from where you left off." }),
+          })
+        : fetch(
+            ({
+              complete: `/api/threads/${sessionId}/complete`,
+              stop: `/api/threads/${sessionId}/stop`,
+              reopen: `/api/threads/${sessionId}/reopen`,
+            } as Record<string, string>)[action]!,
+            { method: "POST" },
+          );
+
+      apiCall
         .then((res) => {
           if (!res.ok) throw new Error("API error");
           if (action === "stop") {
@@ -261,6 +277,8 @@ export default function ThreadsPage() {
               label: "Undo",
               onClick: () => applyOptimisticAction(sessionId, "complete"),
             });
+          } else if (action === "retry") {
+            addToast("Retrying...", "success");
           }
         })
         .catch(() => {
@@ -330,6 +348,8 @@ export default function ThreadsPage() {
     u: () => {
       if (selectedSession?.status === "completed") {
         applyOptimisticAction(selectedSession.id, "reopen");
+      } else if (selectedSession?.status === "failed" || selectedSession?.status === "timeout") {
+        applyOptimisticAction(selectedSession.id, "retry");
       }
     },
     "?": () => setShowHelp((v) => !v),
@@ -428,6 +448,7 @@ export default function ThreadsPage() {
                 }}
                 onComplete={(id) => applyOptimisticAction(id, "complete")}
                 onReopen={(id) => applyOptimisticAction(id, "reopen")}
+                onRetry={(id) => applyOptimisticAction(id, "retry")}
                 stoppingIds={stoppingIds}
                 searchInputRef={searchInputRef}
                 onSearchChange={handleSearchChange}
@@ -452,6 +473,7 @@ export default function ThreadsPage() {
                   onComplete={() => applyOptimisticAction(selectedSession.id, "complete")}
                   onStop={() => applyOptimisticAction(selectedSession.id, "stop")}
                   onReopen={() => applyOptimisticAction(selectedSession.id, "reopen")}
+                  onRetry={() => applyOptimisticAction(selectedSession.id, "retry")}
                   onRefresh={fetchData}
                   isStopping={stoppingIds.has(selectedSession.id)}
                   messageInputRef={messageInputRef}
