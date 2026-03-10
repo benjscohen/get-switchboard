@@ -280,9 +280,7 @@ export function SessionList({
                       <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
                       <span className="text-xs font-medium text-text-secondary">{label}</span>
                       <span className="text-[11px] text-text-tertiary">
-                        {key === "done" && sessions.length < count
-                          ? `${sessions.length} of ${count}`
-                          : count}
+                        {count}
                       </span>
                     </div>
                     <AnimatePresence mode="popLayout">
