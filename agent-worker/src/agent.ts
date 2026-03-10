@@ -1030,20 +1030,37 @@ export async function processMessage(
                     .catch((err) => logger.error({ err, sessionId }, "title generation failed"));
                 }
 
-                // Plan mode → suppress ALL result:success messages during plan phase.
-                // The plan itself is shown via approval blocks. Only the execution phase posts results.
+                // Plan mode → suppress result:success messages while plan is being presented/approved.
+                // But if the agent completed without ever calling ExitPlanMode (still in "exploring" phase),
+                // that means plan mode failed — post the result normally so the user isn't left in the dark.
                 if (planModeRequested && !planExecutionStarted) {
-                  logger.info({ sessionId, planPhase: runningSession.planPhase }, "plan phase result:success suppressed — will not post to Slack");
+                  if (runningSession.planPhase === "exploring") {
+                    // Agent completed without calling ExitPlanMode — plan mode failed.
+                    // Fall through to normal result posting so the user sees the response.
+                    logger.warn(
+                      { sessionId, planPhase: runningSession.planPhase },
+                      "plan mode: agent completed without ExitPlanMode — posting result normally",
+                    );
+                    planModeRequested = false;
+                    runningSession.isPlanMode = false;
+                    runningSession.planPhase = "off";
+                    // Remove the plan-mode memo reaction since we're exiting plan mode
+                    await slack.removeReaction(channelId, messageTs, "memo").catch(() => {});
+                    // Fall through to normal result posting below
+                  } else {
+                    // Plan was presented (waiting for approval) or being revised — suppress as designed.
+                    logger.info({ sessionId, planPhase: runningSession.planPhase }, "plan phase result:success suppressed — will not post to Slack");
 
-                  await db.createMessage({
-                    sessionId,
-                    role: "assistant",
-                    content: text,
-                    slackTs: null,
-                    metadata: { turns: message.num_turns, cost: message.total_cost_usd, isPlanSummary: true, planPhase: runningSession.planPhase },
-                  });
+                    await db.createMessage({
+                      sessionId,
+                      role: "assistant",
+                      content: text,
+                      slackTs: null,
+                      metadata: { turns: message.num_turns, cost: message.total_cost_usd, isPlanSummary: true, planPhase: runningSession.planPhase },
+                    });
 
-                  continue;
+                    continue;
+                  }
                 }
 
                 // Extract FILE_UPLOAD directives before formatting

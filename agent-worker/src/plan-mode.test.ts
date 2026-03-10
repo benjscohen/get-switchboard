@@ -378,51 +378,36 @@ describe("plan mode feedback routing", () => {
 // ---------------------------------------------------------------------------
 
 describe("plan mode result suppression logic", () => {
-  // This tests the guard condition: planModeRequested && !planExecutionStarted
-  // In agent.ts, this guard suppresses ALL result:success from posting to Slack
-  // during the plan phase. We test the condition directly.
+  // This tests the guard condition in agent.ts:
+  // When planModeRequested && !planExecutionStarted, results are checked against planPhase.
+  // - planPhase === "exploring" → agent never called ExitPlanMode → fall through to normal posting
+  // - planPhase === "presented"/"revising" → plan was shown, suppress result
 
-  it("suppresses result when in plan mode and execution not started", () => {
-    const planModeRequested = true;
-    const planExecutionStarted = false;
+  function shouldSuppress(planModeRequested: boolean, planExecutionStarted: boolean, planPhase: PlanPhase): boolean {
+    if (!planModeRequested || planExecutionStarted) return false;
+    // Only suppress when plan has been presented (waiting for approval or revising)
+    return planPhase !== "exploring";
+  }
 
-    const shouldSuppress = planModeRequested && !planExecutionStarted;
-    expect(shouldSuppress).toBe(true);
+  it("does NOT suppress when agent completes in exploring phase (never called ExitPlanMode)", () => {
+    // This is the critical fix — previously this was suppressed, leaving the user in the dark
+    expect(shouldSuppress(true, false, "exploring")).toBe(false);
+  });
+
+  it("suppresses when plan has been presented (waiting for approval)", () => {
+    expect(shouldSuppress(true, false, "presented")).toBe(true);
+  });
+
+  it("suppresses when plan is being revised", () => {
+    expect(shouldSuppress(true, false, "revising")).toBe(true);
   });
 
   it("does not suppress result when execution has started", () => {
-    const planModeRequested = false; // cleared when execution starts
-    const planExecutionStarted = true;
-
-    const shouldSuppress = planModeRequested && !planExecutionStarted;
-    expect(shouldSuppress).toBe(false);
+    expect(shouldSuppress(false, true, "off")).toBe(false);
   });
 
   it("does not suppress result when not in plan mode", () => {
-    const planModeRequested = false;
-    const planExecutionStarted = false;
-
-    const shouldSuppress = planModeRequested && !planExecutionStarted;
-    expect(shouldSuppress).toBe(false);
-  });
-
-  it("suppresses during exploration phase (before ExitPlanMode)", () => {
-    const planModeRequested = true;
-    const planApproved = false;
-    const planExecutionStarted = false;
-
-    const shouldSuppress = planModeRequested && !planExecutionStarted;
-    expect(shouldSuppress).toBe(true);
-    // This is the key fix — previously only suppressed when planApproved=true
-  });
-
-  it("suppresses during approved phase (before execution restarts)", () => {
-    const planModeRequested = true;
-    const planApproved = true;
-    const planExecutionStarted = false;
-
-    const shouldSuppress = planModeRequested && !planExecutionStarted;
-    expect(shouldSuppress).toBe(true);
+    expect(shouldSuppress(false, false, "off")).toBe(false);
   });
 });
 
