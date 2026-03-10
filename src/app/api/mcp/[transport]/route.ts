@@ -23,6 +23,7 @@ import { registerCallTool } from "@/lib/mcp/call-tool";
 import { registerSkillTools } from "@/lib/mcp/skill-tools";
 import { registerAgentTools } from "@/lib/mcp/agent-tools";
 import { registerScheduleTools } from "@/lib/mcp/schedule-tools";
+import { registerSessionTools } from "@/lib/mcp/session-tools";
 import { registerIntegrationTools } from "@/lib/mcp/integration-tools";
 import { filterToolsForUser, type ToolMeta } from "@/lib/mcp/tool-filtering";
 import { getFilterContext, getFullMcpAuth } from "@/lib/mcp/types";
@@ -194,6 +195,7 @@ You have a durable memory system. Follow these conventions:
   registerSkillTools(server, toolMeta, []);
   registerAgentTools(server, toolMeta, []);
   registerScheduleTools(server, toolMeta);
+  registerSessionTools(server, toolMeta);
   registerAdminTools(server, toolMeta);
   registerVaultTools(server, toolMeta);
   registerFileTools(server, toolMeta);
@@ -324,8 +326,10 @@ type IntegrationToolsCtx = Parameters<typeof registerIntegrationTools>[2];
 
 const authedHandler = withMcpAuth(
   mcpHandler,
-  async (_req, bearerToken) => {
+  async (req, bearerToken) => {
     if (!bearerToken) return undefined;
+
+    const sessionIdHeader = req.headers.get("x-session-id");
 
     const keyHash = hashApiKey(bearerToken);
     const { data: apiKey } = await supabaseAdmin
@@ -494,6 +498,7 @@ const authedHandler = withMcpAuth(
         discoveryMode: profile.discovery_mode ?? false,
         keyExpired,
         integrationScopes,
+        sessionId: sessionIdHeader ?? undefined,
       },
     };
   },

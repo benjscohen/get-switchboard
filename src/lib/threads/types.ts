@@ -9,6 +9,8 @@ export interface ThreadSession {
   error: string | null;
   model: string | null;
   totalTurns: number | null;
+  title: string | null;
+  tags: string[];
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;

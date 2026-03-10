@@ -74,7 +74,39 @@ async function processCommand(command: SessionCommand): Promise<void> {
 
     case "respond": {
       const running = findRunningSessionBySessionId(command.session_id);
+
       if (!running) {
+        // No in-memory process — check if session is idle (orphaned after timeout/restart)
+        const session = await db.getSessionById(command.session_id);
+        if (session && session.status === "idle") {
+          const message = command.payload?.message as string;
+          if (!message) {
+            logger.warn({ commandId: command.id }, "[command-poller] respond command missing message payload");
+            await markCommand(command.id, "failed");
+            return;
+          }
+
+          const lookup = await db.lookupUserById(session.user_id);
+          if (!lookup) {
+            logger.warn({ userId: session.user_id, commandId: command.id }, "[command-poller] respond: user lookup failed for orphaned idle session");
+            await markCommand(command.id, "failed");
+            return;
+          }
+
+          // Reset close_requested and set to pending, then resume
+          await db.updateSession(command.session_id, { status: "pending", close_requested: false });
+          await markCommand(command.id, "completed");
+          resumeSession(command.session_id, lookup, message).catch((err) => {
+            logger.error({ err, sessionId: command.session_id }, "[command-poller] resumeSession for orphaned idle threw");
+          });
+
+          logger.info(
+            { sessionId: command.session_id, commandId: command.id },
+            "[command-poller] resumed orphaned idle session via respond",
+          );
+          return;
+        }
+
         await markCommand(command.id, "failed");
         return;
       }

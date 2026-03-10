@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ThreadMessage } from "@/lib/threads/types";
+import { parseMcpToolName, humanizeToolName, getServerDisplayInfo } from "@/lib/tool-display";
 import { cn } from "@/lib/utils";
 
 interface MessageListProps {
@@ -32,9 +33,53 @@ function formatToolContent(content: string): { formatted: string; isJson: boolea
   }
 }
 
+function ToolIcon({ serverName, size = 12 }: { serverName: string | null; size?: number }) {
+  if (serverName) {
+    const info = getServerDisplayInfo(serverName);
+    if (info?.iconPath) {
+      return <img src={info.iconPath} width={size} height={size} alt={info.displayName} className="shrink-0" />;
+    }
+    // Supabase inline SVG
+    if (serverName === "supabase") {
+      return (
+        <svg width={size} height={size} viewBox="0 0 109 113" fill="none" className="shrink-0">
+          <path d="M63.7076 110.284C60.8481 113.885 55.0502 111.912 54.9813 107.314L53.9738 40.0627L99.1935 40.0627C107.384 40.0627 111.952 49.5228 106.859 55.9374L63.7076 110.284Z" fill="url(#supabase-a)" />
+          <path d="M63.7076 110.284C60.8481 113.885 55.0502 111.912 54.9813 107.314L53.9738 40.0627L99.1935 40.0627C107.384 40.0627 111.952 49.5228 106.859 55.9374L63.7076 110.284Z" fill="url(#supabase-b)" fillOpacity="0.2" />
+          <path d="M45.317 2.07103C48.1765 -1.53037 53.9745 0.442937 54.0434 5.041L54.4849 72.2922H9.83113C1.64038 72.2922 -2.92775 62.8321 2.1655 56.4175L45.317 2.07103Z" fill="#3ECF8E" />
+          <defs>
+            <linearGradient id="supabase-a" x1="53.9738" y1="54.974" x2="94.1635" y2="71.8295" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#249361" /><stop offset="1" stopColor="#3ECF8E" />
+            </linearGradient>
+            <linearGradient id="supabase-b" x1="36.1558" y1="30.578" x2="54.4844" y2="65.0806" gradientUnits="userSpaceOnUse">
+              <stop /><stop offset="1" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+        </svg>
+      );
+    }
+    // Context7 inline SVG (C7 text mark)
+    if (serverName === "context7") {
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="shrink-0">
+          <rect width="24" height="24" rx="4" fill="#111" />
+          <text x="12" y="17" textAnchor="middle" fontSize="13" fontWeight="bold" fill="#fff" fontFamily="system-ui">C7</text>
+        </svg>
+      );
+    }
+  }
+  // Fallback wrench icon
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="shrink-0">
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+    </svg>
+  );
+}
+
 function ToolMessage({ message }: { message: ThreadMessage }) {
   const [expanded, setExpanded] = useState(false);
-  const toolName = getToolName(message);
+  const rawToolName = getToolName(message);
+  const parsed = parseMcpToolName(rawToolName);
+  const displayName = humanizeToolName(parsed.toolName);
   const { formatted } = formatToolContent(message.content);
 
   return (
@@ -54,10 +99,8 @@ function ToolMessage({ message }: { message: ThreadMessage }) {
         >
           <path d="M9 18l6-6-6-6" />
         </svg>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-        </svg>
-        <span className="font-medium">{toolName}</span>
+        <ToolIcon serverName={parsed.serverName} />
+        <span className="font-medium">{displayName}</span>
       </button>
       {expanded && (
         <pre className="mt-1 ml-6 max-h-64 overflow-auto rounded-md bg-bg-hover p-3 text-xs font-mono text-text-secondary border border-border">
@@ -164,7 +207,14 @@ function ToolGroup({ messages }: { messages: ThreadMessage[] }) {
     return <ToolMessage message={messages[0]} />;
   }
 
-  const toolNames = messages.map((m) => getToolName(m));
+  // Collect unique server names in order of appearance (up to 3 icons)
+  const uniqueServers: (string | null)[] = [];
+  for (const m of messages) {
+    const { serverName } = parseMcpToolName(getToolName(m));
+    if (!uniqueServers.includes(serverName)) {
+      uniqueServers.push(serverName);
+    }
+  }
 
   return (
     <div className="mx-6 my-1">
@@ -183,11 +233,10 @@ function ToolGroup({ messages }: { messages: ThreadMessage[] }) {
         >
           <path d="M9 18l6-6-6-6" />
         </svg>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-        </svg>
+        {uniqueServers.slice(0, 3).map((server, i) => (
+          <ToolIcon key={server ?? `unknown-${i}`} serverName={server} />
+        ))}
         <span className="font-medium">{messages.length} tool calls</span>
-        <span className="text-text-tertiary">({toolNames.slice(0, 3).join(", ")}{toolNames.length > 3 ? ", ..." : ""})</span>
       </button>
       {expanded && (
         <div className="ml-4 mt-1 space-y-0.5">

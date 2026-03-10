@@ -11,6 +11,7 @@ interface ThreadInputProps {
   disabled?: boolean;
   autoFocus?: boolean;
   minRows?: number;
+  textareaRef?: React.Ref<HTMLTextAreaElement>;
 }
 
 export function ThreadInput({
@@ -21,6 +22,7 @@ export function ThreadInput({
   disabled,
   autoFocus,
   minRows = 2,
+  textareaRef,
 }: ThreadInputProps) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -90,6 +92,7 @@ export function ThreadInput({
         )}
       >
         <textarea
+          ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}

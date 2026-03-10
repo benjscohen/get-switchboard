@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 interface NavLink {
   href: string;
@@ -15,9 +16,14 @@ interface MainNavProps {
 
 function NavDropdownItem({ link, isActive }: { link: NavLink; isActive: boolean }) {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
 
   return (
-    <div className="group/nav relative">
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
       <Link
         href={link.href}
         className={`text-sm transition-colors ${
@@ -26,33 +32,36 @@ function NavDropdownItem({ link, isActive }: { link: NavLink; isActive: boolean 
             : "text-text-secondary hover:text-text-primary"
         }`}
         aria-haspopup="true"
+        aria-expanded={open}
       >
         {link.label}
       </Link>
-      <div className="invisible absolute left-0 top-full z-50 pt-1 opacity-0 transition-all duration-150 group-hover/nav:visible group-hover/nav:opacity-100 focus-within:visible focus-within:opacity-100">
-        <div
-          className="min-w-[140px] rounded-lg border border-border bg-bg py-1 shadow-lg"
-          role="menu"
-        >
-          {link.children!.map((child) => {
-            const isChildActive = pathname === child.href || pathname.startsWith(child.href + "/");
-            return (
-              <Link
-                key={child.href}
-                href={child.href}
-                role="menuitem"
-                className={`block px-3 py-1.5 text-sm transition-colors ${
-                  isChildActive
-                    ? "text-text-primary font-medium"
-                    : "text-text-secondary hover:text-text-primary hover:bg-bg-secondary"
-                }`}
-              >
-                {child.label}
-              </Link>
-            );
-          })}
+      {open && (
+        <div className="absolute left-0 top-full z-50 pt-1">
+          <div
+            className="min-w-[140px] rounded-lg border border-border bg-bg py-1 shadow-lg"
+            role="menu"
+          >
+            {link.children!.map((child) => {
+              const isChildActive = pathname === child.href || pathname.startsWith(child.href + "/");
+              return (
+                <Link
+                  key={child.href}
+                  href={child.href}
+                  role="menuitem"
+                  className={`block px-3 py-1.5 text-sm transition-colors ${
+                    isChildActive
+                      ? "text-text-primary font-medium"
+                      : "text-text-secondary hover:text-text-primary hover:bg-bg-secondary"
+                  }`}
+                >
+                  {child.label}
+                </Link>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

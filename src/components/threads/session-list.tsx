@@ -10,6 +10,7 @@ interface SessionListProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onAction: () => void;
+  searchInputRef?: React.Ref<HTMLInputElement>;
 }
 
 const sections: { key: keyof KanbanData; label: string; dot: string }[] = [
@@ -17,6 +18,25 @@ const sections: { key: keyof KanbanData; label: string; dot: string }[] = [
   { key: "waiting", label: "Waiting", dot: "bg-yellow-500" },
   { key: "done", label: "Done", dot: "bg-green-500" },
 ];
+
+const TAG_COLORS: Record<string, string> = {
+  web: "bg-blue-100 text-blue-700",
+  slack: "bg-purple-100 text-purple-700",
+  scheduled: "bg-amber-100 text-amber-700",
+  browser: "bg-neutral-100 text-neutral-600",
+  files: "bg-neutral-100 text-neutral-600",
+  search: "bg-neutral-100 text-neutral-600",
+  github: "bg-neutral-100 text-neutral-600",
+};
+
+function TagPill({ tag }: { tag: string }) {
+  const color = TAG_COLORS[tag] ?? "bg-neutral-100 text-neutral-600";
+  return (
+    <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none", color)}>
+      {tag}
+    </span>
+  );
+}
 
 function SessionRow({
   session,
@@ -34,13 +54,15 @@ function SessionRow({
   const timeStr = session.completedAt
     ? formatRelativeTime(session.completedAt)
     : formatRelativeTime(session.updatedAt);
-  const prompt =
+  const displayTitle = session.title ?? (
     session.prompt.length > 80
       ? session.prompt.slice(0, 80) + "..."
-      : session.prompt;
+      : session.prompt
+  );
 
   return (
     <button
+      data-session-id={session.id}
       onClick={onClick}
       className={cn(
         "group w-full text-left px-4 py-3 border-b border-border transition-colors",
@@ -81,14 +103,29 @@ function SessionRow({
           </span>
         </div>
       </div>
-      <p className="text-sm text-text-primary leading-snug line-clamp-2">
-        {prompt}
+      <p className={cn(
+        "text-sm leading-snug line-clamp-1",
+        session.title ? "font-medium text-text-primary" : "text-text-primary"
+      )}>
+        {displayTitle}
       </p>
+      {session.title && (
+        <p className="text-xs text-text-tertiary line-clamp-1 mt-0.5">
+          {session.prompt.length > 80 ? session.prompt.slice(0, 80) + "..." : session.prompt}
+        </p>
+      )}
+      {session.tags.length > 0 && (
+        <div className="flex items-center gap-1 mt-1">
+          {session.tags.map((tag) => (
+            <TagPill key={tag} tag={tag} />
+          ))}
+        </div>
+      )}
     </button>
   );
 }
 
-export function SessionList({ data, selectedId, onSelect, onAction }: SessionListProps) {
+export function SessionList({ data, selectedId, onSelect, onAction, searchInputRef }: SessionListProps) {
   const [search, setSearch] = useState("");
 
   const allSessions = useMemo(
@@ -99,7 +136,11 @@ export function SessionList({ data, selectedId, onSelect, onAction }: SessionLis
   const filtered = useMemo(() => {
     if (!search.trim()) return null;
     const q = search.toLowerCase();
-    return allSessions.filter((s) => s.prompt.toLowerCase().includes(q));
+    return allSessions.filter((s) =>
+      s.prompt.toLowerCase().includes(q) ||
+      (s.title && s.title.toLowerCase().includes(q)) ||
+      s.tags.some((t) => t.toLowerCase().includes(q))
+    );
   }, [search, allSessions]);
 
   const handleMarkDone = async (id: string) => {
@@ -116,6 +157,7 @@ export function SessionList({ data, selectedId, onSelect, onAction }: SessionLis
       {/* Search */}
       <div className="px-3 py-2 border-b border-border">
         <Input
+          ref={searchInputRef}
           placeholder="Search threads..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}

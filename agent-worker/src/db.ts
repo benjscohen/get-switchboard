@@ -155,6 +155,7 @@ export async function createSession(data: {
       prompt: data.prompt,
       model: data.model,
       status: "pending",
+      tags: ["slack"],
       ...(data.retryOf ? { retry_of: data.retryOf } : {}),
     })
     .select("id")
@@ -180,12 +181,15 @@ export interface SessionDbRow {
   prompt: string;
   model: string | null;
   error: string | null;
+  total_turns: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
 }
 
 export async function getSessionById(id: string): Promise<SessionDbRow | null> {
   const { data, error } = await supabase
     .from("agent_sessions")
-    .select("id, user_id, organization_id, slack_channel_id, slack_thread_ts, slack_message_ts, claude_session_id, status, prompt, model, error")
+    .select("id, user_id, organization_id, slack_channel_id, slack_thread_ts, slack_message_ts, claude_session_id, status, prompt, model, error, total_turns, input_tokens, output_tokens")
     .eq("id", id)
     .maybeSingle();
 
@@ -212,6 +216,9 @@ export async function updateSession(
     retry_of: string;
     slack_message_ts: string;
     workspace_archive_path: string | null;
+    close_requested: boolean;
+    title: string;
+    tags: string[];
   }>,
 ): Promise<void> {
   const { error } = await supabase
@@ -222,6 +229,43 @@ export async function updateSession(
   if (error) {
     logger.error({ err: error, sessionId: id }, "Failed to update session");
   }
+}
+
+export async function getSessionCloseRequested(sessionId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("agent_sessions")
+    .select("close_requested")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  if (error) {
+    logger.error({ err: error, sessionId }, "Error checking close_requested");
+    return false;
+  }
+
+  return (data?.close_requested as boolean) ?? false;
+}
+
+export async function getSessionToolNames(sessionId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("agent_messages")
+    .select("metadata")
+    .eq("session_id", sessionId)
+    .eq("role", "tool");
+
+  if (error) {
+    logger.error({ err: error, sessionId }, "Error fetching tool names");
+    return [];
+  }
+
+  const names = new Set<string>();
+  for (const row of data ?? []) {
+    const meta = row.metadata as Record<string, unknown> | null;
+    if (meta?.toolName && typeof meta.toolName === "string") {
+      names.add(meta.toolName);
+    }
+  }
+  return [...names];
 }
 
 export async function createMessage(data: MessageRow): Promise<void> {
@@ -275,10 +319,10 @@ export async function findDoneSessionByThread(
 ): Promise<SessionDbRow | null> {
   const { data, error } = await supabase
     .from("agent_sessions")
-    .select("id, user_id, organization_id, slack_channel_id, slack_thread_ts, slack_message_ts, claude_session_id, status, prompt, model, error")
+    .select("id, user_id, organization_id, slack_channel_id, slack_thread_ts, slack_message_ts, claude_session_id, status, prompt, model, error, total_turns, input_tokens, output_tokens")
     .eq("slack_channel_id", channelId)
     .eq("slack_thread_ts", threadTs)
-    .in("status", ["completed", "failed", "timeout"])
+    .in("status", ["idle", "completed", "failed", "timeout"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -626,6 +670,7 @@ export async function createScheduleAgentSession(data: {
       slack_channel_id: "scheduled",
       slack_thread_ts: null,
       slack_message_ts: null,
+      tags: ["scheduled"],
       completed_at: new Date().toISOString(),
     })
     .select("id")

@@ -20,6 +20,7 @@ import type { PlanDecision, PlanPhase } from "./session-registry.js";
 import type { SlackFile, UserLookup } from "./types.js";
 import { ensureChromeRunning, cleanupTabs, chromeMcpArgs } from "./chrome.js";
 import { logger } from "./logger.js";
+import { generateTitle, deriveTags } from "./title-gen.js";
 import { prepareWorkspaceForPlan } from "./plan-workspace.js";
 import {
   isRedisEnabled,
@@ -719,6 +720,7 @@ export async function processMessage(
     let planApproved = false;
     let planExecutionStarted = false;
     let approvedPlanText: string | null = null;
+    let titleGenerated = false;
     let statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false, sessionId });
 
     try {
@@ -739,6 +741,7 @@ export async function processMessage(
               url: process.env.SWITCHBOARD_MCP_URL!.trim(),
               headers: {
                 Authorization: `Bearer ${lookup.agentKey}`,
+                "X-Session-Id": sessionId,
               },
             },
             ...(chromeMcpEnabled ? {
@@ -1017,6 +1020,16 @@ export async function processMessage(
                   totalOutputTokens += message.usage.output_tokens ?? 0;
                 }
 
+                // Fire-and-forget title generation on first result
+                if (!titleGenerated) {
+                  titleGenerated = true;
+                  generateTitle(effectivePrompt, text)
+                    .then((title) => {
+                      if (title) db.updateSession(sessionId, { title });
+                    })
+                    .catch((err) => logger.error({ err, sessionId }, "title generation failed"));
+                }
+
                 // Plan mode → suppress ALL result:success messages during plan phase.
                 // The plan itself is shown via approval blocks. Only the execution phase posts results.
                 if (planModeRequested && !planExecutionStarted) {
@@ -1155,6 +1168,13 @@ export async function processMessage(
                 // Fire-and-forget: archive workspace without blocking idle timer
                 if (tempDir && claudeSessionId) {
                   saveWorkspaceArchive(tempDir, lookup.userId, claudeSessionId, sessionId);
+                }
+
+                // Check if agent requested close_thread — if so, break out of loop
+                const closeRequested = await db.getSessionCloseRequested(sessionId);
+                if (closeRequested) {
+                  logger.info({ sessionId }, "close_requested detected — ending session");
+                  break;
                 }
 
                 // Mark as waiting for user follow-up and open the gate for the next message
@@ -1303,13 +1323,9 @@ export async function processMessage(
       // instance created for potential follow-ups; finalizing it would post a duplicate
       // "Done" message to Slack.
       if (isAbort && sessionIsIdle) {
-        logger.info({ sessionId }, "idle session aborted by timeout — completing silently");
-        await db.updateSession(sessionId, buildCompletionUpdate({
-          result: lastResultText,
-          totalTurns,
-          inputTokens: totalInputTokens,
-          outputTokens: totalOutputTokens,
-        })).catch(() => {});
+        logger.info({ sessionId }, "idle session aborted by timeout — staying idle (process destroyed)");
+        // Session stays idle in DB — no status change. The in-memory process is destroyed.
+        // The command-poller fallback will resume the session if the user sends a follow-up.
         return;
       }
 
@@ -1366,12 +1382,31 @@ export async function processMessage(
       ]);
     }
 
-    await db.updateSession(sessionId, buildCompletionUpdate({
-      result: lastResultText,
-      totalTurns,
-      inputTokens: totalInputTokens,
-      outputTokens: totalOutputTokens,
-    }));
+    // Derive tool-based tags
+    const toolNames = await db.getSessionToolNames(sessionId);
+    const tags = deriveTags({ source: "slack", toolNames });
+
+    // If close_requested, complete the session. Otherwise keep it idle.
+    const finalCloseRequested = await db.getSessionCloseRequested(sessionId);
+    if (finalCloseRequested) {
+      await db.updateSession(sessionId, {
+        ...buildCompletionUpdate({
+          result: lastResultText,
+          totalTurns,
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+        }),
+        tags,
+      });
+    } else {
+      await db.updateSession(sessionId, {
+        status: "idle",
+        total_turns: totalTurns,
+        input_tokens: totalInputTokens,
+        output_tokens: totalOutputTokens,
+        tags,
+      });
+    }
   } catch (err) {
     logger.error({ err, sessionId }, "Unexpected error in session");
     const errorMessage =
@@ -1531,9 +1566,10 @@ export async function resumeSession(
     }
 
     let lastResultText: string | null = null;
-    let totalTurns = 0;
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
+    let titleGenerated = false;
+    let totalTurns = session.total_turns ?? 0;
+    let totalInputTokens = session.input_tokens ?? 0;
+    let totalOutputTokens = session.output_tokens ?? 0;
     let cachedSessionFilePath: string | null | undefined;
     let statusUpdater = new StreamingStatusUpdater({
       channelId: session.slack_channel_id || "",
@@ -1555,6 +1591,7 @@ export async function resumeSession(
               url: process.env.SWITCHBOARD_MCP_URL!.trim(),
               headers: {
                 Authorization: `Bearer ${lookup.agentKey}`,
+                "X-Session-Id": sessionId,
               },
             },
             ...(chromeMcpEnabled ? {
@@ -1644,6 +1681,16 @@ export async function resumeSession(
             });
             lastAssistantText = "";
 
+            // Fire-and-forget title generation on first result
+            if (!titleGenerated) {
+              titleGenerated = true;
+              generateTitle(session.prompt, text)
+                .then((title) => {
+                  if (title) db.updateSession(sessionId, { title });
+                })
+                .catch((err) => logger.error({ err, sessionId }, "[resume] title generation failed"));
+            }
+
             // Extract FILE_UPLOAD directives
             const { cleanText, uploads } = extractFileUploads(text);
 
@@ -1719,6 +1766,13 @@ export async function resumeSession(
               saveWorkspaceArchive(tempDir, lookup.userId, claudeSessionId, sessionId);
             }
 
+            // Check if agent requested close_thread — if so, break out of loop
+            const closeRequested = await db.getSessionCloseRequested(sessionId);
+            if (closeRequested) {
+              logger.info({ sessionId }, "[resume] close_requested detected — ending session");
+              break;
+            }
+
             // Mark idle, open gate for follow-ups
             syncIdleState(true);
             await db.updateSession(sessionId, { status: "idle" });
@@ -1762,12 +1816,34 @@ export async function resumeSession(
     clearTimeout(timeoutId);
     await statusUpdater.finalize();
 
-    await db.updateSession(sessionId, buildCompletionUpdate({
-      result: lastResultText,
-      totalTurns,
-      inputTokens: totalInputTokens,
-      outputTokens: totalOutputTokens,
-    }));
+    // Derive tool-based tags
+    const toolNames = await db.getSessionToolNames(sessionId);
+    const source = session.slack_channel_id === "web" ? "web" as const
+      : session.slack_channel_id === "scheduled" ? "scheduled" as const
+      : "slack" as const;
+    const tags = deriveTags({ source, toolNames });
+
+    // If close_requested, complete the session. Otherwise keep it idle.
+    const finalCloseRequested = await db.getSessionCloseRequested(sessionId);
+    if (finalCloseRequested) {
+      await db.updateSession(sessionId, {
+        ...buildCompletionUpdate({
+          result: lastResultText,
+          totalTurns,
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+        }),
+        tags,
+      });
+    } else {
+      await db.updateSession(sessionId, {
+        status: "idle",
+        total_turns: totalTurns,
+        input_tokens: totalInputTokens,
+        output_tokens: totalOutputTokens,
+        tags,
+      });
+    }
 
     // Slack reaction: eyes → checkmark
     if (slackMessageTs && session.slack_channel_id) {
@@ -1783,16 +1859,12 @@ export async function resumeSession(
       (err.message.includes("aborted by user") || err.message === "Operation aborted");
 
     if (isAbort && sessionIsIdle) {
-      logger.info({ sessionId }, "[resume] idle session timed out — completing silently");
-      // Slack reaction: eyes → checkmark (idle timeout is a normal completion)
+      logger.info({ sessionId }, "[resume] idle session timed out — staying idle (process destroyed)");
+      // Session stays idle in DB — no status change. The in-memory process is destroyed.
+      // The command-poller fallback will resume the session if the user sends a follow-up.
       if (slackMessageTs && session.slack_channel_id) {
         await slack.removeReaction(session.slack_channel_id, slackMessageTs, "eyes").catch(() => {});
-        await slack.addReaction(session.slack_channel_id, slackMessageTs, "white_check_mark").catch(() => {});
       }
-      await db.updateSession(sessionId, buildCompletionUpdate({
-        result: null,
-        totalTurns: 0,
-      })).catch(() => {});
       return;
     }
 
@@ -1841,13 +1913,9 @@ export async function recoverStaleSessions(): Promise<void> {
   const runningSessions = staleSessions.filter((s) => s.status === "running");
   logger.info({ runningCount: runningSessions.length, idleCount: idleSessions.length }, "Recovering stale sessions");
 
-  // Idle sessions: silently complete — agent was waiting for user input, not mid-reply
+  // Idle sessions: keep them idle — they persist until explicitly closed.
+  // Just clean up Slack reactions (the in-memory process is gone).
   await Promise.all(idleSessions.map(async (session) => {
-    await db.updateSession(session.id, {
-      status: "completed",
-      completed_at: new Date().toISOString(),
-    });
-
     if (session.slack_channel_id && session.slack_message_ts) {
       await slack.removeReaction(session.slack_channel_id, session.slack_message_ts, "eyes").catch(() => {});
     }
@@ -1939,4 +2007,30 @@ export async function retrySession(
     threadTs,
     sessionId, // retryOf
   );
+}
+
+// ---------------------------------------------------------------------------
+// Stale idle cleanup: complete idle sessions older than maxAgeDays
+// ---------------------------------------------------------------------------
+
+export async function cleanupStaleIdleSessions(maxAgeDays = 7): Promise<number> {
+  const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await db.supabase
+    .from("agent_sessions")
+    .update({ status: "completed", completed_at: new Date().toISOString() })
+    .eq("status", "idle")
+    .lt("updated_at", cutoff)
+    .select("id");
+
+  if (error) {
+    logger.error({ err: error }, "[cleanup] Failed to cleanup stale idle sessions");
+    return 0;
+  }
+
+  const count = data?.length ?? 0;
+  if (count > 0) {
+    logger.info({ count, maxAgeDays }, "[cleanup] Completed stale idle sessions");
+  }
+  return count;
 }

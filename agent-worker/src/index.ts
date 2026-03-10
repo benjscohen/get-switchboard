@@ -6,6 +6,7 @@ import {
   recoverStaleSessions,
   retrySession,
   getActiveSessionCount,
+  cleanupStaleIdleSessions,
 } from "./agent.js";
 import { startReaper } from "./reaper.js";
 import { startScheduler } from "./scheduler.js";
@@ -175,8 +176,8 @@ app.message(async ({ message, body }) => {
           metadata: { slackUserId, source: "slack" },
         }).catch((err) => logger.error({ err }, "Failed to store resume message"));
 
-        // Set session back to pending
-        await db.updateSession(existingSession.id, { status: "pending" });
+        // Set session back to pending and reset close_requested
+        await db.updateSession(existingSession.id, { status: "pending", close_requested: false });
 
         // Fire-and-forget resume (same as web respond flow)
         resumeSession(existingSession.id, userLookup, text, {
@@ -334,6 +335,13 @@ async function start() {
 
   // Start command poller for web UI commands (always enabled)
   startCommandPoller();
+
+  // Start stale idle session cleanup (every hour, 7-day max age)
+  setInterval(() => {
+    cleanupStaleIdleSessions().catch((err) =>
+      logger.error({ err }, "[cleanup] stale idle session cleanup failed"),
+    );
+  }, 60 * 60 * 1000);
 
   await app.start();
   logger.info(

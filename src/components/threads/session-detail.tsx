@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 import { modelLabel } from "@/lib/agent-models";
 import { STATUS_CONFIG } from "@/lib/threads/status-config";
@@ -13,9 +14,10 @@ interface SessionDetailProps {
   session: ThreadSession;
   onClose: () => void;
   onAction: () => void;
+  messageInputRef?: React.Ref<HTMLTextAreaElement>;
 }
 
-export function SessionDetail({ session, onClose, onAction }: SessionDetailProps) {
+export function SessionDetail({ session, onClose, onAction, messageInputRef }: SessionDetailProps) {
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [loadingMsgs, setLoadingMsgs] = useState(true);
   const [stopping, setStopping] = useState(false);
@@ -147,8 +149,22 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
       {/* Header */}
       <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1.5">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <Badge variant={config.variant}>{config.detailLabel}</Badge>
+            {session.tags.length > 0 && session.tags.map((tag) => (
+              <span
+                key={tag}
+                className={cn(
+                  "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none",
+                  tag === "web" ? "bg-blue-100 text-blue-700" :
+                  tag === "slack" ? "bg-purple-100 text-purple-700" :
+                  tag === "scheduled" ? "bg-amber-100 text-amber-700" :
+                  "bg-neutral-100 text-neutral-600"
+                )}
+              >
+                {tag}
+              </span>
+            ))}
             {session.model && (
               <span className="text-xs text-text-tertiary">
                 {modelLabel(session.model)}
@@ -160,7 +176,12 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
               </span>
             )}
           </div>
-          <p className="text-sm text-text-primary line-clamp-2 leading-snug">
+          {session.title && (
+            <h2 className="text-base font-semibold text-text-primary mb-1">
+              {session.title}
+            </h2>
+          )}
+          <p className="text-sm text-text-secondary line-clamp-2 leading-snug">
             {session.prompt}
           </p>
           <p className="mt-1 text-xs text-text-tertiary">
@@ -177,7 +198,7 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
               onClick={handleStop}
               disabled={stopping}
             >
-              {stopping ? "Stopping..." : "Stop"}
+              {stopping ? "Stopping..." : <>Stop <kbd className="ml-1.5 rounded border border-border bg-bg-hover px-1 text-[10px] font-medium text-text-tertiary">S</kbd></>}
             </Button>
           )}
           {isIdle && (
@@ -187,7 +208,7 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
               onClick={handleComplete}
               disabled={completing}
             >
-              {completing ? "Completing..." : "Mark Done"}
+              {completing ? "Completing..." : <>Mark Done <kbd className="ml-1.5 rounded border border-border bg-bg-hover px-1 text-[10px] font-medium text-text-tertiary">E</kbd></>}
             </Button>
           )}
         </div>
@@ -206,7 +227,7 @@ export function SessionDetail({ session, onClose, onAction }: SessionDetailProps
       </div>
 
       {/* Input */}
-      {(isIdle || isDone) && <MessageInput onSend={handleRespond} />}
+      {(isIdle || isDone) && <MessageInput onSend={handleRespond} textareaRef={messageInputRef} />}
     </div>
   );
 }

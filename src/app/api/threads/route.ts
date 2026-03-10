@@ -12,6 +12,8 @@ function mapSession(row: Record<string, unknown>): ThreadSession {
     error: (row.error as string) ?? null,
     model: (row.model as string) ?? null,
     totalTurns: (row.total_turns as number) ?? null,
+    title: (row.title as string) ?? null,
+    tags: (row.tags as string[]) ?? [],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
     completedAt: (row.completed_at as string) ?? null,
@@ -26,21 +28,21 @@ export async function GET() {
     const [activeResult, waitingResult, doneResult] = await Promise.all([
       supabaseAdmin
         .from("agent_sessions")
-        .select("id, status, prompt, result, error, model, total_turns, created_at, updated_at, completed_at")
+        .select("id, status, prompt, result, error, model, total_turns, title, tags, created_at, updated_at, completed_at")
         .eq("organization_id", auth.organizationId)
         .eq("user_id", auth.userId)
         .in("status", ["pending", "running"])
         .order("created_at", { ascending: false }),
       supabaseAdmin
         .from("agent_sessions")
-        .select("id, status, prompt, result, error, model, total_turns, created_at, updated_at, completed_at")
+        .select("id, status, prompt, result, error, model, total_turns, title, tags, created_at, updated_at, completed_at")
         .eq("organization_id", auth.organizationId)
         .eq("user_id", auth.userId)
         .eq("status", "idle")
         .order("updated_at", { ascending: false }),
       supabaseAdmin
         .from("agent_sessions")
-        .select("id, status, prompt, result, error, model, total_turns, created_at, updated_at, completed_at")
+        .select("id, status, prompt, result, error, model, total_turns, title, tags, created_at, updated_at, completed_at")
         .eq("organization_id", auth.organizationId)
         .eq("user_id", auth.userId)
         .in("status", ["completed", "failed", "timeout"])
@@ -108,6 +110,7 @@ export async function POST(request: NextRequest) {
         prompt,
         model: null,
         status: "pending",
+        tags: ["web"],
       })
       .select("id")
       .single();

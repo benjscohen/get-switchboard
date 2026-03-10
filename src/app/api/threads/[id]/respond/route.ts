@@ -89,10 +89,15 @@ export async function POST(
         ? [
             supabaseAdmin
               .from("agent_sessions")
-              .update({ status: "pending", completed_at: null })
+              .update({ status: "pending", completed_at: null, close_requested: false })
               .eq("id", id),
           ]
-        : []),
+        : [
+            supabaseAdmin
+              .from("agent_sessions")
+              .update({ close_requested: false })
+              .eq("id", id),
+          ]),
     ]);
 
     if (commandResult.error) throw commandResult.error;
