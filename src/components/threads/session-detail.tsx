@@ -2,10 +2,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-
 import { modelLabel } from "@/lib/agent-models";
 import { STATUS_CONFIG } from "@/lib/threads/status-config";
+import { TagPill } from "./tag-pill";
 import { MessageList } from "./message-list";
 import { MessageInput } from "./message-input";
 import type { ThreadSession, ThreadMessage } from "@/lib/threads/types";
@@ -22,6 +21,7 @@ export function SessionDetail({ session, onClose, onAction, messageInputRef }: S
   const [loadingMsgs, setLoadingMsgs] = useState(true);
   const [stopping, setStopping] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [reopening, setReopening] = useState(false);
 
 
   const isActive = ["pending", "running", "idle"].includes(session.status);
@@ -109,6 +109,18 @@ export function SessionDetail({ session, onClose, onAction, messageInputRef }: S
     }
   };
 
+  const handleReopen = async () => {
+    setReopening(true);
+    try {
+      await fetch(`/api/threads/${session.id}/reopen`, { method: "POST" });
+      onAction();
+    } catch {
+      /* ignore */
+    } finally {
+      setReopening(false);
+    }
+  };
+
   const handleRespond = async (message: string, files: File[] = []) => {
     const optimistic: ThreadMessage = {
       id: `temp-${Date.now()}`,
@@ -152,18 +164,7 @@ export function SessionDetail({ session, onClose, onAction, messageInputRef }: S
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <Badge variant={config.variant}>{config.detailLabel}</Badge>
             {session.tags.length > 0 && session.tags.map((tag) => (
-              <span
-                key={tag}
-                className={cn(
-                  "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none",
-                  tag === "web" ? "bg-blue-100 text-blue-700" :
-                  tag === "slack" ? "bg-purple-100 text-purple-700" :
-                  tag === "scheduled" ? "bg-amber-100 text-amber-700" :
-                  "bg-neutral-100 text-neutral-600"
-                )}
-              >
-                {tag}
-              </span>
+              <TagPill key={tag} tag={tag} />
             ))}
             {session.model && (
               <span className="text-xs text-text-tertiary">
@@ -211,6 +212,16 @@ export function SessionDetail({ session, onClose, onAction, messageInputRef }: S
               {completing ? "Completing..." : <>Mark Done <kbd className="ml-1.5 rounded border border-border bg-bg-hover px-1 text-[10px] font-medium text-text-tertiary">E</kbd></>}
             </Button>
           )}
+          {session.status === "completed" && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleReopen}
+              disabled={reopening}
+            >
+              {reopening ? "Reopening..." : <>Reopen <kbd className="ml-1.5 rounded border border-border bg-bg-hover px-1 text-[10px] font-medium text-text-tertiary">U</kbd></>}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -223,7 +234,7 @@ export function SessionDetail({ session, onClose, onAction, messageInputRef }: S
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
-        <MessageList messages={messages} loading={loadingMsgs} sessionId={session.id} />
+        <MessageList messages={messages} loading={loadingMsgs} sessionId={session.id} sessionStatus={session.status} />
       </div>
 
       {/* Input */}

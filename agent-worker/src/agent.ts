@@ -293,6 +293,72 @@ function buildCompletionUpdate(opts: {
 }
 
 // ---------------------------------------------------------------------------
+// Finalize session: derive tags, check close_requested, update DB
+// ---------------------------------------------------------------------------
+
+async function finalizeSession(
+  sessionId: string,
+  opts: {
+    source: "web" | "slack" | "scheduled";
+    prompt: string;
+    lastResultText: string | null;
+    totalTurns: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+  },
+): Promise<void> {
+  const [toolNames, closeRequested, existingTitle] = await Promise.all([
+    db.getSessionToolNames(sessionId),
+    db.getSessionCloseRequested(sessionId),
+    db.getSessionTitle(sessionId),
+  ]);
+  const tags = deriveTags({ source: opts.source, toolNames });
+
+  // Fallback title generation if fire-and-forget didn't produce one
+  if (!existingTitle && opts.lastResultText) {
+    const title = await generateTitle(opts.prompt, opts.lastResultText);
+    if (title) await db.updateSession(sessionId, { title });
+  }
+
+  if (closeRequested) {
+    await db.updateSession(sessionId, {
+      ...buildCompletionUpdate({
+        result: opts.lastResultText,
+        totalTurns: opts.totalTurns,
+        inputTokens: opts.totalInputTokens,
+        outputTokens: opts.totalOutputTokens,
+      }),
+      tags,
+    });
+  } else {
+    await db.updateSession(sessionId, {
+      status: "idle",
+      total_turns: opts.totalTurns,
+      input_tokens: opts.totalInputTokens,
+      output_tokens: opts.totalOutputTokens,
+      tags,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Fire-and-forget title generation (deduped via flag)
+// ---------------------------------------------------------------------------
+
+function tryGenerateTitle(
+  sessionId: string,
+  prompt: string,
+  resultText: string,
+  logPrefix = "",
+): void {
+  generateTitle(prompt, resultText)
+    .then((title) => {
+      if (title) db.updateSession(sessionId, { title });
+    })
+    .catch((err) => logger.error({ err, sessionId }, `${logPrefix}title generation failed`));
+}
+
+// ---------------------------------------------------------------------------
 // Centralized error handler
 // ---------------------------------------------------------------------------
 
@@ -1023,11 +1089,7 @@ export async function processMessage(
                 // Fire-and-forget title generation on first result
                 if (!titleGenerated) {
                   titleGenerated = true;
-                  generateTitle(effectivePrompt, text)
-                    .then((title) => {
-                      if (title) db.updateSession(sessionId, { title });
-                    })
-                    .catch((err) => logger.error({ err, sessionId }, "title generation failed"));
+                  tryGenerateTitle(sessionId, effectivePrompt, text);
                 }
 
                 // Plan mode → suppress result:success messages while plan is being presented/approved.
@@ -1399,31 +1461,14 @@ export async function processMessage(
       ]);
     }
 
-    // Derive tool-based tags
-    const toolNames = await db.getSessionToolNames(sessionId);
-    const tags = deriveTags({ source: "slack", toolNames });
-
-    // If close_requested, complete the session. Otherwise keep it idle.
-    const finalCloseRequested = await db.getSessionCloseRequested(sessionId);
-    if (finalCloseRequested) {
-      await db.updateSession(sessionId, {
-        ...buildCompletionUpdate({
-          result: lastResultText,
-          totalTurns,
-          inputTokens: totalInputTokens,
-          outputTokens: totalOutputTokens,
-        }),
-        tags,
-      });
-    } else {
-      await db.updateSession(sessionId, {
-        status: "idle",
-        total_turns: totalTurns,
-        input_tokens: totalInputTokens,
-        output_tokens: totalOutputTokens,
-        tags,
-      });
-    }
+    await finalizeSession(sessionId, {
+      source: "slack",
+      prompt: effectivePrompt,
+      lastResultText,
+      totalTurns,
+      totalInputTokens,
+      totalOutputTokens,
+    });
   } catch (err) {
     logger.error({ err, sessionId }, "Unexpected error in session");
     const errorMessage =
@@ -1583,7 +1628,7 @@ export async function resumeSession(
     }
 
     let lastResultText: string | null = null;
-    let titleGenerated = false;
+    let titleGenerated = !!session.title;
     let totalTurns = session.total_turns ?? 0;
     let totalInputTokens = session.input_tokens ?? 0;
     let totalOutputTokens = session.output_tokens ?? 0;
@@ -1701,11 +1746,7 @@ export async function resumeSession(
             // Fire-and-forget title generation on first result
             if (!titleGenerated) {
               titleGenerated = true;
-              generateTitle(session.prompt, text)
-                .then((title) => {
-                  if (title) db.updateSession(sessionId, { title });
-                })
-                .catch((err) => logger.error({ err, sessionId }, "[resume] title generation failed"));
+              tryGenerateTitle(sessionId, session.prompt, text, "[resume] ");
             }
 
             // Extract FILE_UPLOAD directives
@@ -1833,34 +1874,17 @@ export async function resumeSession(
     clearTimeout(timeoutId);
     await statusUpdater.finalize();
 
-    // Derive tool-based tags
-    const toolNames = await db.getSessionToolNames(sessionId);
     const source = session.slack_channel_id === "web" ? "web" as const
       : session.slack_channel_id === "scheduled" ? "scheduled" as const
       : "slack" as const;
-    const tags = deriveTags({ source, toolNames });
-
-    // If close_requested, complete the session. Otherwise keep it idle.
-    const finalCloseRequested = await db.getSessionCloseRequested(sessionId);
-    if (finalCloseRequested) {
-      await db.updateSession(sessionId, {
-        ...buildCompletionUpdate({
-          result: lastResultText,
-          totalTurns,
-          inputTokens: totalInputTokens,
-          outputTokens: totalOutputTokens,
-        }),
-        tags,
-      });
-    } else {
-      await db.updateSession(sessionId, {
-        status: "idle",
-        total_turns: totalTurns,
-        input_tokens: totalInputTokens,
-        output_tokens: totalOutputTokens,
-        tags,
-      });
-    }
+    await finalizeSession(sessionId, {
+      source,
+      prompt: session.prompt,
+      lastResultText,
+      totalTurns,
+      totalInputTokens,
+      totalOutputTokens,
+    });
 
     // Slack reaction: eyes → checkmark
     if (slackMessageTs && session.slack_channel_id) {

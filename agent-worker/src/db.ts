@@ -184,12 +184,16 @@ export interface SessionDbRow {
   total_turns: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
+  title: string | null;
 }
+
+const SESSION_SELECT_COLUMNS =
+  "id, user_id, organization_id, slack_channel_id, slack_thread_ts, slack_message_ts, claude_session_id, status, prompt, model, error, total_turns, input_tokens, output_tokens, title";
 
 export async function getSessionById(id: string): Promise<SessionDbRow | null> {
   const { data, error } = await supabase
     .from("agent_sessions")
-    .select("id, user_id, organization_id, slack_channel_id, slack_thread_ts, slack_message_ts, claude_session_id, status, prompt, model, error, total_turns, input_tokens, output_tokens")
+    .select(SESSION_SELECT_COLUMNS)
     .eq("id", id)
     .maybeSingle();
 
@@ -229,6 +233,15 @@ export async function updateSession(
   if (error) {
     logger.error({ err: error, sessionId: id }, "Failed to update session");
   }
+}
+
+export async function getSessionTitle(id: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("agent_sessions")
+    .select("title")
+    .eq("id", id)
+    .maybeSingle();
+  return data?.title ?? null;
 }
 
 export async function getSessionCloseRequested(sessionId: string): Promise<boolean> {
@@ -319,7 +332,7 @@ export async function findDoneSessionByThread(
 ): Promise<SessionDbRow | null> {
   const { data, error } = await supabase
     .from("agent_sessions")
-    .select("id, user_id, organization_id, slack_channel_id, slack_thread_ts, slack_message_ts, claude_session_id, status, prompt, model, error, total_turns, input_tokens, output_tokens")
+    .select(SESSION_SELECT_COLUMNS)
     .eq("slack_channel_id", channelId)
     .eq("slack_thread_ts", threadTs)
     .in("status", ["idle", "completed", "failed", "timeout"])

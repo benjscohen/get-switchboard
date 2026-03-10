@@ -17,7 +17,8 @@ export async function generateTitle(
       max_tokens: 30,
       system:
         "Generate a concise 3-7 word title summarizing this task. " +
-        "Return ONLY the title text, no quotes or punctuation at the end.",
+        "Return ONLY the title text, no quotes or punctuation at the end. " +
+        "Do not include # or any markdown formatting.",
       messages: [
         {
           role: "user",
@@ -26,8 +27,10 @@ export async function generateTitle(
       ],
     });
 
-    const text =
+    const raw =
       response.content[0]?.type === "text" ? response.content[0].text.trim() : null;
+    // Strip leading markdown heading markers (e.g. "# Title" or "## Title")
+    const text = raw ? raw.replace(/^#+\s*/, "") : null;
     return text || null;
   } catch (err) {
     logger.error({ err }, "[title-gen] Failed to generate title");

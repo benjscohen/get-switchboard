@@ -133,6 +133,11 @@ export default function ThreadsPage() {
           fetch(`/api/threads/${selectedSession.id}/stop`, { method: "POST" }).then(fetchData);
         }
       },
+      u: () => {
+        if (selectedSession?.status === "completed") {
+          fetch(`/api/threads/${selectedSession.id}/reopen`, { method: "POST" }).then(fetchData);
+        }
+      },
       "?": () => setShowHelp((v) => !v),
       escape: () => {
         if (showHelp) {

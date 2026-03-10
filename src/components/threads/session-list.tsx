@@ -4,6 +4,7 @@ import { formatRelativeTime } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import type { KanbanData, ThreadSession } from "@/lib/threads/types";
+import { TagPill } from "./tag-pill";
 
 interface SessionListProps {
   data: KanbanData;
@@ -13,41 +14,28 @@ interface SessionListProps {
   searchInputRef?: React.Ref<HTMLInputElement>;
 }
 
+function truncate(str: string, max: number): string {
+  return str.length > max ? str.slice(0, max) + "..." : str;
+}
+
 const sections: { key: keyof KanbanData; label: string; dot: string }[] = [
   { key: "active", label: "Active", dot: "bg-accent" },
   { key: "waiting", label: "Waiting", dot: "bg-yellow-500" },
   { key: "done", label: "Done", dot: "bg-green-500" },
 ];
 
-const TAG_COLORS: Record<string, string> = {
-  web: "bg-blue-100 text-blue-700",
-  slack: "bg-purple-100 text-purple-700",
-  scheduled: "bg-amber-100 text-amber-700",
-  browser: "bg-neutral-100 text-neutral-600",
-  files: "bg-neutral-100 text-neutral-600",
-  search: "bg-neutral-100 text-neutral-600",
-  github: "bg-neutral-100 text-neutral-600",
-};
-
-function TagPill({ tag }: { tag: string }) {
-  const color = TAG_COLORS[tag] ?? "bg-neutral-100 text-neutral-600";
-  return (
-    <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none", color)}>
-      {tag}
-    </span>
-  );
-}
-
 function SessionRow({
   session,
   selected,
   onClick,
   onMarkDone,
+  onReopen,
 }: {
   session: ThreadSession;
   selected: boolean;
   onClick: () => void;
   onMarkDone?: () => void;
+  onReopen?: () => void;
 }) {
   const isActive = session.status === "pending" || session.status === "running";
   const isIdle = session.status === "idle";
@@ -55,9 +43,7 @@ function SessionRow({
     ? formatRelativeTime(session.completedAt)
     : formatRelativeTime(session.updatedAt);
   const displayTitle = session.title ?? (
-    session.prompt.length > 80
-      ? session.prompt.slice(0, 80) + "..."
-      : session.prompt
+    truncate(session.prompt, 80)
   );
 
   return (
@@ -95,6 +81,21 @@ function SessionRow({
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </button>
+          )}
+          {onReopen && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onReopen();
+              }}
+              className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-text-tertiary hover:text-yellow-600 hover:bg-yellow-50 transition-all"
+              title="Reopen"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 12a9 9 0 1 1 9 9" />
+                <polyline points="1 17 3 21 7 19" />
               </svg>
             </button>
           )}
@@ -152,6 +153,15 @@ export function SessionList({ data, selectedId, onSelect, onAction, searchInputR
     }
   };
 
+  const handleReopen = async (id: string) => {
+    try {
+      await fetch(`/api/threads/${id}/reopen`, { method: "POST" });
+      onAction();
+    } catch {
+      /* ignore */
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Search */}
@@ -181,6 +191,7 @@ export function SessionList({ data, selectedId, onSelect, onAction, searchInputR
                 selected={s.id === selectedId}
                 onClick={() => onSelect(s.id)}
                 onMarkDone={s.status === "idle" ? () => handleMarkDone(s.id) : undefined}
+                onReopen={s.status === "completed" ? () => handleReopen(s.id) : undefined}
               />
             ))
           )
@@ -212,6 +223,7 @@ export function SessionList({ data, selectedId, onSelect, onAction, searchInputR
                       selected={s.id === selectedId}
                       onClick={() => onSelect(s.id)}
                       onMarkDone={s.status === "idle" ? () => handleMarkDone(s.id) : undefined}
+                      onReopen={s.status === "completed" ? () => handleReopen(s.id) : undefined}
                     />
                   ))}
                 </div>

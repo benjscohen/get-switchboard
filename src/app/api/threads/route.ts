@@ -20,6 +20,9 @@ function mapSession(row: Record<string, unknown>): ThreadSession {
   };
 }
 
+const THREAD_SELECT_COLUMNS =
+  "id, status, prompt, result, error, model, total_turns, title, tags, created_at, updated_at, completed_at";
+
 export async function GET() {
   const auth = await requireAuth();
   if (!auth.authenticated) return auth.response;
@@ -28,21 +31,21 @@ export async function GET() {
     const [activeResult, waitingResult, doneResult] = await Promise.all([
       supabaseAdmin
         .from("agent_sessions")
-        .select("id, status, prompt, result, error, model, total_turns, title, tags, created_at, updated_at, completed_at")
+        .select(THREAD_SELECT_COLUMNS)
         .eq("organization_id", auth.organizationId)
         .eq("user_id", auth.userId)
         .in("status", ["pending", "running"])
         .order("created_at", { ascending: false }),
       supabaseAdmin
         .from("agent_sessions")
-        .select("id, status, prompt, result, error, model, total_turns, title, tags, created_at, updated_at, completed_at")
+        .select(THREAD_SELECT_COLUMNS)
         .eq("organization_id", auth.organizationId)
         .eq("user_id", auth.userId)
         .eq("status", "idle")
         .order("updated_at", { ascending: false }),
       supabaseAdmin
         .from("agent_sessions")
-        .select("id, status, prompt, result, error, model, total_turns, title, tags, created_at, updated_at, completed_at")
+        .select(THREAD_SELECT_COLUMNS)
         .eq("organization_id", auth.organizationId)
         .eq("user_id", auth.userId)
         .in("status", ["completed", "failed", "timeout"])

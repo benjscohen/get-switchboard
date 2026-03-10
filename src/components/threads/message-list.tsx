@@ -3,20 +3,28 @@ import { useEffect, useRef, useState } from "react";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ThreadMessage } from "@/lib/threads/types";
-import { parseMcpToolName, humanizeToolName, getServerDisplayInfo } from "@/lib/tool-display";
+import {
+  parseMcpToolName,
+  humanizeToolName,
+  getServerDisplayInfo,
+  resolveCallToolDisplay,
+  resolveDiscoverToolsDisplay,
+  getToolInputPreview,
+} from "@/lib/tool-display";
+import { formatToolInputPreview } from "@/lib/tool-input-preview";
 import { cn } from "@/lib/utils";
 
 interface MessageListProps {
   messages: ThreadMessage[];
   loading: boolean;
   sessionId?: string;
+  sessionStatus?: string;
 }
 
 function getToolName(message: ThreadMessage): string {
   const meta = message.metadata;
   if (meta?.toolName) return String(meta.toolName);
   if (meta?.tool_name) return String(meta.tool_name);
-  // Try to extract from content — tool results often start with the tool name
   const firstLine = message.content.split("\n")[0]?.trim() ?? "";
   if (firstLine.length > 0 && firstLine.length < 60 && !firstLine.startsWith("{")) {
     return firstLine;
@@ -33,13 +41,15 @@ function formatToolContent(content: string): { formatted: string; isJson: boolea
   }
 }
 
-function ToolIcon({ serverName, size = 12 }: { serverName: string | null; size?: number }) {
+function ToolIcon({ serverName, iconPath, size = 14 }: { serverName: string | null; iconPath?: string; size?: number }) {
+  if (iconPath) {
+    return <img src={iconPath} width={size} height={size} alt="" className="shrink-0" />;
+  }
   if (serverName) {
     const info = getServerDisplayInfo(serverName);
     if (info?.iconPath) {
       return <img src={info.iconPath} width={size} height={size} alt={info.displayName} className="shrink-0" />;
     }
-    // Supabase inline SVG
     if (serverName === "supabase") {
       return (
         <svg width={size} height={size} viewBox="0 0 109 113" fill="none" className="shrink-0">
@@ -57,7 +67,6 @@ function ToolIcon({ serverName, size = 12 }: { serverName: string | null; size?:
         </svg>
       );
     }
-    // Context7 inline SVG (C7 text mark)
     if (serverName === "context7") {
       return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="shrink-0">
@@ -67,7 +76,6 @@ function ToolIcon({ serverName, size = 12 }: { serverName: string | null; size?:
       );
     }
   }
-  // Fallback wrench icon
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="shrink-0">
       <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
@@ -75,35 +83,95 @@ function ToolIcon({ serverName, size = 12 }: { serverName: string | null; size?:
   );
 }
 
-function ToolMessage({ message }: { message: ThreadMessage }) {
-  const [expanded, setExpanded] = useState(false);
+function resolveToolDisplay(message: ThreadMessage) {
   const rawToolName = getToolName(message);
   const parsed = parseMcpToolName(rawToolName);
-  const displayName = humanizeToolName(parsed.toolName);
+  const innerToolName = parsed.toolName;
+
+  if (innerToolName === "call_tool") {
+    const resolved = resolveCallToolDisplay(message.content);
+    if (resolved) {
+      const label = resolved.integrationName
+        ? `${resolved.integrationName}: ${resolved.displayName}`
+        : resolved.displayName;
+      return { label, iconPath: resolved.iconPath, serverName: parsed.serverName };
+    }
+  }
+
+  if (innerToolName === "discover_tools") {
+    const label = resolveDiscoverToolsDisplay(message.content);
+    return { label, iconPath: "/integrations/switchboard.svg", serverName: parsed.serverName };
+  }
+
+  return {
+    label: humanizeToolName(innerToolName),
+    iconPath: undefined as string | undefined,
+    serverName: parsed.serverName,
+  };
+}
+
+function getPreviewText(message: ThreadMessage): string {
+  const rawToolName = getToolName(message);
+  return getToolInputPreview(rawToolName, message.content, formatToolInputPreview);
+}
+
+/** Checkmark icon for completed tools */
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0 text-emerald-500">
+      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Spinning gear icon for active tools */
+function GearSpinIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="shrink-0 text-text-tertiary animate-spin">
+      <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41" />
+    </svg>
+  );
+}
+
+function ToolMessage({ message, isLastTool, isRunning }: { message: ThreadMessage; isLastTool: boolean; isRunning: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const { label, iconPath, serverName } = resolveToolDisplay(message);
+  const preview = getPreviewText(message);
   const { formatted } = formatToolContent(message.content);
+  const showGear = isLastTool && isRunning;
 
   return (
-    <div className="mx-6 my-1">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-text-tertiary hover:text-text-secondary hover:bg-bg-hover transition-colors"
-      >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className={cn("transition-transform", expanded && "rotate-90")}
+    <div className="px-6 py-0.5">
+      <div className="flex items-center gap-1.5 min-w-0 text-xs">
+        {showGear ? <GearSpinIcon /> : <CheckIcon />}
+        <ToolIcon serverName={serverName} iconPath={iconPath} />
+        <span className="font-medium text-text-secondary whitespace-nowrap">{label}</span>
+        {preview && (
+          <>
+            <span className="text-text-tertiary">&mdash;</span>
+            <span className="text-text-tertiary truncate min-w-0">{preview}</span>
+          </>
+        )}
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="ml-auto shrink-0 rounded p-0.5 text-text-tertiary hover:text-text-secondary hover:bg-bg-hover transition-colors"
+          title={expanded ? "Collapse" : "Expand JSON"}
         >
-          <path d="M9 18l6-6-6-6" />
-        </svg>
-        <ToolIcon serverName={parsed.serverName} />
-        <span className="font-medium">{displayName}</span>
-      </button>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className={cn("transition-transform", expanded && "rotate-90")}
+          >
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
+      </div>
       {expanded && (
-        <pre className="mt-1 ml-6 max-h-64 overflow-auto rounded-md bg-bg-hover p-3 text-xs font-mono text-text-secondary border border-border">
+        <pre className="mt-1 ml-5 max-h-64 overflow-auto rounded-md bg-bg-hover p-3 text-xs font-mono text-text-secondary border border-border">
           {formatted}
         </pre>
       )}
@@ -155,7 +223,6 @@ function FileAttachmentItem({ file, sessionId, isImage }: { file: FileAttachment
     }
   };
 
-  // Auto-fetch URL for images on mount
   useEffect(() => {
     if (isImage) fetchUrl();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -180,7 +247,6 @@ function FileAttachmentItem({ file, sessionId, isImage }: { file: FileAttachment
     }
   }
 
-  // Non-image file or image that failed to load
   return (
     <button
       onClick={fetchUrl}
@@ -199,59 +265,26 @@ function FileAttachmentItem({ file, sessionId, isImage }: { file: FileAttachment
   );
 }
 
-// Collapse consecutive tool messages into a single group
-function ToolGroup({ messages }: { messages: ThreadMessage[] }) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (messages.length === 1) {
-    return <ToolMessage message={messages[0]} />;
-  }
-
-  // Collect unique server names in order of appearance (up to 3 icons)
-  const uniqueServers: (string | null)[] = [];
-  for (const m of messages) {
-    const { serverName } = parseMcpToolName(getToolName(m));
-    if (!uniqueServers.includes(serverName)) {
-      uniqueServers.push(serverName);
-    }
-  }
-
+/** Flat trail of tool calls — always visible, matching Slack density */
+function ToolGroup({ messages, isLastGroup, isRunning }: { messages: ThreadMessage[]; isLastGroup: boolean; isRunning: boolean }) {
   return (
-    <div className="mx-6 my-1">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-text-tertiary hover:text-text-secondary hover:bg-bg-hover transition-colors"
-      >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className={cn("transition-transform", expanded && "rotate-90")}
-        >
-          <path d="M9 18l6-6-6-6" />
-        </svg>
-        {uniqueServers.slice(0, 3).map((server, i) => (
-          <ToolIcon key={server ?? `unknown-${i}`} serverName={server} />
-        ))}
-        <span className="font-medium">{messages.length} tool calls</span>
-      </button>
-      {expanded && (
-        <div className="ml-4 mt-1 space-y-0.5">
-          {messages.map((m) => (
-            <ToolMessage key={m.id} message={m} />
-          ))}
-        </div>
-      )}
+    <div className="my-1">
+      {messages.map((m, i) => (
+        <ToolMessage
+          key={m.id}
+          message={m}
+          isLastTool={isLastGroup && i === messages.length - 1}
+          isRunning={isRunning}
+        />
+      ))}
     </div>
   );
 }
 
-export function MessageList({ messages, loading, sessionId }: MessageListProps) {
+export function MessageList({ messages, loading, sessionId, sessionStatus }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevCountRef = useRef(0);
+  const isRunning = sessionStatus === "running";
 
   useEffect(() => {
     if (messages.length > prevCountRef.current) {
@@ -294,11 +327,27 @@ export function MessageList({ messages, loading, sessionId }: MessageListProps) 
     }
   }
 
+  // Find the last tool group index for "running" gear icon
+  let lastToolGroupIdx = -1;
+  for (let i = groups.length - 1; i >= 0; i--) {
+    if (groups[i].type === "tool-group") {
+      lastToolGroupIdx = i;
+      break;
+    }
+  }
+
   return (
     <div className="p-6 space-y-1">
       {groups.map((group, i) => {
         if (group.type === "tool-group") {
-          return <ToolGroup key={group.messages[0].id} messages={group.messages} />;
+          return (
+            <ToolGroup
+              key={group.messages[0].id}
+              messages={group.messages}
+              isLastGroup={i === lastToolGroupIdx}
+              isRunning={isRunning}
+            />
+          );
         }
 
         const msg = group.message;

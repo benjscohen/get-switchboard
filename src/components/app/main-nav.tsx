@@ -26,15 +26,24 @@ function NavDropdownItem({ link, isActive }: { link: NavLink; isActive: boolean 
     >
       <Link
         href={link.href}
-        className={`text-sm transition-colors ${
+        className={`inline-flex items-center gap-1 text-sm transition-colors ${
           isActive
-            ? "text-text-primary font-medium"
+            ? "text-text-primary font-medium hover:text-accent"
             : "text-text-secondary hover:text-text-primary"
         }`}
         aria-haspopup="true"
         aria-expanded={open}
       >
         {link.label}
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </Link>
       {open && (
         <div className="absolute left-0 top-full z-50 pt-1">

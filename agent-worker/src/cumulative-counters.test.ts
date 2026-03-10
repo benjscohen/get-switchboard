@@ -30,7 +30,6 @@ const COUNTER_COLUMNS = ["total_turns", "input_tokens", "output_tokens"];
 describe("SessionDbRow interface includes counter fields", () => {
   for (const col of COUNTER_COLUMNS) {
     it(`declares ${col}`, () => {
-      // Match "  total_turns: number | null;" inside the interface
       const pattern = new RegExp(
         `interface SessionDbRow[\\s\\S]*?${col}\\s*:\\s*number\\s*\\|\\s*null`,
       );
@@ -40,17 +39,17 @@ describe("SessionDbRow interface includes counter fields", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. getSessionById .select() must include counter columns
+// 2. SESSION_SELECT_COLUMNS constant must include counter columns
 // ---------------------------------------------------------------------------
-describe("getSessionById select includes counter columns", () => {
-  // Extract the .select("...") string from the getSessionById function
-  const fnMatch = DB_SRC.match(
-    /async function getSessionById[\s\S]*?\.select\("([^"]+)"\)/,
+describe("SESSION_SELECT_COLUMNS includes counter columns", () => {
+  // Extract the constant value: SESSION_SELECT_COLUMNS = "...";
+  const constMatch = DB_SRC.match(
+    /SESSION_SELECT_COLUMNS\s*=\s*\n?\s*"([^"]+)"/,
   );
-  const selectString = fnMatch?.[1] ?? "";
+  const selectString = constMatch?.[1] ?? "";
 
-  it("has a .select() call", () => {
-    expect(fnMatch).not.toBeNull();
+  it("defines SESSION_SELECT_COLUMNS constant", () => {
+    expect(constMatch).not.toBeNull();
   });
 
   for (const col of COUNTER_COLUMNS) {
@@ -61,36 +60,35 @@ describe("getSessionById select includes counter columns", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. findDoneSessionByThread .select() must include counter columns
+// 3. getSessionById and findDoneSessionByThread use the shared constant
 // ---------------------------------------------------------------------------
-describe("findDoneSessionByThread select includes counter columns", () => {
-  const fnMatch = DB_SRC.match(
-    /async function findDoneSessionByThread[\s\S]*?\.select\("([^"]+)"\)/,
-  );
-  const selectString = fnMatch?.[1] ?? "";
-
-  it("has a .select() call", () => {
+describe("session query functions use SESSION_SELECT_COLUMNS", () => {
+  it("getSessionById uses SESSION_SELECT_COLUMNS", () => {
+    const fnMatch = DB_SRC.match(
+      /async function getSessionById[\s\S]*?\.select\((\w+)\)/,
+    );
     expect(fnMatch).not.toBeNull();
+    expect(fnMatch?.[1]).toBe("SESSION_SELECT_COLUMNS");
   });
 
-  for (const col of COUNTER_COLUMNS) {
-    it(`includes ${col}`, () => {
-      expect(selectString).toContain(col);
-    });
-  }
+  it("findDoneSessionByThread uses SESSION_SELECT_COLUMNS", () => {
+    const fnMatch = DB_SRC.match(
+      /async function findDoneSessionByThread[\s\S]*?\.select\((\w+)\)/,
+    );
+    expect(fnMatch).not.toBeNull();
+    expect(fnMatch?.[1]).toBe("SESSION_SELECT_COLUMNS");
+  });
 });
 
 // ---------------------------------------------------------------------------
 // 4. resumeSession seeds counters from session, not from 0
 // ---------------------------------------------------------------------------
 describe("resumeSession seeds counters from session row", () => {
-  // Extract the resumeSession function body (large function, need enough context)
   const fnStart = AGENT_SRC.indexOf("export async function resumeSession(");
   const fnBody = fnStart >= 0 ? AGENT_SRC.slice(fnStart, fnStart + 6000) : "";
 
   it("initializes totalTurns from session.total_turns", () => {
     expect(fnBody).toContain("session.total_turns");
-    // Must NOT have "let totalTurns = 0"
     expect(fnBody).not.toMatch(/let\s+totalTurns\s*=\s*0/);
   });
 

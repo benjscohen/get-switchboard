@@ -41,7 +41,7 @@ export default async function AppLayout({
 
   return (
     <>
-      <header className="border-b border-border bg-bg/80 backdrop-blur-xl">
+      <header className="relative z-40 border-b border-border bg-bg/80 backdrop-blur-xl">
         <Container className="flex h-14 items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href={hasAgentBot ? "/threads" : "/tools"} className="flex items-center gap-2 text-lg font-bold">
