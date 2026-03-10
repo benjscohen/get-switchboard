@@ -372,10 +372,10 @@ describe("StreamingStatusUpdater", () => {
     updater.handleStreamEvent(contentBlockStopEvent());
 
     // Advance past throttle for second tool
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     updater.handleStreamEvent(toolUseStartEvent("Bash"));
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(updater.getToolCount()).toBe(2);
   });
@@ -396,11 +396,11 @@ describe("StreamingStatusUpdater", () => {
     updater.handleStreamEvent(contentBlockStopEvent());
 
     // Wait for throttle
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     // Second tool: Bash
     updater.handleStreamEvent(toolUseStartEvent("Bash"));
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     // The update should show Read as completed + Bash as active
     const lastCall = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1];
@@ -416,7 +416,7 @@ describe("StreamingStatusUpdater", () => {
 
     updater.handleStreamEvent(toolInputDeltaEvent('{"file_path":"/src/index.ts"}'));
     updater.handleStreamEvent(contentBlockStopEvent());
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     // Start and complete a second tool to push Read into completed
     updater.handleStreamEvent(toolUseStartEvent("Bash"));
@@ -463,7 +463,7 @@ describe("StreamingStatusUpdater", () => {
     expect(mockUpdateMessage).not.toHaveBeenCalled();
 
     // After throttle period — should flush
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(mockUpdateMessage).toHaveBeenCalledOnce();
     // Should show accumulated: Read completed + Bash active
     const updateText = mockUpdateMessage.mock.calls[0][2];
@@ -484,7 +484,7 @@ describe("StreamingStatusUpdater", () => {
     updater.handleStreamEvent(toolUseStartEvent("Bash"));
 
     // After full throttle period — should show the latest accumulated state
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     const lastUpdateText = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1][2];
     // Should contain both Read and Edit as completed, Bash as active
     expect(lastUpdateText).toContain("*Read*");
@@ -509,7 +509,7 @@ describe("StreamingStatusUpdater", () => {
     // content_block_stop triggers final parse
     updater.handleStreamEvent(contentBlockStopEvent());
 
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     // The update should include the Bash preview
     const lastCall = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1];
     // At this point Bash might be in completed (if another tool started) or still active
@@ -530,7 +530,7 @@ describe("StreamingStatusUpdater", () => {
     updater.handleStreamEvent(contentBlockStopEvent());
 
     // Should still show tool name without preview
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(updater.getToolCount()).toBe(1);
   });
 
@@ -617,7 +617,7 @@ describe("StreamingStatusUpdater", () => {
     const callCount = mockUpdateMessage.mock.calls.length;
 
     updater.handleStreamEvent(toolUseStartEvent("Bash"));
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     // No additional updates
     expect(mockUpdateMessage.mock.calls.length).toBe(callCount);
@@ -649,7 +649,7 @@ describe("StreamingStatusUpdater", () => {
     mockUpdateMessage.mockRejectedValueOnce(new Error("rate_limited"));
     updater.handleStreamEvent(contentBlockStopEvent());
     updater.handleStreamEvent(toolUseStartEvent("Bash"));
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     // Should not throw, tool count still increments
     expect(updater.getToolCount()).toBe(2);
@@ -829,7 +829,7 @@ describe("StreamingStatusUpdater", () => {
     await vi.advanceTimersByTimeAsync(0);
     updater.handleStreamEvent(toolInputDeltaEvent('{"file_path":"/src/index.ts"}'));
     updater.handleStreamEvent(contentBlockStopEvent());
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     // Start another tool
     updater.handleStreamEvent(toolUseStartEvent("Bash"));

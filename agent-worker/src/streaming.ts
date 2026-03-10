@@ -20,7 +20,7 @@ import { logger } from "./logger.js";
 // ---------------------------------------------------------------------------
 
 /** Minimum interval between Slack chat.update calls */
-const THROTTLE_MS = 3_000;
+const THROTTLE_MS = 5_000;
 
 /** Max characters for the tool input preview */
 const MAX_INPUT_PREVIEW = 80;
