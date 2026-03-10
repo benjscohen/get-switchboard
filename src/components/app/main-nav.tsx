@@ -24,9 +24,9 @@ function NavDropdownItem({ link, isActive }: { link: NavLink; isActive: boolean 
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
-      <Link
-        href={link.href}
-        className={`inline-flex items-center gap-1 text-sm transition-colors ${
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-1 text-sm transition-colors cursor-default ${
           isActive
             ? "text-text-primary font-medium hover:text-accent"
             : "text-text-secondary hover:text-text-primary"
@@ -44,7 +44,7 @@ function NavDropdownItem({ link, isActive }: { link: NavLink; isActive: boolean 
         >
           <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-      </Link>
+      </button>
       {open && (
         <div className="absolute left-0 top-full z-50 pt-1">
           <div
