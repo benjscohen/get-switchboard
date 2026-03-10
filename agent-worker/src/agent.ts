@@ -22,6 +22,8 @@ import { ensureChromeRunning, cleanupTabs, chromeMcpArgs } from "./chrome.js";
 import { logger } from "./logger.js";
 import { generateTitle, deriveTags } from "./title-gen.js";
 import { prepareWorkspaceForPlan } from "./plan-workspace.js";
+import { runOpenAIAgent } from "./openai-agent.js";
+import { isOpenAIModel } from "./model-utils.js";
 import {
   isRedisEnabled,
   registerSessionRedis,
@@ -934,17 +936,38 @@ export async function processMessage(
       statusUpdater = new StreamingStatusUpdater({ channelId, threadTs: replyThread, enabled: lookup.showThinking !== false, sessionId });
 
       const runConversation = async () => {
-        const conversation = query({
-          prompt: stream.iterable,
-          options: {
-            ...buildQueryOptions(),
-            includePartialMessages: true,
-          },
-        });
+        // Build MCP server config (shared between providers)
+        const queryOptions = buildQueryOptions();
+        const mcpServers = queryOptions.mcpServers;
+
+        // Branch: OpenAI models use the Responses API; Anthropic models use Claude SDK
+        const useOpenAI = isOpenAIModel(lookup.model) && !planModeRequested;
+        const conversation = useOpenAI
+          ? (() => {
+              const openai = runOpenAIAgent({
+                model: lookup.model,
+                prompt: stream.iterable,
+                systemPrompt: systemPrompt,
+                mcpServers,
+                abortController,
+              });
+              // Wrap as a query()-compatible object with no-op methods
+              return Object.assign(openai.messages, {
+                setPermissionMode: async () => {},
+                mcpServerStatus: async () => ({}),
+              });
+            })()
+          : query({
+              prompt: stream.iterable,
+              options: {
+                ...queryOptions,
+                includePartialMessages: true,
+              },
+            });
 
         // Expose setPermissionMode so the plan approval hook can switch modes
-        if (planModeRequested) {
-          runningSession.setPermissionMode = (mode) => conversation.setPermissionMode(mode);
+        if (planModeRequested && !useOpenAI) {
+          runningSession.setPermissionMode = (mode) => (conversation as ReturnType<typeof query>).setPermissionMode(mode);
         }
 
         // Diagnostic counters — set up BEFORE mcpServerStatus so heartbeat runs even if it hangs
@@ -970,16 +993,18 @@ export async function processMessage(
 
         try {
           // Check MCP server status (with timeout — SDK hangs here if process already exited)
-          try {
-            const mcpStatus = await Promise.race([
-              conversation.mcpServerStatus(),
-              new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("mcpServerStatus timeout")), 10_000),
-              ),
-            ]);
-            logger.info({ mcpStatus }, "[mcp-status]");
-          } catch (err) {
-            logger.info({ err }, "[mcp-status] not available");
+          if (!useOpenAI) {
+            try {
+              const mcpStatus = await Promise.race([
+                (conversation as ReturnType<typeof query>).mcpServerStatus(),
+                new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error("mcpServerStatus timeout")), 10_000),
+                ),
+              ]);
+              logger.info({ mcpStatus }, "[mcp-status]");
+            } catch (err) {
+              logger.info({ err }, "[mcp-status] not available");
+            }
           }
 
           // Iterate — handle multiple result messages (one per user turn)
@@ -1641,41 +1666,57 @@ export async function resumeSession(
     });
 
     const runConversation = async () => {
-      const conversation = query({
-        prompt: stream.iterable,
-        options: {
-          model: lookup.model,
-          customSystemPrompt: systemPrompt,
-          ...(tempDir ? { cwd: tempDir } : {}),
-          mcpServers: {
-            switchboard: {
-              type: "http" as const,
-              url: process.env.SWITCHBOARD_MCP_URL!.trim(),
-              headers: {
-                Authorization: `Bearer ${lookup.agentKey}`,
-                "X-Session-Id": sessionId,
-              },
-            },
-            ...(chromeMcpEnabled ? {
-              "chrome-devtools": {
-                type: "stdio" as const,
-                command: "chrome-devtools-mcp",
-                args: chromeMcpArgs(),
-              },
-            } : {}),
-          },
-          permissionMode: "bypassPermissions" as const,
-          abortController,
-          ...(previousClaudeSessionId ? { resume: previousClaudeSessionId } : {}),
-          includePartialMessages: true,
-          stderr: (data: string) => {
-            const redacted = data
-              .replace(/Bearer [^\s"']+/g, "Bearer [REDACTED]")
-              .replace(/sk_live_[^\s"']+/g, "sk_live_[REDACTED]");
-            logger.error({ stderr: redacted }, "[resume][claude-code stderr]");
+      // Build MCP servers config (shared between providers)
+      const mcpServers = {
+        switchboard: {
+          type: "http" as const,
+          url: process.env.SWITCHBOARD_MCP_URL!.trim(),
+          headers: {
+            Authorization: `Bearer ${lookup.agentKey}`,
+            "X-Session-Id": sessionId,
           },
         },
-      });
+        ...(chromeMcpEnabled ? {
+          "chrome-devtools": {
+            type: "stdio" as const,
+            command: "chrome-devtools-mcp",
+            args: chromeMcpArgs(),
+          },
+        } : {}),
+      };
+
+      // Branch: OpenAI models use the Responses API; Anthropic models use Claude SDK
+      const useOpenAI = isOpenAIModel(lookup.model);
+      const conversation = useOpenAI
+        ? (() => {
+            const openai = runOpenAIAgent({
+              model: lookup.model,
+              prompt: stream.iterable,
+              systemPrompt,
+              mcpServers,
+              abortController,
+            });
+            return openai.messages;
+          })()
+        : query({
+            prompt: stream.iterable,
+            options: {
+              model: lookup.model,
+              customSystemPrompt: systemPrompt,
+              ...(tempDir ? { cwd: tempDir } : {}),
+              mcpServers,
+              permissionMode: "bypassPermissions" as const,
+              abortController,
+              ...(previousClaudeSessionId ? { resume: previousClaudeSessionId } : {}),
+              includePartialMessages: true,
+              stderr: (data: string) => {
+                const redacted = data
+                  .replace(/Bearer [^\s"']+/g, "Bearer [REDACTED]")
+                  .replace(/sk_live_[^\s"']+/g, "sk_live_[REDACTED]");
+                logger.error({ stderr: redacted }, "[resume][claude-code stderr]");
+              },
+            },
+          });
 
       const syncIdleState = (idle: boolean) => { sessionIsIdle = idle; };
 

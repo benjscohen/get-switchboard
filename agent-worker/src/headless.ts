@@ -3,6 +3,8 @@ import { fetchUserFiles, writeFilesToStableDir } from "./files.js";
 import { extractClaudeMd, buildSystemPrompt, type UserIdentity } from "./prompt.js";
 import { ensureChromeRunning, cleanupTabs, chromeMcpArgs } from "./chrome.js";
 import { logger } from "./logger.js";
+import { runOpenAIAgentHeadless } from "./openai-agent.js";
+import { isOpenAIModel } from "./model-utils.js";
 
 // ---------------------------------------------------------------------------
 // Headless agent execution (no Slack, no multi-turn — single prompt in/out)
@@ -70,7 +72,45 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
-    // 4. Run query (single prompt, not multi-turn)
+    // Build MCP servers config (shared between providers)
+    const mcpServers = {
+      switchboard: {
+        type: "http" as const,
+        url: process.env.SWITCHBOARD_MCP_URL!.trim(),
+        headers: { Authorization: `Bearer ${agentKey}` },
+      },
+      ...(chromeMcpEnabled ? {
+        "chrome-devtools": {
+          type: "stdio" as const,
+          command: "chrome-devtools-mcp",
+          args: chromeMcpArgs(),
+        },
+      } : {}),
+    };
+
+    // 4. Route to appropriate provider based on model
+    if (isOpenAIModel(model)) {
+      const result = await runOpenAIAgentHeadless({
+        model,
+        prompt,
+        systemPrompt,
+        mcpServers,
+        abortController,
+      });
+      clearTimeout(timeoutId);
+      return {
+        text: result.text,
+        turns: result.turns,
+        cost: result.cost,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        claudeSessionId: result.sessionId,
+        status: result.status,
+        error: result.error,
+      };
+    }
+
+    // 4. Run query (single prompt, not multi-turn) - Anthropic path
     let claudeSessionId: string | null = null;
     let resultText = "";
     let totalTurns = 0;
@@ -87,22 +127,7 @@ export async function runAgentHeadless(opts: HeadlessRunOptions): Promise<Headle
           customSystemPrompt: systemPrompt,
           ...(tempDir ? { cwd: tempDir } : {}),
           permissionMode: "bypassPermissions" as const,
-          mcpServers: {
-            switchboard: {
-              type: "http" as const,
-              url: process.env.SWITCHBOARD_MCP_URL!.trim(),
-              headers: {
-                Authorization: `Bearer ${agentKey}`,
-              },
-            },
-            ...(chromeMcpEnabled ? {
-              "chrome-devtools": {
-                type: "stdio" as const,
-                command: "chrome-devtools-mcp",
-                args: chromeMcpArgs(),
-              },
-            } : {}),
-          },
+          mcpServers,
           abortController,
           stderr: (data: string) => {
             const redacted = data

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { SessionStatus, ThreadSession, KanbanData, SearchResponse } from "@/lib/threads/types";
+import { ALLOWED_MODEL_IDS } from "@/lib/agent-models";
 
 function mapSession(row: Record<string, unknown>): ThreadSession {
   return {
@@ -123,16 +124,22 @@ export async function POST(request: NextRequest) {
   try {
     // Parse request — support both JSON and FormData
     let prompt: string;
+    let model: string | null = null;
     let files: File[] = [];
     const contentType = request.headers.get("content-type") ?? "";
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
       prompt = ((formData.get("prompt") as string) ?? "").trim();
+      const rawModel = (formData.get("model") as string) ?? "";
+      if (rawModel && ALLOWED_MODEL_IDS.includes(rawModel)) model = rawModel;
       files = formData.getAll("files") as File[];
     } else {
       const body = await request.json();
       prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+      if (typeof body.model === "string" && ALLOWED_MODEL_IDS.includes(body.model)) {
+        model = body.model;
+      }
     }
 
     if (!prompt) {
@@ -155,7 +162,7 @@ export async function POST(request: NextRequest) {
         slack_thread_ts: null,
         slack_message_ts: null,
         prompt,
-        model: null,
+        model,
         status: "pending",
         tags: ["web"],
       })
@@ -188,6 +195,7 @@ export async function POST(request: NextRequest) {
 
     const payload: Record<string, unknown> = { prompt };
     if (fileAttachments.length > 0) payload.fileAttachments = fileAttachments;
+    if (model) payload.model = model;
 
     // 3. Insert user message + start command in parallel
     const [msgResult, cmdResult] = await Promise.all([

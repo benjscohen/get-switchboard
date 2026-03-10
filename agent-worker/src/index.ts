@@ -301,6 +301,11 @@ async function start() {
   }
   logger.info({ mcpUrl: process.env.SWITCHBOARD_MCP_URL?.trim() }, "MCP URL");
   logger.info({ keyPrefix: process.env.ANTHROPIC_API_KEY?.slice(0, 12) }, "Anthropic key");
+  if (process.env.OPENAI_API_KEY) {
+    logger.info({ keyPrefix: process.env.OPENAI_API_KEY.slice(0, 8) }, "OpenAI key");
+  } else {
+    logger.warn("OPENAI_API_KEY not set — Codex models will be unavailable");
+  }
 
   logger.info("Recovering stale sessions from previous run...");
   await recoverStaleSessions();

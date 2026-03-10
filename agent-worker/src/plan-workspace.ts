@@ -1,5 +1,7 @@
 import { query } from "@anthropic-ai/claude-code";
 import { logger } from "./logger.js";
+import { runOpenAIAgentHeadless } from "./openai-agent.js";
+import { isOpenAIModel } from "./model-utils.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,6 +67,30 @@ export async function prepareWorkspaceForPlan(
   try {
     logger.info({ cwd, promptLen: prompt.length }, "[plan-prep] Running workspace prep agent");
 
+    // Check if model is OpenAI and route accordingly
+    if (isOpenAIModel(model)) {
+      const result = await runOpenAIAgentHeadless({
+        model,
+        prompt: `The user wants to plan the following task. Set up the workspace (clone repos, install deps) so a read-only planning agent can analyze the codebase.\n\nUser's task:\n${prompt}`,
+        systemPrompt: PREP_SYSTEM_PROMPT,
+        mcpServers: {
+          switchboard: {
+            type: "http" as const,
+            url: mcpServerUrl,
+            headers: { Authorization: `Bearer ${agentKey}` },
+          },
+        },
+        abortController,
+      });
+
+      if (result.status === "completed") {
+        logger.info({ resultLen: result.text.length, turns: result.turns, cost: result.cost }, "[plan-prep] Completed (OpenAI)");
+        return { success: true, summary: result.text || "Workspace preparation completed" };
+      }
+      return { success: false, error: result.error || "Workspace prep failed" };
+    }
+
+    // Anthropic path (existing code)
     const conversation = query({
       prompt: `The user wants to plan the following task. Set up the workspace (clone repos, install deps) so a read-only planning agent can analyze the codebase.\n\nUser's task:\n${prompt}`,
       options: {

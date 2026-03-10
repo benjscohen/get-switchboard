@@ -1,6 +1,7 @@
 "use client";
 import { useState, useCallback } from "react";
 import { ThreadInput } from "./thread-input";
+import { AGENT_MODELS } from "@/lib/agent-models";
 
 interface ComposeThreadProps {
   onCreated: (id: string) => void;
@@ -9,6 +10,7 @@ interface ComposeThreadProps {
 
 export function ComposeThread({ onCreated, onCancel }: ComposeThreadProps) {
   const [error, setError] = useState<string | null>(null);
+  const [model, setModel] = useState("");
 
   const handleSubmit = useCallback(
     async (prompt: string, files: File[]) => {
@@ -20,6 +22,7 @@ export function ComposeThread({ onCreated, onCancel }: ComposeThreadProps) {
         if (files.length > 0) {
           const formData = new FormData();
           formData.append("prompt", prompt);
+          if (model) formData.append("model", model);
           for (const file of files) {
             formData.append("files", file);
           }
@@ -28,7 +31,7 @@ export function ComposeThread({ onCreated, onCancel }: ComposeThreadProps) {
           res = await fetch("/api/threads", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt }),
+            body: JSON.stringify({ prompt, ...(model ? { model } : {}) }),
           });
         }
 
@@ -43,13 +46,27 @@ export function ComposeThread({ onCreated, onCancel }: ComposeThreadProps) {
         setError(err instanceof Error ? err.message : "Something went wrong");
       }
     },
-    [onCreated],
+    [onCreated, model],
   );
 
   return (
     <div className="flex h-full items-center justify-center p-6">
       <div className="w-full max-w-xl space-y-4">
-        <h2 className="text-sm font-medium text-text-primary">New thread</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-text-primary">New thread</h2>
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-text-secondary"
+          >
+            <option value="">Default model</option>
+            {AGENT_MODELS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <ThreadInput
           placeholder="What should the agent work on?"

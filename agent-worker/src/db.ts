@@ -101,7 +101,7 @@ export async function lookupUserBySlackId(
   }
 
   const organizationId = profile.organization_id as string;
-  const model = (profile.preferred_agent_model as string) || "claude-sonnet-4-20250514";
+  const model = (profile.preferred_agent_model as string) || "claude-sonnet-4-6";
   const name = (profile.name as string) || undefined;
   const email = (profile.email as string) || undefined;
   const showThinking = (profile.show_thinking as boolean) ?? true;
@@ -434,7 +434,7 @@ export async function lookupUserById(
   }
 
   const organizationId = profile.organization_id as string;
-  const model = (profile.preferred_agent_model as string) || "claude-sonnet-4-20250514";
+  const model = (profile.preferred_agent_model as string) || "claude-sonnet-4-6";
   const name = (profile.name as string) || undefined;
   const email = (profile.email as string) || undefined;
   const showThinking = (profile.show_thinking as boolean) ?? true;

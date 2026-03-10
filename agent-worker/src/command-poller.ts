@@ -200,6 +200,11 @@ async function processCommand(command: SessionCommand): Promise<void> {
         return;
       }
 
+      // Per-session model override
+      if (session.model) {
+        lookup.model = session.model;
+      }
+
       // Fire-and-forget: mark command completed and kick off resume
       await markCommand(command.id, "completed");
       resumeSession(command.session_id, lookup, message).catch((err) => {
@@ -229,6 +234,11 @@ async function processCommand(command: SessionCommand): Promise<void> {
         logger.warn({ userId: session.user_id, commandId: command.id }, "[command-poller] start: user lookup failed");
         await markCommand(command.id, "failed");
         return;
+      }
+
+      // Per-session model override (from web UI thread creation)
+      if (session.model) {
+        lookup.model = session.model;
       }
 
       await markCommand(command.id, "completed");
