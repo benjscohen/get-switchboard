@@ -5,7 +5,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fetchUserFiles, writeFilesToStableDir, findSessionFile } from "./files.js";
 import { extractClaudeMd, buildSystemPrompt } from "./prompt.js";
-import { buildErrorWithRetryBlocks, buildPlanApprovalBlocks, buildPlanApprovedBlocks, buildPlanRevisingBlocks } from "./slack-blocks.js";
+import { buildErrorWithRetryBlocks, buildPlanApprovalBlocks, buildPlanApprovedBlocks, buildPlanRevisingBlocks, buildCloseThreadBlocks } from "./slack-blocks.js";
 import { createMessageStream } from "./message-stream.js";
 import { extractFileUploads, uploadExtractedFiles, type UploadResult } from "./file-uploads.js";
 import { StreamingStatusUpdater, type StreamEventLike } from "./streaming.js";
@@ -1240,6 +1240,14 @@ export async function processMessage(
                   }
                 }
 
+                // Post "Close Thread" button so user can tidy up from Slack
+                try {
+                  const closeBlocks = buildCloseThreadBlocks(sessionId);
+                  await slack.postMessage(channelId, "Close this thread?", replyThread, closeBlocks);
+                } catch (closeErr) {
+                  logger.error({ err: closeErr, sessionId }, "failed to post close-thread button");
+                }
+
                 // Save transcript + workspace eagerly (survives deploys that kill the container before idle timeout)
                 cachedSessionFilePath = await saveTranscriptIfExists(
                   sessionId, claudeSessionId, cachedSessionFilePath, "eager",
@@ -1811,6 +1819,9 @@ export async function resumeSession(
                   slackText,
                   session.slack_thread_ts,
                 );
+                // Post "Close Thread" button
+                const closeBlocks = buildCloseThreadBlocks(sessionId);
+                await slack.postMessage(session.slack_channel_id, "Close this thread?", session.slack_thread_ts, closeBlocks);
               } catch {
                 // Slack failure is non-fatal for web-initiated resumes
               }

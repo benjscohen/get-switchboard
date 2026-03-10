@@ -189,6 +189,48 @@ export function buildStatusStoppedBlocks(
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Close Thread blocks (mark done from Slack)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a compact "Close Thread" actions block to append after a response.
+ * The button fires the `close_thread` action with the sessionId as value.
+ */
+export function buildCloseThreadBlocks(sessionId: string): KnownBlock[] {
+  return [
+    {
+      type: "divider",
+    },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "✓ Close Thread" },
+          action_id: "close_thread",
+          value: sessionId,
+        },
+      ],
+    },
+  ];
+}
+
+/**
+ * Build a "Thread closed" context block — replaces the button after click.
+ */
+export function buildThreadClosedBlocks(): KnownBlock[] {
+  return [
+    {
+      type: "divider",
+    },
+    {
+      type: "context",
+      elements: [{ type: "mrkdwn", text: ":white_check_mark: Thread closed" }],
+    },
+  ];
+}
+
 export function buildPlanExpiredBlocks(planText: string): KnownBlock[] {
   return [
     {
