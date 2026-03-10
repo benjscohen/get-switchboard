@@ -142,7 +142,10 @@ function ToolMessage({ message, isLastTool, isRunning }: { message: ThreadMessag
 
   return (
     <div className="px-6 py-0.5">
-      <div className="flex items-center gap-1.5 min-w-0 text-xs">
+      <div
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 min-w-0 text-xs cursor-pointer hover:bg-bg-hover rounded-md"
+      >
         {showGear ? <GearSpinIcon /> : <CheckIcon />}
         <ToolIcon serverName={serverName} iconPath={iconPath} />
         <span className="font-medium text-text-secondary whitespace-nowrap">{label}</span>
@@ -152,11 +155,7 @@ function ToolMessage({ message, isLastTool, isRunning }: { message: ThreadMessag
             <span className="text-text-tertiary truncate min-w-0">{preview}</span>
           </>
         )}
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="ml-auto shrink-0 rounded p-0.5 text-text-tertiary hover:text-text-secondary hover:bg-bg-hover transition-colors"
-          title={expanded ? "Collapse" : "Expand JSON"}
-        >
+        <span className="ml-auto shrink-0 text-text-tertiary">
           <svg
             width="12"
             height="12"
@@ -168,7 +167,7 @@ function ToolMessage({ message, isLastTool, isRunning }: { message: ThreadMessag
           >
             <path d="M9 18l6-6-6-6" />
           </svg>
-        </button>
+        </span>
       </div>
       {expanded && (
         <pre className="mt-1 ml-5 max-h-64 overflow-auto rounded-md bg-bg-hover p-3 text-xs font-mono text-text-secondary border border-border">

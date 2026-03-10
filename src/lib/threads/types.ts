@@ -29,4 +29,12 @@ export interface KanbanData {
   active: ThreadSession[];
   waiting: ThreadSession[];
   done: ThreadSession[];
+  counts: { active: number; waiting: number; done: number };
+}
+
+export interface SearchResponse {
+  results: ThreadSession[];
+  total: number;
+  page: number;
+  totalPages: number;
 }

@@ -134,7 +134,7 @@ describe("MainNav", () => {
     await user.hover(screen.getByText("Agents").closest("div")!);
 
     // The wrapper div should not have group/nav class
-    const trigger = screen.getByRole("link", { name: "Agents", expanded: true });
+    const trigger = screen.getByRole("button", { name: "Agents", expanded: true });
     const wrapper = trigger.closest("div");
     expect(wrapper?.className).not.toContain("group/nav");
     expect(wrapper?.className).not.toContain("group-hover");

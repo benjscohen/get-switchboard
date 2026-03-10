@@ -1,12 +1,18 @@
 "use client";
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { AnimatePresence } from "motion/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SessionList } from "@/components/threads/session-list";
 import { SessionDetail } from "@/components/threads/session-detail";
 import { ComposeThread } from "@/components/threads/compose-thread";
 import { KeyboardShortcutsHelp } from "@/components/threads/keyboard-shortcuts-help";
 import { useHotkeys } from "@/hooks/use-hotkeys";
-import type { KanbanData, ThreadSession } from "@/lib/threads/types";
+import { useToast } from "@/components/ui/toast";
+import type { KanbanData, ThreadSession, SearchResponse } from "@/lib/threads/types";
+
+type OptimisticAction = "complete" | "stop" | "reopen";
+
+const DONE_PAGE_SIZE = 20;
 
 export default function ThreadsPage() {
   const [data, setData] = useState<KanbanData | null>(null);
@@ -14,14 +20,37 @@ export default function ThreadsPage() {
   const [composing, setComposing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  const [stoppingIds, setStoppingIds] = useState<Set<string>>(new Set());
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
+  const [searching, setSearching] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const searchVersionRef = useRef(0);
+  const doneLoadedCountRef = useRef(DONE_PAGE_SIZE);
+  const { addToast } = useToast();
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch("/api/threads");
-      if (res.ok) setData(await res.json());
+      const res = await fetch(`/api/threads?doneLimit=${DONE_PAGE_SIZE}&doneOffset=0`);
+      if (!res.ok) return;
+      const json = await res.json() as KanbanData;
+      setData((prev) => {
+        if (!prev || prev.done.length <= DONE_PAGE_SIZE) {
+          // First load or no extra pages loaded — replace all
+          doneLoadedCountRef.current = json.done.length;
+          return json;
+        }
+        // Preserve extra loaded done pages: replace first page, keep the rest
+        const extraDone = prev.done.slice(DONE_PAGE_SIZE);
+        const mergedDone = [...json.done, ...extraDone.filter(
+          (s) => !json.done.some((d) => d.id === s.id)
+        )];
+        doneLoadedCountRef.current = mergedDone.length;
+        return { ...json, done: mergedDone };
+      });
     } catch {
       /* ignore */
     } finally {
@@ -44,15 +73,81 @@ export default function ThreadsPage() {
     }
   }, [data, selectedId, composing]);
 
-  const allSessions = data
-    ? [...data.active, ...data.waiting, ...data.done]
-    : [];
+  const loadMoreDone = useCallback(async () => {
+    if (!data || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const offset = data.done.length;
+      const res = await fetch(`/api/threads?doneLimit=${DONE_PAGE_SIZE}&doneOffset=${offset}`);
+      if (!res.ok) return;
+      const json = await res.json() as KanbanData;
+      setData((prev) => {
+        if (!prev) return prev;
+        const existingIds = new Set(prev.done.map((s) => s.id));
+        const newDone = json.done.filter((s) => !existingIds.has(s.id));
+        const merged = [...prev.done, ...newDone];
+        doneLoadedCountRef.current = merged.length;
+        return { ...prev, done: merged, counts: json.counts };
+      });
+    } catch {
+      /* ignore */
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [data, loadingMore]);
+
+  const searchServer = useCallback(async (query: string, page: number) => {
+    if (!query.trim()) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+    const version = ++searchVersionRef.current;
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/threads?search=${encodeURIComponent(query)}&page=${page}&limit=20`);
+      if (!res.ok || version !== searchVersionRef.current) return;
+      const json = await res.json() as SearchResponse;
+      if (version !== searchVersionRef.current) return;
+      setSearchResults(json);
+    } catch {
+      /* ignore */
+    } finally {
+      if (version === searchVersionRef.current) {
+        setSearching(false);
+      }
+    }
+  }, []);
+
+  const handleSearchChange = useCallback((query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setSearchResults(null);
+      setSearching(false);
+      searchVersionRef.current++;
+    }
+  }, []);
+
+  // Trigger server search when debounced query changes (debounce is in SessionList)
+  const handleSearchTrigger = useCallback((query: string, page?: number) => {
+    searchServer(query, page ?? 1);
+  }, [searchServer]);
+
+  const allSessions = searchResults
+    ? searchResults.results
+    : data
+      ? [...data.active, ...data.waiting, ...data.done]
+      : [];
 
   const selectedSession = selectedId
     ? allSessions.find((s) => s.id === selectedId) ?? null
     : null;
 
-  const totalCount = allSessions.length;
+  const totalCount = data
+    ? (data.counts?.active ?? data.active.length) +
+      (data.counts?.waiting ?? data.waiting.length) +
+      (data.counts?.done ?? data.done.length)
+    : 0;
 
   const handleNewThread = () => {
     setSelectedId(null);
@@ -60,7 +155,6 @@ export default function ThreadsPage() {
   };
 
   const handleCreated = (id: string) => {
-    // Optimistically inject a placeholder into active
     if (data) {
       const placeholder: ThreadSession = {
         id,
@@ -86,6 +180,130 @@ export default function ThreadsPage() {
     fetchData();
   };
 
+  // Auto-advance: select next item in the same section after action
+  const autoAdvance = useCallback(
+    (sessionId: string, section: "active" | "waiting" | "done") => {
+      if (!data) return;
+      const list = data[section];
+      const idx = list.findIndex((s) => s.id === sessionId);
+      if (idx === -1) return;
+      // Pick next in section, or prev if last, or null
+      const next = list[idx + 1] ?? list[idx - 1] ?? null;
+      if (next) {
+        setSelectedId(next.id);
+        requestAnimationFrame(() => {
+          const el = document.querySelector(`[data-session-id="${next.id}"]`);
+          el?.scrollIntoView({ block: "nearest" });
+        });
+      }
+    },
+    [data],
+  );
+
+  const applyOptimisticAction = useCallback(
+    (sessionId: string, action: OptimisticAction) => {
+      if (!data) return;
+      const snapshot = { ...data };
+
+      // Find which section the session is in
+      const findAndRemove = (): { session: ThreadSession; section: "active" | "waiting" | "done" } | null => {
+        for (const section of ["active", "waiting", "done"] as const) {
+          const idx = data[section].findIndex((s) => s.id === sessionId);
+          if (idx !== -1) {
+            const session = data[section][idx];
+            return { session, section };
+          }
+        }
+        return null;
+      };
+
+      const found = findAndRemove();
+      if (!found) return;
+      const { session, section } = found;
+
+      // Auto-advance before moving
+      autoAdvance(sessionId, section);
+
+      // Build new data with session moved
+      const newData: KanbanData = {
+        active: data.active.filter((s) => s.id !== sessionId),
+        waiting: data.waiting.filter((s) => s.id !== sessionId),
+        done: data.done.filter((s) => s.id !== sessionId),
+        counts: { ...data.counts },
+      };
+
+      if (action === "complete") {
+        const updated = { ...session, status: "completed" as const, completedAt: new Date().toISOString() };
+        newData.done = [updated, ...newData.done];
+        if (section !== "done") {
+          newData.counts[section]--;
+          newData.counts.done++;
+        }
+      } else if (action === "stop") {
+        // Keep in active but mark as stopping
+        const updated = { ...session };
+        newData.active = [...newData.active, updated];
+        setStoppingIds((prev) => new Set(prev).add(sessionId));
+      } else if (action === "reopen") {
+        const updated = { ...session, status: "idle" as const, completedAt: null };
+        newData.waiting = [updated, ...newData.waiting];
+        if (section !== "waiting") {
+          newData.counts[section]--;
+          newData.counts.waiting++;
+        }
+      }
+
+      setData(newData);
+
+      // API endpoint map
+      const endpointMap: Record<OptimisticAction, string> = {
+        complete: `/api/threads/${sessionId}/complete`,
+        stop: `/api/threads/${sessionId}/stop`,
+        reopen: `/api/threads/${sessionId}/reopen`,
+      };
+
+      // Fire API call
+      fetch(endpointMap[action], { method: "POST" })
+        .then((res) => {
+          if (!res.ok) throw new Error("API error");
+          if (action === "stop") {
+            setStoppingIds((prev) => {
+              const next = new Set(prev);
+              next.delete(sessionId);
+              return next;
+            });
+          }
+          // Show success toast with undo for complete/reopen
+          if (action === "complete") {
+            addToast("Marked as done", "success", {
+              label: "Undo",
+              onClick: () => applyOptimisticAction(sessionId, "reopen"),
+            });
+          } else if (action === "reopen") {
+            addToast("Reopened", "success", {
+              label: "Undo",
+              onClick: () => applyOptimisticAction(sessionId, "complete"),
+            });
+          }
+        })
+        .catch(() => {
+          // Rollback
+          setData(snapshot);
+          setStoppingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(sessionId);
+            return next;
+          });
+          addToast("Action failed — reverted", "error");
+        })
+        .finally(() => {
+          // Reconcile with server after a short delay
+          setTimeout(fetchData, 500);
+        });
+    },
+    [data, autoAdvance, fetchData, addToast],
+  );
+
   const navigateBy = useCallback(
     (delta: number) => {
       if (allSessions.length === 0) return;
@@ -105,7 +323,6 @@ export default function ThreadsPage() {
       }
       const nextId = allSessions[nextIdx].id;
       setSelectedId(nextId);
-      // Scroll the session row into view
       requestAnimationFrame(() => {
         const el = document.querySelector(`[data-session-id="${nextId}"]`);
         el?.scrollIntoView({ block: "nearest" });
@@ -114,43 +331,41 @@ export default function ThreadsPage() {
     [allSessions, selectedId, composing],
   );
 
-  const hotkeys = useMemo(
-    () => ({
-      j: () => navigateBy(1),
-      arrowdown: () => navigateBy(1),
-      k: () => navigateBy(-1),
-      arrowup: () => navigateBy(-1),
-      c: () => handleNewThread(),
-      "/": () => searchInputRef.current?.focus(),
-      r: () => messageInputRef.current?.focus(),
-      e: () => {
-        if (selectedSession?.status === "idle") {
-          fetch(`/api/threads/${selectedSession.id}/complete`, { method: "POST" }).then(fetchData);
-        }
-      },
-      s: () => {
-        if (selectedSession?.status === "running") {
-          fetch(`/api/threads/${selectedSession.id}/stop`, { method: "POST" }).then(fetchData);
-        }
-      },
-      u: () => {
-        if (selectedSession?.status === "completed") {
-          fetch(`/api/threads/${selectedSession.id}/reopen`, { method: "POST" }).then(fetchData);
-        }
-      },
-      "?": () => setShowHelp((v) => !v),
-      escape: () => {
-        if (showHelp) {
-          setShowHelp(false);
-        } else if (composing) {
-          setComposing(false);
-        } else if (document.activeElement instanceof HTMLElement) {
-          document.activeElement.blur();
-        }
-      },
-    }),
-    [navigateBy, selectedSession, composing, showHelp, fetchData],
-  );
+  // Hotkeys — plain object, ref-based hook doesn't need memoization
+  const hotkeys: Record<string, (e: KeyboardEvent) => void> = {
+    j: () => navigateBy(1),
+    arrowdown: () => navigateBy(1),
+    k: () => navigateBy(-1),
+    arrowup: () => navigateBy(-1),
+    c: () => handleNewThread(),
+    "/": () => searchInputRef.current?.focus(),
+    r: () => messageInputRef.current?.focus(),
+    e: () => {
+      if (selectedSession?.status === "idle") {
+        applyOptimisticAction(selectedSession.id, "complete");
+      }
+    },
+    s: () => {
+      if (selectedSession?.status === "running") {
+        applyOptimisticAction(selectedSession.id, "stop");
+      }
+    },
+    u: () => {
+      if (selectedSession?.status === "completed") {
+        applyOptimisticAction(selectedSession.id, "reopen");
+      }
+    },
+    "?": () => setShowHelp((v) => !v),
+    escape: () => {
+      if (showHelp) {
+        setShowHelp(false);
+      } else if (composing) {
+        setComposing(false);
+      } else if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    },
+  };
 
   useHotkeys(hotkeys, !loading);
 
@@ -164,7 +379,7 @@ export default function ThreadsPage() {
           <h1 className="text-base font-semibold text-text-primary">Threads</h1>
           {data && (
             <span className="text-xs text-text-tertiary">
-              {data.active.length} active &middot; {data.waiting.length} waiting &middot; {data.done.length} done
+              {data.counts.active} active &middot; {data.counts.waiting} waiting &middot; {data.counts.done} done
             </span>
           )}
         </div>
@@ -234,8 +449,16 @@ export default function ThreadsPage() {
                   setComposing(false);
                   setSelectedId(id);
                 }}
-                onAction={fetchData}
+                onComplete={(id) => applyOptimisticAction(id, "complete")}
+                onReopen={(id) => applyOptimisticAction(id, "reopen")}
+                stoppingIds={stoppingIds}
                 searchInputRef={searchInputRef}
+                onSearchChange={handleSearchChange}
+                onSearchTrigger={handleSearchTrigger}
+                searchResults={searchResults}
+                searching={searching}
+                onLoadMore={loadMoreDone}
+                loadingMore={loadingMore}
               />
             </div>
             {/* Detail panel */}
@@ -249,7 +472,11 @@ export default function ThreadsPage() {
                 <SessionDetail
                   session={selectedSession}
                   onClose={() => setSelectedId(null)}
-                  onAction={fetchData}
+                  onComplete={() => applyOptimisticAction(selectedSession.id, "complete")}
+                  onStop={() => applyOptimisticAction(selectedSession.id, "stop")}
+                  onReopen={() => applyOptimisticAction(selectedSession.id, "reopen")}
+                  onRefresh={fetchData}
+                  isStopping={stoppingIds.has(selectedSession.id)}
                   messageInputRef={messageInputRef}
                 />
               ) : (
@@ -264,7 +491,9 @@ export default function ThreadsPage() {
         )}
       </div>
 
-      {showHelp && <KeyboardShortcutsHelp onClose={() => setShowHelp(false)} />}
+      <AnimatePresence>
+        {showHelp && <KeyboardShortcutsHelp onClose={() => setShowHelp(false)} />}
+      </AnimatePresence>
     </div>
   );
 }

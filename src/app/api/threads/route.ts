@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import type { SessionStatus, ThreadSession, KanbanData } from "@/lib/threads/types";
+import type { SessionStatus, ThreadSession, KanbanData, SearchResponse } from "@/lib/threads/types";
 
 function mapSession(row: Record<string, unknown>): ThreadSession {
   return {
@@ -23,34 +23,73 @@ function mapSession(row: Record<string, unknown>): ThreadSession {
 const THREAD_SELECT_COLUMNS =
   "id, status, prompt, result, error, model, total_turns, title, tags, created_at, updated_at, completed_at";
 
-export async function GET() {
+function baseQuery() {
+  return supabaseAdmin.from("agent_sessions");
+}
+
+function escapeIlike(str: string): string {
+  return str.replace(/[%_\\]/g, (c) => `\\${c}`);
+}
+
+export async function GET(request: NextRequest) {
   const auth = await requireAuth();
   if (!auth.authenticated) return auth.response;
 
+  const { searchParams } = request.nextUrl;
+  const searchQuery = searchParams.get("search");
+
   try {
+    // Search mode
+    if (searchQuery && searchQuery.trim()) {
+      const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
+      const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20", 10)));
+      const offset = (page - 1) * limit;
+      const escaped = escapeIlike(searchQuery.trim());
+
+      const { data, error, count } = await baseQuery()
+        .select(THREAD_SELECT_COLUMNS, { count: "exact" })
+        .eq("organization_id", auth.organizationId)
+        .eq("user_id", auth.userId)
+        .or(`prompt.ilike.%${escaped}%,title.ilike.%${escaped}%`)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (error) throw error;
+
+      const total = count ?? 0;
+      const response: SearchResponse = {
+        results: (data ?? []).map(mapSession),
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+      };
+      return NextResponse.json(response);
+    }
+
+    // Kanban mode
+    const doneLimit = Math.min(100, Math.max(1, parseInt(searchParams.get("doneLimit") ?? "20", 10)));
+    const doneOffset = Math.max(0, parseInt(searchParams.get("doneOffset") ?? "0", 10));
+
     const [activeResult, waitingResult, doneResult] = await Promise.all([
-      supabaseAdmin
-        .from("agent_sessions")
-        .select(THREAD_SELECT_COLUMNS)
+      baseQuery()
+        .select(THREAD_SELECT_COLUMNS, { count: "exact" })
         .eq("organization_id", auth.organizationId)
         .eq("user_id", auth.userId)
         .in("status", ["pending", "running"])
         .order("created_at", { ascending: false }),
-      supabaseAdmin
-        .from("agent_sessions")
-        .select(THREAD_SELECT_COLUMNS)
+      baseQuery()
+        .select(THREAD_SELECT_COLUMNS, { count: "exact" })
         .eq("organization_id", auth.organizationId)
         .eq("user_id", auth.userId)
         .eq("status", "idle")
         .order("updated_at", { ascending: false }),
-      supabaseAdmin
-        .from("agent_sessions")
-        .select(THREAD_SELECT_COLUMNS)
+      baseQuery()
+        .select(THREAD_SELECT_COLUMNS, { count: "exact" })
         .eq("organization_id", auth.organizationId)
         .eq("user_id", auth.userId)
         .in("status", ["completed", "failed", "timeout"])
         .order("completed_at", { ascending: false, nullsFirst: false })
-        .limit(50),
+        .range(doneOffset, doneOffset + doneLimit - 1),
     ]);
 
     if (activeResult.error) throw activeResult.error;
@@ -61,6 +100,11 @@ export async function GET() {
       active: (activeResult.data ?? []).map(mapSession),
       waiting: (waitingResult.data ?? []).map(mapSession),
       done: (doneResult.data ?? []).map(mapSession),
+      counts: {
+        active: activeResult.count ?? activeResult.data?.length ?? 0,
+        waiting: waitingResult.count ?? waitingResult.data?.length ?? 0,
+        done: doneResult.count ?? doneResult.data?.length ?? 0,
+      },
     };
 
     return NextResponse.json(data);

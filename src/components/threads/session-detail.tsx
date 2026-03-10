@@ -12,17 +12,26 @@ import type { ThreadSession, ThreadMessage } from "@/lib/threads/types";
 interface SessionDetailProps {
   session: ThreadSession;
   onClose: () => void;
-  onAction: () => void;
+  onComplete: () => void;
+  onStop: () => void;
+  onReopen: () => void;
+  onRefresh: () => void;
+  isStopping?: boolean;
   messageInputRef?: React.Ref<HTMLTextAreaElement>;
 }
 
-export function SessionDetail({ session, onClose, onAction, messageInputRef }: SessionDetailProps) {
+export function SessionDetail({
+  session,
+  onClose,
+  onComplete,
+  onStop,
+  onReopen,
+  onRefresh,
+  isStopping,
+  messageInputRef,
+}: SessionDetailProps) {
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [loadingMsgs, setLoadingMsgs] = useState(true);
-  const [stopping, setStopping] = useState(false);
-  const [completing, setCompleting] = useState(false);
-  const [reopening, setReopening] = useState(false);
-
 
   const isActive = ["pending", "running", "idle"].includes(session.status);
   const isIdle = session.status === "idle";
@@ -32,7 +41,6 @@ export function SessionDetail({ session, onClose, onAction, messageInputRef }: S
   const latestCreatedAt = useRef<string | null>(null);
   const polling = useRef(false);
 
-  // Full fetch — used on initial load and session change
   const fetchAllMessages = useCallback(async () => {
     try {
       const res = await fetch(`/api/threads/${session.id}/messages`);
@@ -50,7 +58,6 @@ export function SessionDetail({ session, onClose, onAction, messageInputRef }: S
     }
   }, [session.id]);
 
-  // Incremental fetch — only new messages since last known timestamp
   const fetchNewMessages = useCallback(async () => {
     if (!latestCreatedAt.current || polling.current) return;
     polling.current = true;
@@ -85,42 +92,6 @@ export function SessionDetail({ session, onClose, onAction, messageInputRef }: S
     }
   }, [fetchAllMessages, fetchNewMessages, isActive]);
 
-  const handleStop = async () => {
-    setStopping(true);
-    try {
-      await fetch(`/api/threads/${session.id}/stop`, { method: "POST" });
-      onAction();
-    } catch {
-      /* ignore */
-    } finally {
-      setStopping(false);
-    }
-  };
-
-  const handleComplete = async () => {
-    setCompleting(true);
-    try {
-      await fetch(`/api/threads/${session.id}/complete`, { method: "POST" });
-      onAction();
-    } catch {
-      /* ignore */
-    } finally {
-      setCompleting(false);
-    }
-  };
-
-  const handleReopen = async () => {
-    setReopening(true);
-    try {
-      await fetch(`/api/threads/${session.id}/reopen`, { method: "POST" });
-      onAction();
-    } catch {
-      /* ignore */
-    } finally {
-      setReopening(false);
-    }
-  };
-
   const handleRespond = async (message: string, files: File[] = []) => {
     const optimistic: ThreadMessage = {
       id: `temp-${Date.now()}`,
@@ -150,7 +121,7 @@ export function SessionDetail({ session, onClose, onAction, messageInputRef }: S
           body: JSON.stringify({ message }),
         });
       }
-      onAction();
+      onRefresh();
     } catch {
       /* ignore */
     }
@@ -196,30 +167,28 @@ export function SessionDetail({ session, onClose, onAction, messageInputRef }: S
             <Button
               variant="secondary"
               size="sm"
-              onClick={handleStop}
-              disabled={stopping}
+              onClick={onStop}
+              disabled={isStopping}
             >
-              {stopping ? "Stopping..." : <>Stop <kbd className="ml-1.5 rounded border border-border bg-bg-hover px-1 text-[10px] font-medium text-text-tertiary">S</kbd></>}
+              {isStopping ? "Stopping..." : <>Stop <kbd className="ml-1.5 rounded border border-border bg-bg-hover px-1 text-[10px] font-medium text-text-tertiary">S</kbd></>}
             </Button>
           )}
           {isIdle && (
             <Button
               variant="secondary"
               size="sm"
-              onClick={handleComplete}
-              disabled={completing}
+              onClick={onComplete}
             >
-              {completing ? "Completing..." : <>Mark Done <kbd className="ml-1.5 rounded border border-border bg-bg-hover px-1 text-[10px] font-medium text-text-tertiary">E</kbd></>}
+              Mark Done <kbd className="ml-1.5 rounded border border-border bg-bg-hover px-1 text-[10px] font-medium text-text-tertiary">E</kbd>
             </Button>
           )}
           {session.status === "completed" && (
             <Button
               variant="secondary"
               size="sm"
-              onClick={handleReopen}
-              disabled={reopening}
+              onClick={onReopen}
             >
-              {reopening ? "Reopening..." : <>Reopen <kbd className="ml-1.5 rounded border border-border bg-bg-hover px-1 text-[10px] font-medium text-text-tertiary">U</kbd></>}
+              Reopen <kbd className="ml-1.5 rounded border border-border bg-bg-hover px-1 text-[10px] font-medium text-text-tertiary">U</kbd>
             </Button>
           )}
         </div>

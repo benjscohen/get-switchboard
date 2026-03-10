@@ -1,9 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export function useHotkeys(
   keyMap: Record<string, (e: KeyboardEvent) => void>,
   enabled = true,
 ) {
+  const keyMapRef = useRef(keyMap);
+  keyMapRef.current = keyMap;
+
   useEffect(() => {
     if (!enabled) return;
 
@@ -25,7 +28,7 @@ export function useHotkeys(
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const key = e.key === "?" ? "?" : e.key.toLowerCase();
-      const handler = keyMap[key];
+      const handler = keyMapRef.current[key];
       if (handler) {
         e.preventDefault();
         handler(e);
@@ -34,5 +37,5 @@ export function useHotkeys(
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [keyMap, enabled]);
+  }, [enabled]);
 }

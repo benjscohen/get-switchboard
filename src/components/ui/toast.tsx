@@ -11,14 +11,20 @@ import { AnimatePresence, motion } from "motion/react";
 
 type ToastVariant = "success" | "error";
 
+interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface Toast {
   id: number;
   message: string;
   variant: ToastVariant;
+  action?: ToastAction;
 }
 
 interface ToastContextValue {
-  addToast: (message: string, variant: ToastVariant) => void;
+  addToast: (message: string, variant: ToastVariant, action?: ToastAction) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -34,13 +40,18 @@ export function useToast() {
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = useCallback((message: string, variant: ToastVariant) => {
-    const id = nextId++;
-    setToasts((prev) => [...prev, { id, message, variant }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+  const dismiss = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const addToast = useCallback(
+    (message: string, variant: ToastVariant, action?: ToastAction) => {
+      const id = nextId++;
+      setToasts((prev) => [...prev, { id, message, variant, action }]);
+      setTimeout(() => dismiss(id), 4000);
+    },
+    [dismiss],
+  );
 
   return (
     <ToastContext value={{ addToast }}>
@@ -48,7 +59,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2">
         <AnimatePresence>
           {toasts.map((toast) => (
-            <ToastItem key={toast.id} toast={toast} />
+            <ToastItem key={toast.id} toast={toast} onDismiss={() => dismiss(toast.id)} />
           ))}
         </AnimatePresence>
       </div>
@@ -56,7 +67,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function ToastItem({ toast }: { toast: Toast }) {
+function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
   const colors =
     toast.variant === "success"
       ? "border-green-200 bg-green-50 text-green-800"
@@ -67,9 +78,20 @@ function ToastItem({ toast }: { toast: Toast }) {
       initial={{ opacity: 0, x: -80 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -80 }}
-      className={`rounded-lg border px-4 py-3 text-sm shadow-lg ${colors}`}
+      className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm shadow-lg ${colors}`}
     >
-      {toast.message}
+      <span>{toast.message}</span>
+      {toast.action && (
+        <button
+          onClick={() => {
+            toast.action!.onClick();
+            onDismiss();
+          }}
+          className="shrink-0 font-medium underline underline-offset-2 hover:no-underline"
+        >
+          {toast.action.label}
+        </button>
+      )}
     </motion.div>
   );
 }

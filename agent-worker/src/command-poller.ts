@@ -11,6 +11,7 @@ import * as db from "./db.js";
 import { findRunningSessionBySessionId } from "./session-registry.js";
 import { resumeSession } from "./agent.js";
 import { logger } from "./logger.js";
+import * as slack from "./slack.js";
 
 const POLL_INTERVAL_MS = 3_000; // 3 seconds
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -41,6 +42,29 @@ async function markCommand(
 
   if (error) {
     logger.error({ err: error, commandId: id, status }, "[command-poller] failed to mark command");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Post a user's web reply to the originating Slack thread (non-fatal)
+// ---------------------------------------------------------------------------
+
+async function postWebReplyToSlack(
+  session: { slack_channel_id: string; slack_thread_ts: string | null },
+  message: string,
+  userId: string,
+): Promise<void> {
+  if (!session.slack_thread_ts || session.slack_channel_id === "web" || session.slack_channel_id === "scheduled") return;
+  try {
+    const lookup = await db.lookupUserById(userId);
+    const name = lookup?.name || "Someone";
+    await slack.postMessage(
+      session.slack_channel_id,
+      `_${name} (via web):_\n${message}`,
+      session.slack_thread_ts,
+    );
+  } catch {
+    // Non-fatal — don't block the command
   }
 }
 
@@ -86,6 +110,8 @@ async function processCommand(command: SessionCommand): Promise<void> {
             return;
           }
 
+          await postWebReplyToSlack(session, message, command.created_by);
+
           const lookup = await db.lookupUserById(session.user_id);
           if (!lookup) {
             logger.warn({ userId: session.user_id, commandId: command.id }, "[command-poller] respond: user lookup failed for orphaned idle session");
@@ -116,6 +142,12 @@ async function processCommand(command: SessionCommand): Promise<void> {
         logger.warn({ commandId: command.id }, "[command-poller] respond command missing message payload");
         await markCommand(command.id, "failed");
         return;
+      }
+
+      // Post user's web reply to the Slack thread (if applicable)
+      const runningSession = await db.getSessionById(command.session_id);
+      if (runningSession) {
+        await postWebReplyToSlack(runningSession, message, command.created_by);
       }
 
       // Push message into the running session
@@ -158,6 +190,8 @@ async function processCommand(command: SessionCommand): Promise<void> {
         await markCommand(command.id, "failed");
         return;
       }
+
+      await postWebReplyToSlack(session, message, command.created_by);
 
       const lookup = await db.lookupUserById(session.user_id);
       if (!lookup) {

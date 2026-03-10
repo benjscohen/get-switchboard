@@ -64,6 +64,17 @@ export function ThreadInput({
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      const { files } = e.clipboardData;
+      if (files.length > 0) {
+        e.preventDefault();
+        addFiles(files);
+      }
+    },
+    [addFiles],
+  );
+
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
@@ -96,6 +107,7 @@ export function ThreadInput({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={placeholder}
           rows={minRows}
           disabled={disabled || submitting}

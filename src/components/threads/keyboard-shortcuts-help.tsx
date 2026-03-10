@@ -1,4 +1,5 @@
 "use client";
+import { motion } from "motion/react";
 
 interface KeyboardShortcutsHelpProps {
   onClose: () => void;
@@ -27,13 +28,21 @@ function ShortcutRow({ keys, label }: { keys: string; label: string }) {
 
 export function KeyboardShortcutsHelp({ onClose }: KeyboardShortcutsHelpProps) {
   return (
-    <div
+    <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       onClick={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
     >
-      <div
+      <motion.div
         className="w-full max-w-sm rounded-xl border border-border bg-bg-card p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
+        initial={{ scale: 0.95, y: 10 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.95, y: 10 }}
+        transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-text-primary">
@@ -78,7 +87,7 @@ export function KeyboardShortcutsHelp({ onClose }: KeyboardShortcutsHelpProps) {
             <ShortcutRow keys="Esc" label="Close / Cancel" />
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
