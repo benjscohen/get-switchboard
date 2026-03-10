@@ -134,7 +134,7 @@ export default function ThreadsPage() {
         }
       },
       "?": () => setShowHelp((v) => !v),
-      Escape: () => {
+      escape: () => {
         if (showHelp) {
           setShowHelp(false);
         } else if (composing) {
